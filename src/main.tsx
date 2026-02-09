@@ -1,10 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App'
+import App from './app/App'
 import './index.css'
-import { AuthProvider } from './providers/AuthProvider'
-import { QueryProvider } from './providers/QueryProvider'
-import { NotificationProvider } from './providers/NotificationProvider'
+import { AuthProvider } from './app/providers/AuthProvider'
+import { QueryProvider } from './app/providers/QueryProvider'
+import { NotificationProvider } from './app/providers/NotificationProvider'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
