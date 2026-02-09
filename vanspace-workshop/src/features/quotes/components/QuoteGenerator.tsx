@@ -25,12 +25,7 @@ export default function QuoteGenerator() {
   const [clientName, setClientName] = useState('')
   const [vehicleModel, setVehicleModel] = useState('')
 
-  const handleImportCatalog = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      await importCatalog(file)
-    }
-  }
+    // Catalog is loaded automatically from Supabase via useCatalog
 
   const addProduct = (product: CatalogProduct, quantity: number = 1) => {
     const item = PriceCalculator.calculateQuoteItem(product, quantity, selectedBusinessLine)

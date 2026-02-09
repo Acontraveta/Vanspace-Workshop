@@ -32,18 +32,7 @@ export default function PurchaseList() {
     refreshData()
   }, [])
 
-  const handleImportStock = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      try {
-        await StockService.importFromFile(file)
-        refreshData()
-        toast.success('Stock importado correctamente')
-      } catch (error: any) {
-        toast.error('Error importando stock: ' + error.message)
-      }
-    }
-  }
+  // Note: stock import now handled via /setup page (sync from Supabase)
 
   const handleMarkAsOrdered = (itemId: string) => {
     PurchaseService.markAsOrdered(itemId)
@@ -408,15 +397,10 @@ export default function PurchaseList() {
                 <p className="text-gray-700">
                   Importa el archivo Excel de stock para gestionar el inventario
                 </p>
-                <Input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleImportStock}
-                  className="max-w-md"
-                />
-                <p className="text-sm text-gray-600">
-                  Archivo: <code className="bg-white px-2 py-1 rounded">Stock_a_22-12.xlsx</code>
-                </p>
+                <div className="p-3 bg-white rounded border">
+                  <p className="text-sm text-gray-700">La importación de stock ahora se realiza desde la página de configuración inicial.</p>
+                  <p className="text-sm text-gray-600 mt-2">Visita <a href="/setup" className="text-blue-600 underline">/setup</a> para importar los archivos desde Supabase.</p>
+                </div>
               </div>
             </CardContent>
           </Card>

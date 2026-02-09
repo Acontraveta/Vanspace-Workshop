@@ -7,11 +7,10 @@ import { StockService } from '../services/stockService'
 import toast from 'react-hot-toast'
 
 interface QRScannerProps {
-  stock: StockItem[]
   onRefresh: () => void
 }
 
-export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
+export default function QRScanner({ onRefresh }: QRScannerProps) {
   const [manualCode, setManualCode] = useState('')
   const [foundItem, setFoundItem] = useState<StockItem | null>(null)
   const [assigningLocation, setAssigningLocation] = useState(false)

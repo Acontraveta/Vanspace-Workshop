@@ -13,27 +13,10 @@ export function useStock() {
     setStock(loadedStock)
     setStockLoaded(loadedStock.length > 0)
   }, [])
-
-  const importStock = async (file: File) => {
-    setLoading(true)
-    try {
-      const importedStock = await StockService.importFromFile(file)
-      setStock(importedStock)
-      setStockLoaded(true)
-      toast.success(`Stock importado: ${importedStock.length} items`)
-      return importedStock
-    } catch (error: any) {
-      toast.error('Error importando stock: ' + error.message)
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return {
     stock,
     loading,
     stockLoaded,
-    importStock,
+  }
   }
 }

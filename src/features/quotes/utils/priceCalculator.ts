@@ -1,5 +1,4 @@
-import { BusinessLine, CatalogProduct, QuoteItem, Quote } from '../types/quote.types'
-import { CatalogService } from '../services/catalogService'
+import { BusinessLine, CatalogProduct, QuoteItem } from '../types/quote.types'
 
 export class PriceCalculator {
   // Calcular item del presupuesto
@@ -46,7 +45,6 @@ export class PriceCalculator {
       id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       catalogSKU: product.SKU,
       productName: product.NOMBRE,
-      description: product.DESCRIPCION,
       quantity,
       laborHours,
       materialCost,

@@ -25,7 +25,7 @@ interface QuoteGeneratorProps {
 }
 
 export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
-  const { products, catalogLoaded, importCatalog, loading } = useCatalog()
+  const { products, catalogLoaded, loading, refreshCatalog } = useCatalog()
   
   useEffect(() => {
     console.log('🔍 QuoteGenerator - Estado del catálogo:')
@@ -125,23 +125,7 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
   const canSave = isBasicDataComplete && items.length > 0
   const canApprove = canSave && isBillingDataComplete
 
-  const handleImportCatalog = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      try {
-        console.log('🔄 Importando archivo:', file.name)
-        const imported = await importCatalog(file)
-        console.log('✅ Importados:', imported.length, 'productos')
-        
-        // FORZAR RECARGA DE LA PÁGINA
-        setTimeout(() => {
-          window.location.reload()
-        }, 1000)
-      } catch (error) {
-        console.error('❌ Error importando catálogo:', error)
-      }
-    }
-  }
+  // Catalog is loaded automatically from Supabase via useCatalog
 
   const addProduct = (product: CatalogProduct, quantity: number = 1) => {
     const item = PriceCalculator.calculateQuoteItem(product, quantity, selectedBusinessLine)

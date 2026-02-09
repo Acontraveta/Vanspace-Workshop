@@ -10,7 +10,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { signIn, isDemoMode } = useAuth()
+  const { signIn } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,27 +69,17 @@ export default function Login() {
               </div>
             )}
 
-            {isDemoMode && (
-              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm">
-                <p className="font-semibold mb-1">🎯 Modo Demo Activado</p>
-                <p className="text-xs">
-                  Introduce cualquier email y contraseña para acceder.
-                  Los datos no se guardarán en servidor.
-                </p>
-              </div>
-            )}
+            
 
             <Button type="submit" className="w-full" size="lg" disabled={loading}>
               {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
             </Button>
           </form>
 
-          {!isDemoMode && (
-            <div className="mt-6 text-center text-sm text-gray-500">
-              <p>Usa tus credenciales para entrar</p>
-              <p className="text-xs mt-1">Solo tendrás acceso a tu sección</p>
-            </div>
-          )}
+          <div className="mt-6 text-center text-sm text-gray-500">
+            <p>Usa tus credenciales para entrar</p>
+            <p className="text-xs mt-1">Solo tendrás acceso a tu sección</p>
+          </div>
         </CardContent>
       </Card>
     </div>

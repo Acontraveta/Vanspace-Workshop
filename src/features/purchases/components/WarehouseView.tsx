@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
-import { Badge } from '@/shared/components/ui/badge'
+import { /* Badge */ } from '@/shared/components/ui/badge'
 import { Input } from '@/shared/components/ui/input'
 import { StockItem } from '../types/purchase.types'
 import { parseUbicacion } from '../services/stockService'
-import { StockService } from '../services/stockService'
 import toast from 'react-hot-toast'
 
 interface WarehouseViewProps {
