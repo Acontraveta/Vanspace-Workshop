@@ -46,3 +46,4 @@ Ver carpeta `/docs` para documentación completa.
 ## 📄 Licencia
 
 Propietario - VanSpace Workshop
+ 
