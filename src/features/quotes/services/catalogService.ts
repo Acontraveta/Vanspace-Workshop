@@ -6,8 +6,6 @@ export class CatalogService {
   private static products: CatalogProduct[] = []
   private static EXCEL_PATH = 'catalogoproductos.xlsx'
 
-  private static EXCEL_PATH = 'catalogo_productos.xlsx'
-
   // Cargar catálogo desde Supabase Storage (solo lectura)
   static async loadFromSupabase(): Promise<CatalogProduct[]> {
     try {
