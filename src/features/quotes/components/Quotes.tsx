@@ -3,7 +3,7 @@ import { PageLayout } from '@/shared/components/layout/PageLayout'
 import { Header } from '@/shared/components/layout/Header'
 import { Card, CardContent } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
-import QuotesList from './QuotesList'
+import Quoteslist from './Quoteslist'
 import QuoteGenerator from './QuoteGenerator'
 
 export default function Quotes() {
@@ -58,7 +58,7 @@ export default function Quotes() {
 
         {/* Contenido según tab */}
         {activeTab === 'list' ? (
-          <QuotesList key={refreshKey} onEditQuote={handleEditQuote} />
+          <Quoteslist key={refreshKey} onEditQuote={handleEditQuote} />
         ) : (
           <QuoteGenerator quoteId={editingQuoteId} onSaved={handleBackToList} />
         )}
