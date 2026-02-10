@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './app/App'
-import '../index.css'
+import '../index.css' // CSS file in root directory
 import { AuthProvider } from './app/providers/AuthProvider'
 import { QueryProvider } from './app/providers/QueryProvider'
 import { NotificationProvider } from './app/providers/NotificationProvider'
