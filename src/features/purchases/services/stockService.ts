@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { StockItem } from '../types/purchase.types'
-import { downloadExcel } from '@/lib/supabase'
+import { downloadExcel, supabase } from '@/lib/supabase'
 
 export function parseUbicacion(ubicacion?: string): { estanteria: number, nivel: number, hueco: number } | null {
   if (!ubicacion || ubicacion.length < 3) return null
@@ -132,6 +132,49 @@ export class StockService {
     
     if (item) {
       item.CANTIDAD = newQuantity
+      localStorage.setItem('stock_items', JSON.stringify(items))
+      this.stock = items
+    }
+  }
+
+  /**
+   * Añade un nuevo item al stock (desde compras recibidas).
+   * Si ya existe un item con la misma referencia, suma la cantidad.
+   */
+  static addStockItem(newItem: StockItem): void {
+    const items = this.getStock()
+    const existing = items.find(i => i.REFERENCIA === newItem.REFERENCIA)
+
+    if (existing) {
+      // Si ya existe, sumar cantidad
+      existing.CANTIDAD += newItem.CANTIDAD
+      // Actualizar campos que puedan estar vacíos
+      if (!existing.UBICACION && newItem.UBICACION) existing.UBICACION = newItem.UBICACION
+      if (!existing.FAMILIA && newItem.FAMILIA) existing.FAMILIA = newItem.FAMILIA
+      if (!existing.CATEGORIA && newItem.CATEGORIA) existing.CATEGORIA = newItem.CATEGORIA
+      if (!existing.DESCRIPCION && newItem.DESCRIPCION) existing.DESCRIPCION = newItem.DESCRIPCION
+    } else {
+      items.push(newItem)
+    }
+
+    localStorage.setItem('stock_items', JSON.stringify(items))
+    this.stock = items
+  }
+
+  static async updateLocation(referencia: string, ubicacion: string): Promise<void> {
+    // Actualizar en Supabase
+    const { error } = await supabase
+      .from('stock_items')
+      .update({ ubicacion })
+      .eq('referencia', referencia)
+
+    if (error) throw error
+
+    // Actualizar en memoria y localStorage
+    const items = this.getStock()
+    const item = items.find(i => i.REFERENCIA === referencia)
+    if (item) {
+      item.UBICACION = ubicacion
       localStorage.setItem('stock_items', JSON.stringify(items))
       this.stock = items
     }

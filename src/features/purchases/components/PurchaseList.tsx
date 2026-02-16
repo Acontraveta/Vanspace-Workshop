@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PageLayout } from '@/shared/components/layout/PageLayout'
 import { Header } from '@/shared/components/layout/Header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
@@ -10,9 +11,13 @@ import { StockService, parseUbicacion } from '../services/stockService'
 import WarehouseView from './WarehouseView'
 import QRScanner from './QRScanner'
 import { PurchaseItem, StockItem } from '../types/purchase.types'
+import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function PurchaseList() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
   const [purchases, setPurchases] = useState<PurchaseItem[]>([])
   const [stock, setStock] = useState<StockItem[]>([])
   const [stockLoaded, setStockLoaded] = useState(false)
@@ -21,16 +26,116 @@ export default function PurchaseList() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedProvider, setSelectedProvider] = useState<string>('all')
   const [selectedEstanteria, setSelectedEstanteria] = useState<string>('all')
+  const [showAssignModal, setShowAssignModal] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<StockItem | null>(null)
+  const [newLocation, setNewLocation] = useState('')
+  const [warehouseShelves, setWarehouseShelves] = useState<{code: string, niveles: number, huecos: number}[]>([])
 
-  const refreshData = () => {
+  // Validar si una ubicación existe realmente en alguna estantería
+  const isValidLocation = (ubicacion?: string) => {
+    if (!ubicacion || ubicacion.trim() === '') return false
+    for (const shelf of warehouseShelves) {
+      if (ubicacion.startsWith(shelf.code)) {
+        const rest = ubicacion.substring(shelf.code.length)
+        if (rest.length >= 2) {
+          const nivel = parseInt(rest[0])
+          const hueco = parseInt(rest.substring(1))
+          if (!isNaN(nivel) && !isNaN(hueco) &&
+              nivel >= 1 && nivel <= shelf.niveles &&
+              hueco >= 1 && hueco <= shelf.huecos) {
+            return true
+          }
+        }
+      }
+    }
+    return false
+  }
+
+  const refreshData = async () => {
     setPurchases(PurchaseService.getAllPurchases())
-    setStock(StockService.getStock())
-    setStockLoaded(StockService.getStock().length > 0)
+    // Cargar stock desde Supabase
+    const { data: stockData, error } = await supabase
+      .from('stock_items')
+      .select('*')
+      .order('articulo')
+    if (error) {
+      console.error('Error cargando stock:', error)
+      toast.error('Error cargando inventario')
+    } else {
+      // Convertir a formato StockItem
+      const formattedStock: StockItem[] = (stockData || []).map(item => ({
+        REFERENCIA: item.referencia,
+        FAMILIA: item.familia,
+        CATEGORIA: item.categoria,
+        ARTICULO: item.articulo,
+        DESCRIPCION: item.descripcion,
+        CANTIDAD: item.cantidad,
+        STOCK_MINIMO: item.stock_minimo,
+        UNIDAD: item.unidad,
+        COSTE_IVA_INCLUIDO: item.coste_iva_incluido,
+        UBICACION: item.ubicacion,
+        PROVEEDOR: item.proveedor
+      }))
+      setStock(formattedStock)
+      setStockLoaded(formattedStock.length > 0)
+    }
   }
 
   useEffect(() => {
     refreshData()
+    // Cargar estanterías para validar ubicaciones
+    supabase.from('warehouse_shelves').select('code, niveles, huecos').eq('activa', true)
+      .then(({ data }) => { if (data) setWarehouseShelves(data) })
   }, [])
+
+  // Cambiar tab si viene por navegación
+  useEffect(() => {
+    if (location.state?.tab) {
+      setSelectedTab(location.state.tab)
+    }
+  }, [location])
+
+  // Función para ir a la ubicación en el almacén
+  const handleGoToLocation = (ubicacion: string) => {
+    const shelfCode = ubicacion.charAt(0)
+    setSelectedTab('warehouse')
+    // Usar replace para no acumular en history
+    navigate('/purchases', {
+      state: {
+        tab: 'warehouse',
+        selectedShelf: shelfCode,
+        highlightLocation: ubicacion
+      },
+      replace: true
+    })
+    toast.success(`📍 Navegando a ubicación ${ubicacion}`)
+  }
+
+  // Función para abrir modal de asignación rápida
+  const handleAssignLocation = (item: StockItem) => {
+    setSelectedItem(item)
+    setNewLocation('')
+    setShowAssignModal(true)
+  }
+
+  // Función para confirmar asignación
+  const confirmAssignLocation = async () => {
+    if (!selectedItem || !newLocation) {
+      toast.error('Introduce una ubicación válida')
+      return
+    }
+
+    try {
+      await StockService.updateLocation(selectedItem.REFERENCIA, newLocation)
+      toast.success(`✅ ${selectedItem.ARTICULO} ubicado en ${newLocation}`)
+      setShowAssignModal(false)
+      setSelectedItem(null)
+      setNewLocation('')
+      refreshData()
+    } catch (error: any) {
+      toast.error('Error asignando ubicación: ' + error.message)
+    }
+  }
 
   // Note: stock import now handled via /setup page (sync from Supabase)
 
@@ -40,6 +145,12 @@ export default function PurchaseList() {
   }
 
   const handleMarkAsReceived = async (itemId: string) => {
+    // Buscar el item antes de marcarlo para saber si ya existía en stock
+    const item = purchases.find(p => p.id === itemId)
+    const existedInStock = item?.referencia 
+      ? !!StockService.getItemByReference(item.referencia) 
+      : false
+
     const qrDataURL = await PurchaseService.markAsReceived(itemId)
     
     if (qrDataURL) {
@@ -49,7 +160,11 @@ export default function PurchaseList() {
       // Mostrar el QR
       setShowQR(qrDataURL)
       
-      toast.success('Material recibido. Imprime el código QR para etiquetar.', { duration: 5000 })
+      if (existedInStock) {
+        toast.success(`✅ Recibido y cantidad actualizada en stock. Imprime el QR para etiquetar.`, { duration: 5000 })
+      } else {
+        toast.success(`✅ Recibido y añadido al inventario. Imprime el QR para etiquetar.`, { duration: 5000 })
+      }
     }
     
     refreshData()
@@ -57,21 +172,34 @@ export default function PurchaseList() {
 
   const providers = [...new Set(purchases.map(p => p.provider).filter(Boolean))]
   
-  const filteredPurchases = purchases.filter(p => {
-    const matchesStatus = 
-      (selectedTab === 'pending' && p.status === 'PENDING') ||
-      (selectedTab === 'ordered' && p.status === 'ORDERED') ||
-      (selectedTab === 'received' && p.status === 'RECEIVED')
-    
-    const matchesProvider = selectedProvider === 'all' || p.provider === selectedProvider
-    
-    const matchesSearch = !searchTerm || 
-      p.materialName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.productName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.provider?.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    return matchesStatus && matchesProvider && matchesSearch
-  })
+  const filteredPurchases = purchases
+    .filter(p => {
+      const matchesStatus = 
+        (selectedTab === 'pending' && p.status === 'PENDING') ||
+        (selectedTab === 'ordered' && p.status === 'ORDERED') ||
+        (selectedTab === 'received' && p.status === 'RECEIVED')
+      
+      const matchesProvider = selectedProvider === 'all' || p.provider === selectedProvider
+      
+      const matchesSearch = !searchTerm || 
+        p.materialName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.productName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.provider?.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      return matchesStatus && matchesProvider && matchesSearch
+    })
+    .sort((a, b) => {
+      // Ordenar por prioridad (mayor primero)
+      if (a.priority !== b.priority) {
+        return b.priority - a.priority
+      }
+      // Si tienen la misma prioridad, ordenar por días de entrega (menor primero)
+      if (a.deliveryDays && b.deliveryDays) {
+        return a.deliveryDays - b.deliveryDays
+      }
+      // Si no tienen días de entrega, ordenar por fecha de creación (más reciente primero)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
 
   // Obtener estanterías únicas
   const estanterias = [...new Set(
@@ -506,7 +634,7 @@ export default function PurchaseList() {
                 Almacén
                 {stockLoaded && (
                   <Badge variant={selectedTab === 'warehouse' ? 'secondary' : 'outline'} className="ml-2">
-                    {stock.filter(s => s.UBICACION).length}
+                    {stock.filter(s => isValidLocation(s.UBICACION)).length}
                   </Badge>
                 )}
               </button>
@@ -573,7 +701,12 @@ export default function PurchaseList() {
 
         {/* Contenido según tab */}
         {selectedTab === 'warehouse' ? (
-          <WarehouseView stock={stock} onRefresh={refreshData} />
+          <WarehouseView
+            stock={stock}
+            onRefresh={refreshData}
+            initialSelectedShelf={location.state?.selectedShelf}
+            highlightLocation={location.state?.highlightLocation}
+          />
         ) : selectedTab === 'scanner' ? (
           <QRScanner stock={stock} onRefresh={refreshData} />
         ) : selectedTab === 'stock' ? (
@@ -587,11 +720,92 @@ export default function PurchaseList() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {filteredStock.map((item, index) => (
-                    <StockCard key={`${item.REFERENCIA}-${index}`} item={item} />
-                  ))}
-                </div>
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full divide-y divide-gray-200 table-fixed">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="w-[35%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                              Artículo
+                            </th>
+                            <th className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                              Referencia
+                            </th>
+                            <th className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                              Cantidad
+                            </th>
+                            <th className="w-[17%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                              📍 Ubicación
+                            </th>
+                            <th className="w-[18%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                              Coste
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredStock.map((item, index) => {
+                            const isLowStock = item.STOCK_MINIMO && item.CANTIDAD < item.STOCK_MINIMO
+                            return (
+                              <tr key={`${item.REFERENCIA}-${index}`} className={`hover:bg-gray-50 ${isLowStock ? 'bg-orange-50' : ''}`}>
+                                <td className="px-4 py-4 max-w-0 overflow-hidden">
+                                  <div className="text-sm font-medium text-gray-900 truncate" title={item.ARTICULO}>
+                                    {item.ARTICULO}
+                                  </div>
+                                  <div className="text-xs text-gray-500 truncate">{item.FAMILIA}</div>
+                                </td>
+                                <td className="px-4 py-4 max-w-0 overflow-hidden text-sm text-gray-500">
+                                  <span className="truncate block" title={item.REFERENCIA}>{item.REFERENCIA}</span>
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap">
+                                  <div className={`text-sm font-bold ${isLowStock ? 'text-orange-600' : 'text-gray-900'}`}>
+                                    {item.CANTIDAD} {item.UNIDAD}
+                                  </div>
+                                  {item.STOCK_MINIMO && (
+                                    <div className="text-xs text-gray-500">
+                                      Min: {item.STOCK_MINIMO}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap">
+                                  {isValidLocation(item.UBICACION) ? (
+                                    <button
+                                      onClick={() => handleGoToLocation(item.UBICACION!)}
+                                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition text-sm font-medium"
+                                      title="Ir a esta ubicación en el almacén"
+                                    >
+                                      📍 {item.UBICACION}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleAssignLocation(item)}
+                                      className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-full hover:bg-orange-200 transition text-sm font-medium"
+                                      title="Asignar ubicación"
+                                    >
+                                      ⚠️ Sin ubicar
+                                    </button>
+                                  )}
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                  {item.COSTE_IVA_INCLUIDO && item.COSTE_IVA_INCLUIDO > 0 ? (
+                                    <div>
+                                      <div className="font-medium">{item.COSTE_IVA_INCLUIDO.toFixed(2)}€</div>
+                                      <div className="text-xs text-blue-600">
+                                        Total: {(item.COSTE_IVA_INCLUIDO * item.CANTIDAD).toFixed(2)}€
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
               )
             ) : (
               <Card>
@@ -624,6 +838,74 @@ export default function PurchaseList() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Modal Asignación Rápida */}
+        {showAssignModal && selectedItem && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAssignModal(false)}>
+            <Card className="max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+              <CardHeader>
+                <CardTitle>📍 Asignar Ubicación</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                  <div className="font-bold">{selectedItem.ARTICULO}</div>
+                  <div className="text-sm text-gray-600">
+                    Ref: {selectedItem.REFERENCIA}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Ubicación:
+                  </label>
+                  <Input
+                    value={newLocation}
+                    onChange={(e) => setNewLocation(e.target.value.toUpperCase())}
+                    placeholder="Ej: 123 (Estantería 1, Nivel 2, Hueco 3)"
+                    className="font-mono text-lg"
+                    autoFocus
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && newLocation) {
+                        confirmAssignLocation()
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={confirmAssignLocation}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    disabled={!newLocation}
+                  >
+                    ✅ Asignar
+                  </Button>
+                  <Button
+                    onClick={() => setShowAssignModal(false)}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    ❌ Cancelar
+                  </Button>
+                </div>
+
+                <div className="text-xs text-gray-500 text-center">
+                  O ve a la sección de{' '}
+                  <button
+                    onClick={() => {
+                      setShowAssignModal(false)
+                      setSelectedTab('warehouse')
+                    }}
+                    className="text-blue-600 hover:underline font-medium"
+                  >
+                    Almacén Visual
+                  </button>
+                  {' '}para seleccionar gráficamente
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>

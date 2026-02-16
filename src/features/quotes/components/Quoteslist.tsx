@@ -154,7 +154,9 @@ export default function QuotesList({ onEditQuote }: QuotesListProps) {
             </div>
             <div>
               <p className="text-gray-600">Tarifa:</p>
-              <p className="font-medium">{quote.businessLine.name}</p>
+              <p className="font-medium">
+                {quote.tarifa?.name || quote.businessLine?.name || 'No asignada'}
+              </p>
             </div>
             {quote.approvedAt && (
               <div>

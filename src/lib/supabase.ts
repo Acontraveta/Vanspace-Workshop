@@ -7,14 +7,33 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Funciones helper para Storage
 export const uploadExcel = async (file: File, path: string) => {
+  console.log(`📤 Storage: subiendo ${path} (${file.size} bytes)...`)
+  
+  // PASO 1: Borrar el archivo viejo primero (upsert no siempre funciona)
+  const { error: removeError } = await supabase.storage
+    .from('excel-files')
+    .remove([path])
+  
+  if (removeError) {
+    console.warn('⚠️ No se pudo borrar archivo anterior (puede no existir):', removeError.message)
+  } else {
+    console.log('🗑️ Archivo anterior eliminado')
+  }
+  
+  // PASO 2: Subir el nuevo archivo
   const { data, error } = await supabase.storage
     .from('excel-files')
     .upload(path, file, {
-      cacheControl: '3600',
+      cacheControl: '0',
       upsert: true
     })
   
-  if (error) throw error
+  if (error) {
+    console.error('❌ Error subiendo:', error)
+    throw error
+  }
+  
+  console.log('✅ Storage: archivo subido correctamente:', data)
   return data
 }
 
@@ -27,11 +46,16 @@ export const getExcelUrl = (path: string) => {
 }
 
 export const downloadExcel = async (path: string): Promise<Blob> => {
+  console.log(`📥 Storage: descargando ${path}...`)
   const { data, error } = await supabase.storage
     .from('excel-files')
     .download(path)
   
-  if (error) throw error
+  if (error) {
+    console.error('❌ Error descargando:', error)
+    throw error
+  }
+  console.log(`📥 Storage: descargado ${path}: ${data.size} bytes`)
   return data
 }
 

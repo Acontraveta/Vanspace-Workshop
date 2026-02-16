@@ -65,6 +65,56 @@ export class QuoteAutomation {
         console.log(`⚠️ ${lowStockPurchases.length} pedidos adicionales por stock bajo`)
       }
       
+      // 5. NUEVO: Crear proyecto de producción en el calendario
+      try {
+        console.log('📅 Creando proyecto en calendario...')
+        const { ProductionService } = await import('@/features/calendar/services/productionService')
+        
+        const project = await ProductionService.createProject({
+          quote_id: undefined, // NO pasar el quote.id porque no es UUID
+          quote_number: quote.quoteNumber,
+          client_name: quote.clientName,
+          vehicle_model: quote.vehicleModel,
+          total_hours: quote.totalHours,
+          status: 'WAITING',
+          priority: 5,
+          requires_materials: purchaseItems.length > 0,
+          materials_ready: false,
+          requires_design: designInstructions.length > 0,
+          design_ready: false,
+          notes: `Presupuesto ID: ${quote.id}\n` +
+                 `Aprobado: ${quote.total.toFixed(2)}€\n` +
+                 `📦 Materiales: ${totalPurchaseItems} pedidos\n` +
+                 `⚙️ Tareas: ${totalTasks}\n` +
+                 `📐 Diseños: ${totalDesignInstructions}`
+        })
+        
+        console.log('✅ Proyecto creado en calendario:', project.id)
+        
+        // Crear tareas de producción en Supabase
+        for (const task of tasks) {
+          await ProductionService.createTask({
+            project_id: project.id,
+            task_name: task.taskName,
+            product_name: task.productName,
+            estimated_hours: task.duration,
+            status: task.status === 'BLOCKED' ? 'BLOCKED' : 'PENDING',
+            requires_material: task.requiresMaterial ? 'Materiales del producto' : undefined,
+            material_ready: !task.requiresMaterial,
+            requires_design: task.requiresDesign,
+            design_ready: !task.requiresDesign,
+            blocked_reason: task.blocked ? 'Esperando materiales/diseño' : undefined,
+            order_index: tasks.indexOf(task)
+          })
+        }
+        
+        console.log(`✅ ${tasks.length} tareas añadidas al proyecto del calendario`)
+        
+      } catch (calendarError) {
+        console.error('⚠️ Error creando proyecto en calendario (no crítico):', calendarError)
+        // No fallar toda la automatización si solo falla el calendario
+      }
+      
       return {
         success: true,
         details: {
@@ -170,7 +220,7 @@ export class QuoteAutomation {
     const purchases: PurchaseItem[] = []
     
     lowStockItems.forEach(item => {
-      const cantidadAPedir = (item.STOCK_MINIMO || 0) - item.CANTIDAD + (item.STOCK_MINIMO || 0) // Pedir para reponer + margen
+      const cantidadAPedir = (item.STOCK_MINIMO || 0) - item.CANTIDAD + (item.STOCK_MINIMO || 0)
       
       if (cantidadAPedir > 0) {
         const purchase: PurchaseItem = {
@@ -179,7 +229,7 @@ export class QuoteAutomation {
           materialName: item.ARTICULO,
           quantity: cantidadAPedir,
           unit: item.UNIDAD,
-          priority: 8, // Alta prioridad para reposición
+          priority: 8,
           status: 'PENDING',
           createdAt: new Date(),
           notes: `⚠️ REPOSICIÓN AUTOMÁTICA - Stock bajo (${item.CANTIDAD} < ${item.STOCK_MINIMO})`

@@ -1,48 +1,88 @@
+
+import { useEffect, useState } from 'react'
 import { PageLayout } from '@/shared/components/layout/PageLayout'
 import { Header } from '@/shared/components/layout/Header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { useNavigate } from 'react-router-dom'
+import { ProductionService } from '@/features/production/services/productionService'
+import { PurchaseService } from '@/features/purchases/services/purchaseService'
+import { supabase } from '@/lib/supabase'
 
 export default function Dashboard() {
   const navigate = useNavigate()
 
+  // Estados para datos reales
+  const [leadCount, setLeadCount] = useState<number>(0)
+  const [activeProjects, setActiveProjects] = useState<number>(0)
+  const [pendingPurchases, setPendingPurchases] = useState<number>(0)
+  const [urgentPurchases, setUrgentPurchases] = useState<number>(0)
+  const [pipeline, setPipeline] = useState<number>(0)
+  const [quotesCount, setQuotesCount] = useState<number>(0)
+
+  useEffect(() => {
+    // Leads: contar usuarios de la tabla leads (si existe)
+    supabase.from('leads').select('id', { count: 'exact', head: true })
+      .then(({ count }) => setLeadCount(count || 0))
+
+    // Proyectos activos: producción
+    ProductionService.getProjects().then(projects => {
+      setActiveProjects(projects.filter(p => p.status === 'SCHEDULED' || p.status === 'IN_PROGRESS').length)
+    })
+
+    // Compras pendientes y urgentes
+    supabase.from('purchase_items').select('*').then(({ data }) => {
+      const pending = (data || []).filter((p: any) => p.status === 'PENDING').length
+      const urgent = (data || []).filter((p: any) => p.status === 'PENDING' && p.priority >= 8).length
+      setPendingPurchases(pending)
+      setUrgentPurchases(urgent)
+    })
+
+    // Pipeline y presupuestos
+    supabase.from('quotes').select('*').then(({ data }) => {
+      setQuotesCount((data || []).length)
+      // Sumar total de presupuestos en negociación
+      const pipelineTotal = (data || []).filter((q: any) => q.status === 'SENT' || q.status === 'DRAFT').reduce((acc: number, q: any) => acc + (q.total || 0), 0)
+      setPipeline(pipelineTotal)
+    })
+  }, [])
+
   const stats = [
     {
       title: 'Leads Totales',
-      value: '105',
+      value: leadCount,
       icon: '📊',
-      change: '+12%',
+      change: '',
       changeType: 'positive' as const,
-      description: '12 nuevos esta semana',
+      description: '',
       color: 'blue',
     },
     {
       title: 'Proyectos Activos',
-      value: '3',
+      value: activeProjects,
       icon: '✅',
-      change: '8 total',
+      change: '',
       changeType: 'neutral' as const,
-      description: 'En taller ahora',
+      description: '',
       color: 'green',
     },
     {
       title: 'Compras Pendientes',
-      value: '8',
+      value: pendingPurchases,
       icon: '🛒',
-      change: '2 urgentes',
-      changeType: 'warning' as const,
-      description: 'Para esta semana',
+      change: urgentPurchases > 0 ? `${urgentPurchases} urgentes` : '',
+      changeType: urgentPurchases > 0 ? 'warning' as const : 'neutral' as const,
+      description: '',
       color: 'yellow',
     },
     {
       title: 'Pipeline',
-      value: '520K€',
+      value: pipeline ? `${pipeline.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}` : '0€',
       icon: '💰',
-      change: '15 presupuestos',
+      change: `${quotesCount} presupuestos`,
       changeType: 'positive' as const,
-      description: 'En negociación',
+      description: '',
       color: 'purple',
     },
   ]

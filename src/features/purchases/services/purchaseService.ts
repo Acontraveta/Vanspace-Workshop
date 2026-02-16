@@ -1,6 +1,7 @@
 import { PurchaseItem } from '../types/purchase.types'
 import { StockService } from './stockService'
 import QRCode from 'qrcode'
+import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 export class PurchaseService {
@@ -77,33 +78,127 @@ export class PurchaseService {
   }
 
   // Marcar como recibido y generar QR
-  static async markAsReceived(itemId: string): Promise<string> {
-    const items = this.getAllPurchases()
-    const item = items.find(i => i.id === itemId)
-    
-    if (!item) return ''
-
-    item.status = 'RECEIVED'
-    item.receivedAt = new Date()
-    
-    // Actualizar stock si existe referencia
-    if (item.referencia) {
-      const stockItem = StockService.getItemByReference(item.referencia)
-      if (stockItem) {
-        const newQuantity = stockItem.CANTIDAD + item.quantity
-        StockService.updateStock(item.referencia, newQuantity)
+  static async markAsReceived(itemId: string): Promise<string | null> {
+    try {
+      console.log('🔍 DEBUG: Marcando como recibido, itemId:', itemId)
+      
+      const purchases = this.getAllPurchases()
+      const item = purchases.find(p => p.id === itemId)
+      
+      console.log('🔍 DEBUG: Item encontrado:', item)
+      
+      if (!item) {
+        throw new Error('Pedido no encontrado')
       }
+
+      const referenciaFinal = item.referencia || item.materialName.replace(/\s+/g, '-').toUpperCase()
+      console.log('🔍 DEBUG: Referencia final:', referenciaFinal)
+
+      // 1. AÑADIR O ACTUALIZAR EN STOCK (Supabase)
+      console.log('📦 Añadiendo al stock en Supabase...')
+
+      // Verificar si ya existe en stock
+      const { data: existingStock, error: searchError } = await supabase
+        .from('stock_items')
+        .select('*')
+        .eq('referencia', referenciaFinal)
+        .maybeSingle()
+
+      console.log('🔍 DEBUG: existingStock:', existingStock)
+      console.log('🔍 DEBUG: searchError:', searchError)
+
+      if (existingStock) {
+        // Actualizar cantidad existente
+        const newQuantity = existingStock.cantidad + item.quantity
+
+        console.log(`📦 Actualizando stock existente: ${existingStock.cantidad} + ${item.quantity} = ${newQuantity}`)
+
+        const { data: updated, error: updateError } = await supabase
+          .from('stock_items')
+          .update({ 
+            cantidad: newQuantity,
+            updated_at: new Date().toISOString()
+          })
+          .eq('referencia', existingStock.referencia)
+          .select()
+
+        console.log('✅ Stock actualizado:', updated)
+        console.log('❌ Error actualizando:', updateError)
+
+        if (updateError) throw updateError
+
+      } else {
+        // Crear nuevo item en stock
+        console.log('📦 Creando nuevo item en stock...')
+
+        const newStockItem = {
+          referencia: referenciaFinal,
+          articulo: item.materialName,
+          descripcion: `Material recibido del pedido ${item.projectNumber || 'sin proyecto'}`,
+          cantidad: item.quantity,
+          unidad: item.unit,
+          familia: 'Materiales',
+          categoria: 'Compras',
+          proveedor: item.provider,
+          stock_minimo: Math.ceil(item.quantity * 0.2),
+          ubicacion: null
+        }
+
+        console.log('🔍 DEBUG: Insertando:', newStockItem)
+
+        const { data: inserted, error: insertError } = await supabase
+          .from('stock_items')
+          .insert(newStockItem)
+          .select()
+
+        console.log('✅ Item insertado:', inserted)
+        console.log('❌ Error insertando:', insertError)
+
+        if (insertError) throw insertError
+      }
+
+      // 2. GENERAR QR CODE
+      console.log('📋 Generando QR...')
+      const qrData = {
+        type: 'warehouse_product',
+        referencia: referenciaFinal,
+        materialName: item.materialName,
+        quantity: item.quantity,
+        unit: item.unit,
+        receivedAt: new Date().toISOString()
+      }
+      
+      const qrDataURL = await QRCode.toDataURL(JSON.stringify(qrData), {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      })
+      
+      console.log('✅ QR generado')
+
+      // 3. ACTUALIZAR ESTADO DEL PEDIDO
+      const updatedPurchases = purchases.map(p => 
+        p.id === itemId 
+          ? { 
+              ...p, 
+              status: 'RECEIVED' as const,
+              receivedAt: new Date()
+            } 
+          : p
+      )
+      
+      localStorage.setItem('purchase_items', JSON.stringify(updatedPurchases))
+      
+      console.log('✅ Pedido marcado como recibido')
+      
+      return qrDataURL
+    } catch (error) {
+      console.error('❌ ERROR COMPLETO en markAsReceived:', error)
+      throw error
     }
-    
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(items))
-    
-    // Generar QR
-    const qrDataURL = await this.generateProductQR(item)
-    
-    // Desbloquear tareas
-    this.unlockTasksRequiringMaterial(item)
-    
-    return qrDataURL
   }
 
   // Desbloquear tareas que requieren este material

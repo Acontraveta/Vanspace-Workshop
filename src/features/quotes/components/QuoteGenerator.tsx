@@ -4,7 +4,8 @@ import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { useCatalog } from '../hooks/useCatalog'
-import { BusinessLine, QuoteItem, CatalogProduct, Quote } from '../types/quote.types'
+import { useTarifas } from '@/features/config/hooks/useTarifas'
+import { Tarifa, QuoteItem, CatalogProduct, Quote } from '../types/quote.types'
 import { PriceCalculator } from '../utils/priceCalculator'
 import { QuoteService } from '../services/quoteService'
 import { QuoteAutomation } from '../services/quoteAutomation'
@@ -12,7 +13,7 @@ import { CatalogService } from '../services/catalogService'
 import ClientDataForm from './ClientDataForm'
 import toast from 'react-hot-toast'
 
-const BUSINESS_LINES: BusinessLine[] = [
+const TARIFAS_FALLBACK: Tarifa[] = [
   { id: 'camperizacion_total', name: 'Camperización Total', hourlyRate: 50, profitMargin: 25 },
   { id: 'camperizacion_parcial', name: 'Camperización Parcial', hourlyRate: 50, profitMargin: 25 },
   { id: 'reparacion_normal', name: 'Reparación Normal', hourlyRate: 45, profitMargin: 20 },
@@ -26,6 +27,17 @@ interface QuoteGeneratorProps {
 
 export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
   const { products, catalogLoaded, loading, refreshCatalog } = useCatalog()
+  const { tarifas: dbTarifas, loading: tarifasLoading } = useTarifas()
+
+  // Mapear tarifas de config a formato de quote, con fallback si BD vacía
+  const TARIFAS: Tarifa[] = dbTarifas.length > 0
+    ? dbTarifas.map(t => ({
+        id: t.id,
+        name: t.nombre_tarifa,
+        hourlyRate: t.tarifa_hora_eur,
+        profitMargin: t.margen_materiales_pct,
+      }))
+    : TARIFAS_FALLBACK
   
   useEffect(() => {
     console.log('🔍 QuoteGenerator - Estado del catálogo:')
@@ -33,8 +45,15 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
     console.log('  catalogLoaded:', catalogLoaded)
     console.log('  loading:', loading)
   }, [products, catalogLoaded, loading])
-  const [selectedBusinessLine, setSelectedBusinessLine] = useState<BusinessLine>(BUSINESS_LINES[0])
+  const [selectedTarifa, setSelectedTarifa] = useState<Tarifa>(TARIFAS_FALLBACK[0])
   const [items, setItems] = useState<QuoteItem[]>([])
+
+  // Actualizar tarifa seleccionada cuando se cargan las tarifas de BD
+  useEffect(() => {
+    if (TARIFAS.length > 0 && !quoteId) {
+      setSelectedTarifa(TARIFAS[0])
+    }
+  }, [dbTarifas])
   
   // Estados para datos del cliente
   const [clientName, setClientName] = useState('')
@@ -100,7 +119,7 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
           country: 'España',
         })
         setItems(quote.items)
-        setSelectedBusinessLine(quote.businessLine)
+        setSelectedTarifa(quote.tarifa)
         
         // Mostrar formulario de facturación si ya tiene datos
         if (quote.billingData?.nif) {
@@ -128,7 +147,7 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
   // Catalog is loaded automatically from Supabase via useCatalog
 
   const addProduct = (product: CatalogProduct, quantity: number = 1) => {
-    const item = PriceCalculator.calculateQuoteItem(product, quantity, selectedBusinessLine)
+    const item = PriceCalculator.calculateQuoteItem(product, quantity, selectedTarifa)
 
     // CRÍTICO: Asegurar que catalogData se guarda
     if (!item.catalogData) {
@@ -153,13 +172,13 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
     const product = products.find(p => p.SKU === item.catalogSKU)
     if (!product) return
 
-    const updatedItem = PriceCalculator.calculateQuoteItem(product, newQuantity, selectedBusinessLine)
+    const updatedItem = PriceCalculator.calculateQuoteItem(product, newQuantity, selectedTarifa)
     updatedItem.id = itemId
 
     setItems(items.map(i => i.id === itemId ? updatedItem : i))
   }
 
-  const totals = PriceCalculator.calculateQuoteTotals(items, selectedBusinessLine)
+  const totals = PriceCalculator.calculateQuoteTotals(items, selectedTarifa)
   const totalHours = items.reduce((sum, item) => sum + item.laborHours, 0)
 
   const handleSaveQuote = () => {
@@ -183,12 +202,12 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
       clientPhone,
       vehicleModel,
       billingData: billingData.nif ? billingData : undefined,
-      businessLine: selectedBusinessLine,
+      tarifa: selectedTarifa,
       items,
       subtotalMaterials: totals.subtotalMaterials,
       subtotalLabor: totals.subtotalLabor,
       subtotal: totals.subtotal,
-      profitMargin: selectedBusinessLine.profitMargin,
+      profitMargin: selectedTarifa.profitMargin,
       profitAmount: totals.profitAmount,
       total: totals.total,
       totalHours,
@@ -383,24 +402,24 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
                 </Button>
               )}
 
-              {/* Línea de Negocio */}
+              {/* Tarifa */}
               <Card>
                 <CardHeader>
-                  <CardTitle>💼 Línea de Negocio</CardTitle>
+                  <CardTitle>💲 Tarifa</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {BUSINESS_LINES.map((line) => (
+                    {TARIFAS.map((line) => (
                       <button
                         key={line.id}
                         onClick={() => {
                           if (currentQuote?.status !== 'APPROVED') {
-                            setSelectedBusinessLine(line)
+                            setSelectedTarifa(line)
                           }
                         }}
                         disabled={currentQuote?.status === 'APPROVED'}
                         className={`p-3 border-2 rounded-lg text-left transition ${
-                          selectedBusinessLine.id === line.id
+                          selectedTarifa.id === line.id
                             ? 'border-blue-500 bg-blue-50'
                             : 'border-gray-200 hover:border-gray-300'
                         } ${currentQuote?.status === 'APPROVED' ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -626,7 +645,7 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
                         <span>{totals.subtotal.toFixed(2)}€</span>
                       </div>
                       <div className="flex justify-between text-green-700">
-                        <span>Margen ({selectedBusinessLine.profitMargin}%):</span>
+                        <span>Margen ({selectedTarifa.profitMargin}%):</span>
                         <span>+{totals.profitAmount.toFixed(2)}€</span>
                       </div>
                       <div className="flex justify-between border-t-2 pt-2 text-xl font-bold text-blue-900">

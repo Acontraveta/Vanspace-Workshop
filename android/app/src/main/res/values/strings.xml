@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">vanspace-app</string>
+    <string name="title_activity_main">vanspace-app</string>
+    <string name="package_name">com.vanspace.app</string>
+    <string name="custom_url_scheme">com.vanspace.app</string>
+</resources>

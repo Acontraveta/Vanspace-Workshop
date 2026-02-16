@@ -1,11 +1,11 @@
-import { BusinessLine, CatalogProduct, QuoteItem } from '../types/quote.types'
+import { Tarifa, CatalogProduct, QuoteItem } from '../types/quote.types'
 
 export class PriceCalculator {
   // Calcular item del presupuesto
   static calculateQuoteItem(
     product: CatalogProduct,
     quantity: number,
-    businessLine: BusinessLine
+    tarifa: Tarifa
   ): QuoteItem {
     console.group('💰 Calculando QuoteItem')
     console.log('Producto recibido:', product)
@@ -24,9 +24,9 @@ export class PriceCalculator {
     console.log('Es NaN?:', isNaN(precioCompra))
     
     const materialCost = precioCompra * quantity
-    const laborCost = laborHours * businessLine.hourlyRate * quantity
+    const laborCost = laborHours * tarifa.hourlyRate * quantity
     const subtotal = materialCost + laborCost
-    const profitAmount = subtotal * (businessLine.profitMargin / 100)
+    const profitAmount = subtotal * (tarifa.profitMargin / 100)
     const totalCost = subtotal + profitAmount
 
     console.log('Cálculos:', {
@@ -50,7 +50,7 @@ export class PriceCalculator {
       materialCost,
       laborCost,
       subtotal,
-      profitMargin: businessLine.profitMargin,
+      profitMargin: tarifa.profitMargin,
       profitAmount,
       totalCost,
       catalogData: product
@@ -60,7 +60,7 @@ export class PriceCalculator {
   // Calcular totales del presupuesto
   static calculateQuoteTotals(
     items: QuoteItem[],
-    businessLine: BusinessLine
+    tarifa: Tarifa
   ): {
     subtotalMaterials: number
     subtotalLabor: number
@@ -78,7 +78,7 @@ export class PriceCalculator {
     const subtotal = subtotalMaterials + subtotalLabor
     
     // Calcular margen de beneficio
-    const profitAmount = subtotal * (businessLine.profitMargin / 100)
+    const profitAmount = subtotal * (tarifa.profitMargin / 100)
     
     // Total final
     const total = subtotal + profitAmount

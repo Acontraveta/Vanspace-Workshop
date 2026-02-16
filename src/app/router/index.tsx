@@ -11,8 +11,10 @@ const Dashboard = lazy(() => import('@/features/admin/components/Dashboard'))
 const CRMDashboard = lazy(() => import('@/features/crm/components/CRMDashboard'))
 const Quotes = lazy(() => import('@/features/quotes/components/Quotes'))
 const TaskBoard = lazy(() => import('@/features/production/components/TaskBoard'))
+const ProductionDashboard = lazy(() => import('@/features/production/components/ProductionDashboard'))
 const PurchaseList = lazy(() => import('@/features/purchases/components/PurchaseList'))
 const ProductionCalendar = lazy(() => import('@/features/calendar/components/ProductionCalendar'))
+const ConfigurationPanel = lazy(() => import('@/features/config/components/ConfigurationPanel'))
 
 // Loading component
 function PageLoading() {
@@ -46,9 +48,10 @@ export function AppRoutes() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/crm" element={<CRMDashboard />} />
           <Route path="/quotes" element={<Quotes />} />
-          <Route path="/production" element={<TaskBoard />} />
+          <Route path="/production" element={<ProductionDashboard />} />
           <Route path="/purchases" element={<PurchaseList />} />
           <Route path="/calendar" element={<ProductionCalendar />} />
+          <Route path="/config" element={<ConfigurationPanel />} />
         </Route>
 
         {/* Catch all */}

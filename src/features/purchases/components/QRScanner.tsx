@@ -7,10 +7,11 @@ import { StockService } from '../services/stockService'
 import toast from 'react-hot-toast'
 
 interface QRScannerProps {
-  onRefresh: () => void
+  stock: StockItem[];
+  onRefresh: () => Promise<void>;
 }
 
-export default function QRScanner({ onRefresh }: QRScannerProps) {
+export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   const [manualCode, setManualCode] = useState('')
   const [foundItem, setFoundItem] = useState<StockItem | null>(null)
   const [assigningLocation, setAssigningLocation] = useState(false)
@@ -19,9 +20,9 @@ export default function QRScanner({ onRefresh }: QRScannerProps) {
   const handleScan = (code: string) => {
     try {
       const data = JSON.parse(code)
-      
       if (data.type === 'warehouse_product' && data.referencia) {
-        const item = StockService.getItemByReference(data.referencia)
+        // Buscar en el stock recibido por props
+        const item = stock.find(i => i.REFERENCIA === data.referencia)
         if (item) {
           setFoundItem(item)
           toast.success(`Producto encontrado: ${item.ARTICULO}`)

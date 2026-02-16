@@ -5,10 +5,11 @@ import { useAuth } from '@/app/providers/AuthProvider'
 const navigation = [
   { name: 'Dashboard', href: '/', icon: '📊' },
   { name: 'CRM', href: '/crm', icon: '👥' },
-  { name: 'Presupuestos', href: '/quotes', icon: '💰' },  // UNA SOLA ENTRADA
-  { name: 'Producción', href: '/production', icon: '🔧' },
+  { name: 'Presupuestos', href: '/quotes', icon: '💰' },
+  { name: 'Producción', href: '/production', icon: '🏭' },
   { name: 'Pedidos', href: '/purchases', icon: '🛒' },
   { name: 'Calendario', href: '/calendar', icon: '📅' },
+  { name: 'Configuración', href: '/config', icon: '⚙️' },
 ]
 
 export function Sidebar() {

@@ -114,7 +114,7 @@ export interface CatalogProduct {
   TAREA_12_REQUIERE_DISEÑO?: 'SÍ' | 'NO'
 }
 
-export interface BusinessLine {
+export interface Tarifa {
   id: string
   name: string
   hourlyRate: number
@@ -154,7 +154,7 @@ export interface Quote {
     country: string                // País
   }
   
-  businessLine: BusinessLine
+  tarifa: Tarifa
   items: QuoteItem[]
   subtotalMaterials: number
   subtotalLabor: number

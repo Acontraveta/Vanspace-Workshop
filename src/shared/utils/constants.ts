@@ -50,8 +50,8 @@ export enum PurchaseStatus {
   CANCELLED = 'CANCELLED',
 }
 
-// Líneas de negocio
-export const BUSINESS_LINES = [
+// Tarifas
+export const TARIFAS = [
   { value: 'camperizacion_total', label: 'Camperización Total', rate: 50, margin: 25 },
   { value: 'camperizacion_parcial', label: 'Camperización Parcial', rate: 50, margin: 25 },
   { value: 'reparacion_normal', label: 'Reparación Normal', rate: 45, margin: 20 },
