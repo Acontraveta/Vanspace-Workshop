@@ -160,12 +160,12 @@ export default function Dashboard() {
         description={`Bienvenido a VanSpace Workshop`}
       />
 
-      <div className="p-8 space-y-8">
+      <div className="p-4 md:p-8 space-y-8">
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="flex gap-4 overflow-x-auto md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 md:overflow-visible">
           {stats.map((stat) => (
-            <Card key={stat.title} className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
+            <Card key={stat.title} className="hover:shadow-lg transition-shadow min-w-[220px] md:min-w-0 flex-shrink-0">
+              <CardContent className="p-4 md:p-6">
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-4xl">{stat.icon}</span>
                   <Badge
@@ -189,7 +189,7 @@ export default function Dashboard() {
         </div>
 
         {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           {/* Urgent Actions */}
           <Card>
             <CardHeader>
@@ -258,10 +258,10 @@ export default function Dashboard() {
             <CardTitle>🚀 Acciones Rápidas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <Button
                 size="lg"
-                className="h-auto py-6 flex-col gap-2"
+                className="h-auto py-6 flex-col gap-2 w-full"
                 onClick={() => navigate('/crm')}
               >
                 <span className="text-3xl">👥</span>
@@ -270,7 +270,7 @@ export default function Dashboard() {
               <Button
                 size="lg"
                 variant="secondary"
-                className="h-auto py-6 flex-col gap-2"
+                className="h-auto py-6 flex-col gap-2 w-full"
                 onClick={() => navigate('/quotes')}
               >
                 <span className="text-3xl">💰</span>
@@ -279,7 +279,7 @@ export default function Dashboard() {
               <Button
                 size="lg"
                 variant="outline"
-                className="h-auto py-6 flex-col gap-2"
+                className="h-auto py-6 flex-col gap-2 w-full"
                 onClick={() => navigate('/calendar')}
               >
                 <span className="text-3xl">📅</span>

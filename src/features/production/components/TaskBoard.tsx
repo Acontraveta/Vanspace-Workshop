@@ -190,9 +190,9 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
   return (
     <div>
       {/* Kanban Board */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="flex flex-col md:grid md:grid-cols-4 gap-4 overflow-x-auto md:overflow-visible">
         {/* Pendientes */}
-        <div>
+        <div className="min-w-[280px] md:min-w-0 flex-shrink-0">
           <div className="bg-gray-100 rounded-t-lg p-3 border-b-4 border-gray-400">
             <h3 className="font-bold flex items-center justify-between">
               <span>⏳ Pendientes</span>
@@ -207,7 +207,7 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
         </div>
 
         {/* En Progreso */}
-        <div>
+        <div className="min-w-[280px] md:min-w-0 flex-shrink-0">
           <div className="bg-blue-100 rounded-t-lg p-3 border-b-4 border-blue-500">
             <h3 className="font-bold flex items-center justify-between">
               <span>🔄 En Progreso</span>
@@ -222,7 +222,7 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
         </div>
 
         {/* Completadas */}
-        <div>
+        <div className="min-w-[280px] md:min-w-0 flex-shrink-0">
           <div className="bg-green-100 rounded-t-lg p-3 border-b-4 border-green-500">
             <h3 className="font-bold flex items-center justify-between">
               <span>✅ Completadas</span>
@@ -237,7 +237,7 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
         </div>
 
         {/* Bloqueadas */}
-        <div>
+        <div className="min-w-[280px] md:min-w-0 flex-shrink-0">
           <div className="bg-orange-100 rounded-t-lg p-3 border-b-4 border-orange-500">
             <h3 className="font-bold flex items-center justify-between">
               <span>🚫 Bloqueadas</span>

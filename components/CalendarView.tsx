@@ -94,11 +94,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, projects, onA
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-10">
         {/* Calendario Grid */}
         <div className="lg:col-span-8 space-y-4">
-          <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden p-8">
-            <div className="grid grid-cols-7 mb-4">
+          <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-x-auto p-4 md:p-8">
+            <div className="grid grid-cols-7 mb-4 min-w-[560px] md:min-w-0">
               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
                 <div key={d} className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest py-2">{d}</div>
               ))}
