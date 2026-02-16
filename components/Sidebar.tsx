@@ -1,3 +1,4 @@
+import { Button } from '../src/shared/components/ui/button'
 
 import React from 'react';
 import { User } from '../types';

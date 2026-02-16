@@ -67,17 +67,40 @@ export class ConfigService {
   static async updateEmployee(id: string, updates: Partial<ProductionEmployee>): Promise<void> {
     const { error } = await supabase
       .from('production_employees')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update({
+        nombre: updates.nombre,
+        especialidad_principal: updates.especialidad_principal,
+        especialidad_secundaria: updates.especialidad_secundaria,
+        tarifa_hora_eur: updates.tarifa_hora_eur,
+        horas_semanales: updates.horas_semanales,
+        email: updates.email,
+        password_hash: updates.password_hash, // Solo se incluye si se proporcionó
+        telefono: updates.telefono,
+        activo: updates.activo,
+        role: updates.role,
+        permissions: updates.permissions,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', id)
-    
     if (error) throw error
   }
 
   static async createEmployee(employee: Omit<ProductionEmployee, 'created_at' | 'updated_at'>): Promise<void> {
     const { error } = await supabase
       .from('production_employees')
-      .insert(employee)
-    
+      .insert({
+        nombre: employee.nombre,
+        especialidad_principal: employee.especialidad_principal,
+        especialidad_secundaria: employee.especialidad_secundaria,
+        tarifa_hora_eur: employee.tarifa_hora_eur,
+        horas_semanales: employee.horas_semanales,
+        email: employee.email,
+        password_hash: employee.password_hash, // TODO: En producción, hashear con bcrypt
+        telefono: employee.telefono,
+        activo: employee.activo,
+        role: employee.role,
+        permissions: employee.permissions || {}
+      })
     if (error) throw error
   }
 

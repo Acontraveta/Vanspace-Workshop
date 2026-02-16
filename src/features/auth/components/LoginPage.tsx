@@ -1,28 +1,40 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Input } from '@/shared/components/ui/input'
 import { Button } from '@/shared/components/ui/button'
-
 export default function LoginPage() {
-  const { signIn, loading } = useAuth()
+  const { signIn, loading, user } = useAuth()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    console.log('[LoginPage] Render. loading:', loading, 'user:', user)
+    if (user) {
+      navigate('/', { replace: true })
+    }
+  }, [loading, user, navigate])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    console.log('[LoginPage] Submit. Email:', email)
 
     if (!email || !password) {
       setError('Por favor completa todos los campos')
+      console.log('[LoginPage] Falta email o password')
       return
     }
 
     try {
       await signIn(email, password)
+      console.log('[LoginPage] Login exitoso')
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesión')
+      console.log('[LoginPage] Error al iniciar sesión:', err)
     }
   }
 

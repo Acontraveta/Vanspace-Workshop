@@ -3,9 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
+import { ROLE_DESCRIPTIONS } from '../types/config.types'
 import { ConfigService } from '../services/configService'
 import { ProductionEmployee } from '../types/config.types'
 import toast from 'react-hot-toast'
+
+// Dummy permissions for demonstration; replace with real fetch if needed
+const allPermissions: { permission_key: string; permission_name: string; category: string }[] = [];
+const setAllPermissions = () => {};
 
 export default function EmployeesConfig() {
   const [employees, setEmployees] = useState<ProductionEmployee[]>([])
@@ -18,10 +23,14 @@ export default function EmployeesConfig() {
     nombre: '',
     rol: '',
     activo: true,
+    password_hash: '',
   })
 
+  // (Removed duplicate function declarations)
   useEffect(() => {
     loadEmployees()
+    // Uncomment and implement if permissions are needed
+    // loadPermissions()
   }, [])
 
   const loadEmployees = async () => {
@@ -37,14 +46,45 @@ export default function EmployeesConfig() {
 
   const handleEdit = (employee: ProductionEmployee) => {
     setEditing(employee.id)
-    setEditForm(employee)
+      setEditForm({
+        ...employee,
+        password_hash: '' // No prellenar la contraseña por seguridad
+      })
   }
 
   const handleSave = async () => {
-    if (!editing) return
-
+    if (!editForm.nombre || !editForm.rol || !editForm.tarifa_hora_eur) {
+      toast.error('Completa todos los campos obligatorios')
+      return
+    }
+    // Validar email
+    if (!editForm.email || !editForm.email.includes('@')) {
+      toast.error('Introduce un email válido')
+      return
+    }
+    // Validar contraseña solo si es nuevo empleado
+    if (!editing && (!editForm.password_hash || editForm.password_hash.length < 6)) {
+      toast.error('La contraseña debe tener al menos 6 caracteres')
+      return
+    }
     try {
-      await ConfigService.updateEmployee(editing, editForm)
+      // Construir permisos finales
+      // ...aquí podrías agregar lógica de permisos si aplica...
+      const employeeData = {
+        ...editForm,
+        tarifa_hora_eur: parseFloat(editForm.tarifa_hora_eur?.toString() || '0'),
+        horas_semanales: editForm.horas_semanales ? parseFloat(editForm.horas_semanales.toString()) : null,
+        activo: editForm.activo !== false,
+      }
+      // Al editar, solo incluir password si se proporcionó una nueva
+      if (editForm.password_hash && editForm.password_hash.trim() !== '') {
+        await ConfigService.updateEmployee(editing, {
+          ...employeeData,
+          password_hash: editForm.password_hash
+        })
+      } else {
+        await ConfigService.updateEmployee(editing, employeeData)
+      }
       toast.success('Empleado actualizado')
       setEditing(null)
       loadEmployees()
@@ -137,13 +177,32 @@ export default function EmployeesConfig() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Rol *</label>
-                    <Input
-                      value={createForm.rol}
-                      onChange={(e) => setCreateForm({ ...createForm, rol: e.target.value })}
-                      placeholder="Ej: Técnico Senior"
-                    />
+                  {/* Rol de usuario */}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium mb-2">Rol de usuario</label>
+                    <select
+                      value={createForm.role || 'operario'}
+                      onChange={e => {
+                        const role = e.target.value as ProductionEmployee['role']
+                        setCreateForm({ ...createForm, role })
+                        // Auto-llenar permisos según el rol
+                        // setSelectedPermissions(ROLE_PERMISSIONS[role] || [])
+                      }}
+                      className="w-full px-3 py-2 border rounded"
+                    >
+                      <option value="operario">👷 Operario - Solo sus tareas</option>
+                      <option value="compras">📦 Compras - Pedidos, stock y CRM</option>
+                      <option value="encargado_taller">🏭 Encargado de Taller - Gestión de producción</option>
+                      <option value="encargado">👔 Encargado - Visualiza todo, edita con permiso</option>
+                      <option value="admin">⚡ Administrador - Acceso total</option>
+                    </select>
+                    {createForm.role && ROLE_DESCRIPTIONS && ROLE_DESCRIPTIONS[createForm.role] && (
+                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+                        <p className="text-blue-800">
+                          {ROLE_DESCRIPTIONS[createForm.role].description}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -190,11 +249,53 @@ export default function EmployeesConfig() {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-medium mb-1">Contraseña *</label>
+                    <Input
+                      type="password"
+                      value={createForm.password_hash || ''}
+                      onChange={(e) => setCreateForm({ ...createForm, password_hash: e.target.value })}
+                      placeholder="Contraseña del empleado"
+                      required
+                      autoComplete="new-password"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      El empleado usará esta contraseña para acceder
+                    </p>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium mb-1">Teléfono</label>
                     <Input
                       value={createForm.telefono || ''}
                       onChange={(e) => setCreateForm({ ...createForm, telefono: e.target.value })}
                     />
+                  </div>
+                  {/* Permisos personalizados: desplegable múltiple */}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium mb-2">
+                      Permisos personalizados
+                      <span className="text-xs text-gray-500 ml-2">
+                        (Los permisos del rol se aplican automáticamente)
+                      </span>
+                    </label>
+                    <select
+                      multiple
+                      value={createForm.permissions ? Object.keys(createForm.permissions).filter(p => createForm.permissions[p]) : []}
+                      onChange={e => {
+                        const selected = Array.from(e.target.selectedOptions).map(opt => opt.value)
+                        const perms: Record<string, boolean> = {}
+                        allPermissions.forEach(p => {
+                          perms[p.permission_key] = selected.includes(p.permission_key)
+                        })
+                        setCreateForm({ ...createForm, permissions: perms })
+                      }}
+                      className="w-full border rounded p-2 h-48 bg-gray-50"
+                    >
+                      {allPermissions.map(perm => (
+                        <option key={perm.permission_key} value={perm.permission_key}>
+                          {perm.permission_name} ({perm.category})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="flex items-center gap-2 pt-6">
@@ -248,13 +349,26 @@ export default function EmployeesConfig() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-1">Rol</label>
-                    <Input
-                      value={editForm.rol}
-                      onChange={(e) => setEditForm({ ...editForm, rol: e.target.value })}
-                    />
+                    <label className="block text-sm font-medium mb-1">Rol de usuario</label>
+                    <select
+                      value={editForm.role || 'operario'}
+                      onChange={e => setEditForm({ ...editForm, role: e.target.value as ProductionEmployee['role'] })}
+                      className="w-full px-3 py-2 border rounded"
+                    >
+                      <option value="operario">👷 Operario - Solo sus tareas</option>
+                      <option value="compras">📦 Compras - Pedidos, stock y CRM</option>
+                      <option value="encargado_taller">🏭 Encargado de Taller - Gestión de producción</option>
+                      <option value="encargado">👔 Encargado - Visualiza todo, edita con permiso</option>
+                      <option value="admin">⚡ Administrador - Acceso total</option>
+                    </select>
+                    {editForm.role && ROLE_DESCRIPTIONS && ROLE_DESCRIPTIONS[editForm.role] && (
+                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+                        <p className="text-blue-800">
+                          {ROLE_DESCRIPTIONS[editForm.role].description}
+                        </p>
+                      </div>
+                    )}
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium mb-1">Especialidad Principal</label>
                     <Input

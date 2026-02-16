@@ -1,33 +1,17 @@
-import { BrowserRouter } from 'react-router-dom'
-import { AppRoutes } from './router'
-import { useAuth } from './providers/AuthProvider'
-import { useAutoExport } from '@/hooks/useAutoExport'
+import { RouterProvider } from 'react-router-dom'
+import { router } from './router'
+import { QueryProvider } from './providers/QueryProvider'
+import { AuthProvider } from './providers/AuthProvider'
+import { NotificationProvider } from './providers/NotificationProvider'
 
-function AppContent() {
-  const { loading } = useAuth()
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando VanSpace Workshop...</p>
-        </div>
-      </div>
-    )
-  }
-
-  return <AppRoutes />
-}
-
-function App() {
-  useAutoExport() // Sincronización automática BD → Excel
-
+export default function App() {
   return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
+    <QueryProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <RouterProvider router={router} />
+        </NotificationProvider>
+      </AuthProvider>
+    </QueryProvider>
   )
 }
-
-export default App

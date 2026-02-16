@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '@/app/providers/AuthProvider'
+import { usePermissions } from '@/hooks/usePermissions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -16,6 +18,8 @@ interface TaskBoardProps {
 }
 
 export default function TaskBoard({ projects, employees, onRefresh, compactMode = false }: TaskBoardProps) {
+  const { user } = useAuth()
+  const { hasPermission } = usePermissions()
   const [allTasks, setAllTasks] = useState<ProductionTask[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTask, setSelectedTask] = useState<ProductionTask | null>(null)
@@ -29,12 +33,30 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
     try {
       const tasksPromises = projects.map(p => ProductionService.getProjectTasks(p.id))
       const tasksArrays = await Promise.all(tasksPromises)
-      const tasks = tasksArrays.flat()
+      let tasks = tasksArrays.flat()
+      // FILTRAR: Si es operario, solo mostrar SUS tareas
+      if (user?.role === 'operario' && !hasPermission('tasks.assign')) {
+        tasks = tasks.filter(t => t.assigned_to === user.id)
+      }
       setAllTasks(tasks)
     } catch (error) {
       console.error('Error cargando tareas:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handlePauseTask = async (task: ProductionTask) => {
+    if (!confirm('¿Pausar esta tarea?')) return
+    try {
+      await ProductionService.updateTask(task.id, {
+        status: 'PENDING'
+      })
+      toast.success('Tarea pausada')
+      loadAllTasks()
+      onRefresh()
+    } catch (error) {
+      toast.error('Error pausando tarea')
     }
   }
 
@@ -98,12 +120,14 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
   const TaskCard = ({ task }: { task: ProductionTask }) => {
     const project = projects.find(p => p.id === task.project_id)
     const assignedEmployee = employees.find(e => e.id === task.assigned_to)
+    const canAssign = hasPermission('tasks.assign')
+    const canComplete = hasPermission('tasks.complete')
+    const canPause = hasPermission('tasks.pause')
 
     return (
-      <Card className={`
-        mb-3 cursor-move hover:shadow-md transition
-        ${task.status === 'BLOCKED' ? 'border-orange-300 bg-orange-50' : ''}
-      `}>
+      <Card className={
+        `mb-3 cursor-move hover:shadow-md transition ${task.status === 'BLOCKED' ? 'border-orange-300 bg-orange-50' : ''}`
+      }>
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-2">
             <div className="flex-1">
@@ -120,22 +144,30 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
             </Badge>
           </div>
 
-          {/* Empleado asignado */}
-          <div className="mb-2">
-            <select
-              value={task.assigned_to || ''}
-              onChange={(e) => handleAssignEmployee(task.id, e.target.value)}
-              className="w-full text-xs px-2 py-1 border rounded"
-              disabled={task.status === 'COMPLETED'}
-            >
-              <option value="">Sin asignar</option>
-              {employees.map(emp => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.nombre} - {emp.rol}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Empleado asignado - SOLO SI PUEDE ASIGNAR */}
+          {canAssign && (
+            <div className="mb-2">
+              <select
+                value={task.assigned_to || ''}
+                onChange={(e) => handleAssignEmployee(task.id, e.target.value)}
+                className="w-full text-xs px-2 py-1 border rounded"
+                disabled={task.status === 'COMPLETED'}
+              >
+                <option value="">Sin asignar</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.nombre} - {emp.rol}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {/* Si no puede asignar, solo mostrar quién está asignado */}
+          {!canAssign && assignedEmployee && (
+            <div className="mb-2 text-xs text-gray-600">
+              Asignado a: <span className="font-medium">{assignedEmployee.nombre}</span>
+            </div>
+          )}
 
           {/* Bloqueos */}
           {task.status === 'BLOCKED' && task.blocked_reason && (
@@ -146,7 +178,7 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
 
           {/* Acciones */}
           <div className="flex gap-2">
-            {task.status === 'PENDING' && (
+            {task.status === 'PENDING' && canComplete && (
               <Button
                 onClick={() => handleStartTask(task)}
                 size="sm"
@@ -158,13 +190,27 @@ export default function TaskBoard({ projects, employees, onRefresh, compactMode 
             )}
 
             {task.status === 'IN_PROGRESS' && (
-              <Button
-                onClick={() => handleCompleteTask(task)}
-                size="sm"
-                className="flex-1 bg-green-600 hover:bg-green-700 text-xs"
-              >
-                ✅ Completar
-              </Button>
+              <>
+                {canPause && (
+                  <Button
+                    onClick={() => handlePauseTask(task)}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                  >
+                    ⏸ Pausar
+                  </Button>
+                )}
+                {canComplete && (
+                  <Button
+                    onClick={() => handleCompleteTask(task)}
+                    size="sm"
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-xs"
+                  >
+                    ✅ Completar
+                  </Button>
+                )}
+              </>
             )}
 
             {task.status === 'COMPLETED' && task.actual_hours && (

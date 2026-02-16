@@ -1,6 +1,14 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
-import { User, Session } from '@supabase/supabase-js'
+// Definición de usuario extendido
+export interface User {
+  id: string
+  email: string
+  role: 'admin' | 'manager' | 'worker' | 'viewer'
+  permissions: Record<string, boolean>
+  name?: string
+}
+import { Session } from '@supabase/supabase-js'
 import toast from 'react-hot-toast'
 
 interface AuthContextType {
@@ -18,39 +26,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Verificar sesión actual
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
-
-    // Escuchar cambios de autenticación
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
-
-    return () => subscription.unsubscribe()
+    console.log('🔍 AuthProvider: Iniciando...')
+    const storedUser = localStorage.getItem('auth_user')
+    console.log('🔍 Stored user:', storedUser)
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser)
+        console.log('✅ Usuario cargado:', parsed)
+        setUser(parsed)
+      } catch (error) {
+        console.error('❌ Error parsing user:', error)
+        localStorage.removeItem('auth_user')
+      }
+    } else {
+      console.log('ℹ️ No hay usuario guardado')
+    }
+    setLoading(false)
+    console.log('✅ AuthProvider ready. User:', user ? user.email : 'No user')
   }, [])
+
+  console.log('🔍 AuthProvider render. Loading:', loading, 'User:', user?.email || 'none')
 
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true)
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      // Buscar empleado por email
+      const { data: employee, error } = await supabase
+        .from('production_employees')
+        .select('*')
+        .eq('email', email)
+        .eq('activo', true)
+        .single()
 
-      if (error) {
-        console.error('Error en login:', error)
-        throw new Error(error.message)
+      if (error || !employee) {
+        throw new Error('Credenciales inválidas')
       }
 
-      if (data.user) {
-        setUser(data.user)
-        toast.success('¡Bienvenido!')
+      // Verificar contraseña (en producción usar hash bcrypt)
+      // Por ahora comparación simple para demo
+      if (employee.password_hash !== password) {
+        throw new Error('Credenciales inválidas')
       }
+
+      const user: User = {
+        id: employee.id,
+        email: employee.email,
+        role: (employee.role ? String(employee.role).toLowerCase() : 'worker'),
+        permissions: employee.permissions || {},
+        name: employee.nombre
+      }
+
+      // Actualizar last_login
+      await supabase
+        .from('production_employees')
+        .update({ 
+          last_login: new Date().toISOString(),
+          active_session: true
+        })
+        .eq('id', employee.id)
+
+      setUser(user)
+      localStorage.setItem('auth_user', JSON.stringify(user))
+      toast.success('¡Bienvenido!')
     } catch (error: any) {
       toast.error(error.message || 'Error al iniciar sesión')
       throw error
@@ -101,7 +138,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp,
   }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  if (loading) {
+    console.log('⏳ Mostrando loading...')
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Cargando usuario...</p>
+        </div>
+      </div>
+    )
+  }
+
+  console.log('✅ Renderizando children')
+  return (
+    <AuthContext.Provider value={{ user, signIn, signOut, loading }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {
