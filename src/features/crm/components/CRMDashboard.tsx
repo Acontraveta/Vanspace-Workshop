@@ -48,7 +48,7 @@ export default function CRMDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* ── Header ── */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>

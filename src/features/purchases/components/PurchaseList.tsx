@@ -593,7 +593,7 @@ export default function PurchaseList() {
         action={{ label: '➕ Nuevo pedido', onClick: () => setShowNewPurchaseModal(true) }}
       />
 
-      <div className="p-8 space-y-6">
+      <div className="p-4 md:p-8 space-y-4 md:space-y-6">
         {showQR && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowQR(null)}>
             <Card className="max-w-md" onClick={(e) => e.stopPropagation()}>

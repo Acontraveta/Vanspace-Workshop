@@ -26,7 +26,7 @@ export default function ConfigurationPanel() {
         description="Gestión de parámetros del sistema"
       />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Tabs */}
         <div className="mb-6 border-b">
           <div className="flex gap-2">

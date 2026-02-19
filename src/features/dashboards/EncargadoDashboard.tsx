@@ -102,7 +102,7 @@ export default function EncargadoDashboard() {
         description="Vista general del negocio"
       />
 
-      <div className="p-8 space-y-6">
+      <div className="p-4 md:p-8 space-y-4 md:space-y-6">
         {/* Alertas importantes */}
         {(stats.delayedProjects > 0 || stats.blockedTasks > 0 || stats.lowStock > 0) && (
           <Card className="border-orange-300 bg-orange-50">
@@ -233,7 +233,7 @@ export default function EncargadoDashboard() {
         </div>
 
         {/* KPIs numéricos */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
           <Card>
             <CardContent className="p-6 text-center">
               <p className="text-sm text-gray-600 mb-2">Presupuestos Activos</p>

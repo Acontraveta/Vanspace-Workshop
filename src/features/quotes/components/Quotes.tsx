@@ -61,7 +61,7 @@ export default function Quotes() {
         description="Gestiona y crea presupuestos"
       />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Tabs principales */}
         <Card className="mb-6">
           <CardContent className="p-4">

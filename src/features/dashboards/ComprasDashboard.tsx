@@ -58,9 +58,9 @@ export default function ComprasDashboard() {
         description="Panel de gestión de compras y almacén"
       />
 
-      <div className="p-8 space-y-6">
+      <div className="p-4 md:p-8 space-y-4 md:space-y-6">
         {/* KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 md:gap-4">
           <Card>
             <CardContent className="p-6">
               <p className="text-sm text-gray-600 mb-1">Pedidos Pendientes</p>

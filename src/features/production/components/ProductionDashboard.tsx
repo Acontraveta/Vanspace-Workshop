@@ -108,7 +108,7 @@ export default function ProductionDashboard() {
         description="Gestión de proyectos y tareas del taller"
       />
 
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Tabs */}
         <div className="mb-6 flex gap-2">
           <Button
@@ -133,7 +133,7 @@ export default function ProductionDashboard() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-6">
           <Card>
             <CardContent className="p-4">
               <p className="text-sm text-gray-600 mb-1">En Progreso</p>
