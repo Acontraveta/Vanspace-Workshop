@@ -61,7 +61,9 @@ async function autoAttachQuoteToLead(quote: Quote, leadId: string): Promise<void
     const file = new File([blob], `${quote.quoteNumber}.html`, { type: 'text/html' })
     await LeadDocumentsService.upload(leadId, file, 'presupuesto', 'Generado automáticamente al guardar', '')
   } finally {
-    document.body.removeChild(container)
+    // Use .remove() instead of document.body.removeChild() — tolerates nodes
+    // that root.unmount() may have already detached from the DOM.
+    container.remove()
   }
 }
 
