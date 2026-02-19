@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react'
+import { createRoot } from 'react-dom/client'
+import { flushSync } from 'react-dom'
+import { createElement } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -6,12 +9,19 @@ import { Badge } from '@/shared/components/ui/badge'
 import { useCatalog } from '../hooks/useCatalog'
 import { useTarifas } from '@/features/config/hooks/useTarifas'
 import { Tarifa, QuoteItem, CatalogProduct, Quote } from '../types/quote.types'
+import { generateUUIDv4 } from '../utils/uuid'
 import { PriceCalculator } from '../utils/priceCalculator'
 import { QuoteService } from '../services/quoteService'
 import { QuoteAutomation } from '../services/quoteAutomation'
 import { CatalogService } from '../services/catalogService'
+import { QuotePDF, QuoteDocumentData } from './QuotePDF'
+import { ConfigService } from '@/features/config/services/configService'
+import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
 import ClientDataForm from './ClientDataForm'
 import toast from 'react-hot-toast'
+import ManualProductModal from './ManualProductModal'
+import QuotePreview from './QuotePreview'
+import QuickDocumentModal, { QuickDocType } from './QuickDocumentModal'
 
 const TARIFAS_FALLBACK: Tarifa[] = [
   { id: 'camperizacion_total', name: 'Camperización Total', hourlyRate: 50, profitMargin: 25 },
@@ -21,11 +31,53 @@ const TARIFAS_FALLBACK: Tarifa[] = [
   { id: 'accesorios', name: 'Venta', hourlyRate: 0, profitMargin: 30 },
 ]
 
-interface QuoteGeneratorProps {
-  quoteId?: string
+/**
+ * Renders QuotePDF off-screen and uploads an HTML snapshot to the lead’s documents.
+ */
+async function autoAttachQuoteToLead(quote: Quote, leadId: string): Promise<void> {
+  const companyRows = await ConfigService.getCompanyInfo().catch(() => null)
+  const get = (c: string) => (companyRows as any[])?.find(r => r.campo === c)?.valor ?? ''
+  const company: QuoteDocumentData['company'] = {
+    name: get('nombre_empresa') || 'VanSpace Workshop',
+    nif: get('nif') || '',
+    address: get('direccion') || '',
+    phone: get('telefono') || '',
+    email: get('email') || '',
+  }
+
+  const docData: QuoteDocumentData = { quote, company, type: 'PRESUPUESTO' }
+
+  // Render QuotePDF to static HTML using an off-screen div
+  const container = document.createElement('div')
+  container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none'
+  document.body.appendChild(container)
+
+  try {
+    const root = createRoot(container)
+    flushSync(() => { root.render(createElement(QuotePDF, { data: docData })) })
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>${quote.quoteNumber}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:11px}</style></head><body>${container.innerHTML}</body></html>`
+    root.unmount()
+    const blob = new Blob([html], { type: 'text/html' })
+    const file = new File([blob], `${quote.quoteNumber}.html`, { type: 'text/html' })
+    await LeadDocumentsService.upload(leadId, file, 'presupuesto', 'Generado automáticamente al guardar', '')
+  } finally {
+    document.body.removeChild(container)
+  }
 }
 
-export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
+interface QuoteGeneratorProps {
+  quoteId?: string
+  initialLeadData?: {
+    lead_id: string
+    clientName: string
+    clientPhone?: string
+    clientEmail?: string
+    vehicleModel?: string
+  }
+  onSaved?: () => void
+}
+
+export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: QuoteGeneratorProps) {
   const { products, catalogLoaded, loading, refreshCatalog } = useCatalog()
   const { tarifas: dbTarifas, loading: tarifasLoading } = useTarifas()
 
@@ -56,10 +108,11 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
   }, [dbTarifas])
   
   // Estados para datos del cliente
-  const [clientName, setClientName] = useState('')
-  const [clientEmail, setClientEmail] = useState('')
-  const [clientPhone, setClientPhone] = useState('')
-  const [vehicleModel, setVehicleModel] = useState('')
+  const [leadId, setLeadId] = useState<string | undefined>(initialLeadData?.lead_id)
+  const [clientName, setClientName] = useState(initialLeadData?.clientName ?? '')
+  const [clientEmail, setClientEmail] = useState(initialLeadData?.clientEmail ?? '')
+  const [clientPhone, setClientPhone] = useState(initialLeadData?.clientPhone ?? '')
+  const [vehicleModel, setVehicleModel] = useState(initialLeadData?.vehicleModel ?? '')
   const [billingData, setBillingData] = useState({
     nif: '',
     fiscalName: '',
@@ -74,6 +127,9 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [showBillingForm, setShowBillingForm] = useState(false)
+  const [showManualProductModal, setShowManualProductModal] = useState(false)
+  const [showPreview, setShowPreview] = useState<'PRESUPUESTO' | 'FACTURA' | null>(null)
+  const [quickDocType, setQuickDocType] = useState<QuickDocType | null>(null)
   
   // Estado para acordeones
   const [expandedFamily, setExpandedFamily] = useState<string | null>(null)
@@ -105,6 +161,7 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
       const quote = QuoteService.getQuoteById(quoteId)
       if (quote) {
         setCurrentQuote(quote)
+        setLeadId(quote.lead_id)
         setClientName(quote.clientName)
         setClientEmail(quote.clientEmail || '')
         setClientPhone(quote.clientPhone || '')
@@ -147,13 +204,8 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
   // Catalog is loaded automatically from Supabase via useCatalog
 
   const addProduct = (product: CatalogProduct, quantity: number = 1) => {
+    // calculateQuoteItem ya incluye catalogData: product para todos los productos
     const item = PriceCalculator.calculateQuoteItem(product, quantity, selectedTarifa)
-
-    // CRÍTICO: Asegurar que catalogData se guarda
-    if (!item.catalogData) {
-      item.catalogData = product // Guardar el producto completo
-    }
-
     setItems([...items, item])
     toast.success(`${product.NOMBRE} añadido`)
   }
@@ -194,9 +246,11 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
 
     setSaving(true)
 
+    // Usar UUID real para el id
     const quote: Quote = {
-      id: currentQuote?.id || `quote-${Date.now()}`,
+      id: currentQuote?.id || generateUUIDv4(),
       quoteNumber: currentQuote?.quoteNumber || PriceCalculator.generateQuoteNumber(),
+      lead_id: leadId,
       clientName,
       clientEmail,
       clientPhone,
@@ -219,47 +273,61 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
     QuoteService.saveQuote(quote)
     setCurrentQuote(quote)
     setSaving(false)
+
+    // Auto-attach HTML snapshot to lead
+    if (leadId) {
+      autoAttachQuoteToLead(quote, leadId).catch(err =>
+        console.warn('Auto-attach quote to lead failed:', err)
+      )
+    }
   }
 
-  const handleApproveQuote = async () => {
+  const handleOpenPreview = (type: 'PRESUPUESTO' | 'FACTURA') => {
     if (!currentQuote) {
-      toast.error('Primero debes guardar el presupuesto')
-      return
+      // Guardar primero si no existe
+      if (!isBasicDataComplete || items.length === 0) {
+        toast.error('Completa los datos básicos y añade productos')
+        return
+      }
+      handleSaveQuote()
     }
+    setShowPreview(type)
+  }
 
+  const handleApproveFromPreview = async () => {
+    if (!currentQuote) return
     if (!isBillingDataComplete) {
-      toast.error('Completa los datos de facturación antes de aprobar')
+      toast.error('Completa los datos de facturación para aprobar el presupuesto')
+      setShowPreview(null)
       setShowBillingForm(true)
       return
     }
-
-    if (currentQuote.status === 'APPROVED') {
-      toast.error('Este presupuesto ya está aprobado')
-      return
-    }
-
+    setShowPreview(null)
     try {
       setSaving(true)
-      
       const approvedQuote = QuoteService.approveQuote(currentQuote.id)
       const result = await QuoteAutomation.executeAutomation(approvedQuote)
-      
-      toast.success(
-        `✅ Automatización completa!\n` +
-        `📦 ${result.details.totalPurchaseItems} compras\n` +
-        `⚙️ ${result.details.totalTasks} tareas\n` +
-        `📐 ${result.details.totalDesignInstructions} diseños`,
-        { duration: 6000 }
-      )
-      
+      if (!result.success) {
+        toast.error('Error en automatización: ' + (result.errors?.[0] ?? 'error desconocido'), { duration: 8000 })
+      } else {
+        toast.success(
+          `✅ Automatización completa!\n` +
+          `📦 ${result.details.totalPurchaseItems} compras\n` +
+          `⚙️ ${result.details.totalTasks} tareas\n` +
+          `📐 ${result.details.totalDesignInstructions} diseños`,
+          { duration: 6000 }
+        )
+      }
       setCurrentQuote(approvedQuote)
-      
     } catch (error: any) {
       toast.error('Error en automatización: ' + error.message)
     } finally {
       setSaving(false)
     }
   }
+
+  // Left for compatibility (called from save then approve directly)
+  const handleApproveQuote = () => handleOpenPreview('PRESUPUESTO')
 
   const handleNewQuote = () => {
     setItems([])
@@ -341,6 +409,42 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
         </CardContent>
       </Card>
 
+      {/* Datos del cliente — visible siempre, no espera al catálogo */}
+      <ClientDataForm
+        clientName={clientName}
+        setClientName={setClientName}
+        clientEmail={clientEmail}
+        setClientEmail={setClientEmail}
+        clientPhone={clientPhone}
+        setClientPhone={setClientPhone}
+        vehicleModel={vehicleModel}
+        setVehicleModel={setVehicleModel}
+        billingData={billingData}
+        setBillingData={setBillingData}
+        disabled={currentQuote?.status === 'APPROVED'}
+        showBillingData={showBillingForm}
+        linkedLeadName={leadId ? clientName : undefined}
+        onLinkLead={data => {
+          setLeadId(data.lead_id)
+          setClientName(data.clientName)
+          if (data.clientPhone) setClientPhone(data.clientPhone)
+          if (data.clientEmail) setClientEmail(data.clientEmail)
+          if (data.vehicleModel) setVehicleModel(data.vehicleModel)
+        }}
+        onUnlinkLead={() => setLeadId(undefined)}
+      />
+
+      {/* Botón datos de facturación — visible siempre */}
+      {!showBillingForm && (
+        <Button
+          variant="outline"
+          onClick={() => setShowBillingForm(true)}
+          className="w-full"
+        >
+          📋 Añadir Datos de Facturación (necesarios para aprobar)
+        </Button>
+      )}
+
       {catalogLoaded && products.length > 0 && (
         <>
           {/* Estado del presupuesto */}
@@ -375,33 +479,6 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* COLUMNA IZQUIERDA: Catálogo con acordeones */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Formulario de datos del cliente */}
-              <ClientDataForm
-                clientName={clientName}
-                setClientName={setClientName}
-                clientEmail={clientEmail}
-                setClientEmail={setClientEmail}
-                clientPhone={clientPhone}
-                setClientPhone={setClientPhone}
-                vehicleModel={vehicleModel}
-                setVehicleModel={setVehicleModel}
-                billingData={billingData}
-                setBillingData={setBillingData}
-                disabled={currentQuote?.status === 'APPROVED'}
-                showBillingData={showBillingForm}
-              />
-
-              {/* Botón para mostrar datos de facturación */}
-              {!showBillingForm && (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowBillingForm(true)}
-                  className="w-full"
-                >
-                  📋 Añadir Datos de Facturación (necesarios para aprobar)
-                </Button>
-              )}
-
               {/* Tarifa */}
               <Card>
                 <CardHeader>
@@ -432,6 +509,18 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Botón para añadir producto manual */}
+              <Button
+                onClick={() => {
+                  console.log('🔴 Abriendo modal manual')
+                  setShowManualProductModal(true)
+                }}
+                disabled={currentQuote?.status === 'APPROVED'}
+                className="w-full bg-purple-600 hover:bg-purple-700 mb-4"
+              >
+                ✏️ Añadir Producto Manual
+              </Button>
 
               {/* Catálogo de Productos - ACORDEONES */}
               <Card>
@@ -655,14 +744,32 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
 
                       <div className="pt-4 space-y-2">
                         {!currentQuote && (
-                          <Button 
-                            className="w-full"
-                            onClick={handleSaveQuote}
-                            disabled={saving || !canSave}
-                            title={!canSave ? 'Completa los datos básicos y añade productos' : ''}
-                          >
-                            💾 Guardar
-                          </Button>
+                          <>
+                            <Button 
+                              className="w-full"
+                              onClick={handleSaveQuote}
+                              disabled={saving || !canSave}
+                              title={!canSave ? 'Completa los datos básicos y añade productos' : ''}
+                            >
+                              💾 Guardar
+                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                className="flex-1 text-xs"
+                                onClick={() => setQuickDocType('FACTURA_SIMPLIFICADA')}
+                              >
+                                🧾 Simplificada
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="flex-1 text-xs"
+                                onClick={() => setQuickDocType('PROFORMA')}
+                              >
+                                📋 Proforma
+                              </Button>
+                            </div>
+                          </>
                         )}
                         
                         {currentQuote && currentQuote.status !== 'APPROVED' && (
@@ -675,10 +782,18 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
                             >
                               💾 {isEditing ? 'Guardar Cambios' : 'Actualizar'}
                             </Button>
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => handleOpenPreview('PRESUPUESTO')}
+                              disabled={saving || !canSave}
+                            >
+                              👁️ Vista previa
+                            </Button>
                             <Button 
                               variant="default"
                               className="w-full bg-green-600 hover:bg-green-700"
-                              onClick={handleApproveQuote}
+                              onClick={() => handleOpenPreview('PRESUPUESTO')}
                               disabled={saving || !canApprove}
                               title={!isBillingDataComplete ? 'Completa los datos de facturación' : ''}
                             >
@@ -694,10 +809,23 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
                         )}
                         
                         {currentQuote?.status === 'APPROVED' && (
-                          <div className="text-center p-4 bg-green-50 border-2 border-green-500 rounded">
-                            <p className="text-lg font-bold text-green-700">
-                              ✅ Aprobado
-                            </p>
+                          <div className="space-y-2">
+                            <div className="text-center p-3 bg-green-50 border-2 border-green-500 rounded">
+                              <p className="text-base font-bold text-green-700">✅ Aprobado</p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => handleOpenPreview('PRESUPUESTO')}
+                            >
+                              👁️ Ver Presupuesto
+                            </Button>
+                            <Button
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={() => handleOpenPreview('FACTURA')}
+                            >
+                              🧾 Generar Factura
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -707,6 +835,49 @@ export default function QuoteGenerator({ quoteId }: QuoteGeneratorProps) {
               )}
             </div>
           </div>
+        </>
+      )}
+      {/* Preview modal */}
+      {showPreview && currentQuote && (
+        <QuotePreview
+          quote={currentQuote}
+          type={showPreview}
+          onApprove={showPreview === 'PRESUPUESTO' && currentQuote.status !== 'APPROVED' ? handleApproveFromPreview : undefined}
+          onClose={() => setShowPreview(null)}
+        />
+      )}
+
+      {/* Quick document modals */}
+      {quickDocType && (
+        <QuickDocumentModal
+          type={quickDocType}
+          initialData={{
+            clientName: clientName || undefined,
+            leadId: leadId,
+            lines: items.map(item => ({
+              id: item.id,
+              description: item.productName,
+              quantity: item.quantity,
+              unitPrice: item.quantity > 0
+                ? ((item.materialsTotal ?? 0) + (item.laborCost ?? 0)) / item.quantity
+                : 0,
+            })),
+          }}
+          onClose={() => setQuickDocType(null)}
+        />
+      )}
+
+      {/* Modal producto manual */}
+      {showManualProductModal && (
+        <>
+          {console.log('🟢 Renderizando ManualProductModal')}
+          <ManualProductModal
+            onAdd={(product) => {
+              addProduct(product)
+              setShowManualProductModal(false)
+            }}
+            onCancel={() => setShowManualProductModal(false)}
+          />
         </>
       )}
     </div>

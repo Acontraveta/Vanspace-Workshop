@@ -7,7 +7,7 @@ import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
 import { ProductionService } from '@/features/calendar/services/productionService'
 import { PurchaseService } from '@/features/purchases/services/purchaseService'
-import { StockService } from '@/features/purchases/services/stockService'
+import { supabase } from '@/lib/supabase'
 import { QuoteService } from '@/features/quotes/services/quoteService'
 import { ConfigService } from '@/features/config/services/configService'
 import { useAuth } from '@/app/providers/AuthProvider'
@@ -46,13 +46,45 @@ export default function AdminDashboard() {
     delayedProjects: 0,
     blockedTasks: 0
   })
+  const [stock, setStock] = useState([])
+  const [stockLoaded, setStockLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
 
+
   useEffect(() => {
-    loadCompleteStats()
+    const loadData = async () => {
+      // Cargar stock desde Supabase
+      const { data: stockData, error } = await supabase
+        .from('stock_items')
+        .select('*')
+        .order('articulo')
+      if (error) {
+        console.error('Error cargando stock:', error)
+        setStock([])
+        setStockLoaded(false)
+      } else {
+        const formattedStock = (stockData || []).map(item => ({
+          REFERENCIA: item.referencia,
+          FAMILIA: item.familia,
+          CATEGORIA: item.categoria,
+          ARTICULO: item.articulo,
+          DESCRIPCION: item.descripcion,
+          CANTIDAD: item.cantidad,
+          STOCK_MINIMO: item.stock_minimo,
+          UNIDAD: item.unidad,
+          COSTE_IVA_INCLUIDO: item.coste_iva_incluido,
+          UBICACION: item.ubicacion,
+          PROVEEDOR: item.proveedor
+        }))
+        setStock(formattedStock)
+        setStockLoaded(formattedStock.length > 0)
+        loadCompleteStats(formattedStock)
+      }
+    }
+    loadData()
   }, [])
 
-  const loadCompleteStats = async () => {
+  const loadCompleteStats = async (stockArg) => {
     try {
       // Presupuestos
       const quotes = QuoteService.getQuotesByCategory()
@@ -77,10 +109,11 @@ export default function AdminDashboard() {
       const blocked = allTasks.filter(t => t.status === 'BLOCKED').length
 
       // Compras y Stock
-      const purchases = PurchaseService.getAllPurchases()
-      const stock = StockService.getStock()
-      const lowStock = StockService.getLowStockItems()
-      const totalValue = stock.reduce((sum, item) => {
+      const purchases = await PurchaseService.getAllPurchases()
+      const lowStock = (stockArg || []).filter(item =>
+        item.STOCK_MINIMO && item.CANTIDAD < item.STOCK_MINIMO
+      )
+      const totalValue = (stockArg || []).reduce((sum, item) => {
         return sum + ((item.COSTE_IVA_INCLUIDO || 0) * item.CANTIDAD)
       }, 0)
 
@@ -93,22 +126,18 @@ export default function AdminDashboard() {
         approvedQuotes: quotes.approved.length,
         totalQuotesValue,
         approvedValue,
-        
         totalProjects: allProjects.length,
         inProgressProjects: allProjects.filter(p => p.status === 'IN_PROGRESS').length,
         completedProjects: allProjects.filter(p => p.status === 'COMPLETED').length,
         totalHoursPlanned,
         totalHoursWorked,
-        
         totalPurchases: purchases.length,
         pendingPurchases: purchases.filter(p => p.status === 'PENDING').length,
-        totalStockItems: stock.length,
+        totalStockItems: (stockArg || []).length,
         lowStockItems: lowStock.length,
         totalInventoryValue: totalValue,
-        
         totalEmployees: employees.length,
         activeEmployees: employees.filter(e => e.activo).length,
-        
         delayedProjects: delayed,
         blockedTasks: blocked
       })
@@ -143,39 +172,38 @@ export default function AdminDashboard() {
       <div className="p-8 space-y-6">
         {/* KPIs Financieros */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-            <CardContent className="p-6">
-              <p className="text-sm opacity-90 mb-1">Valor Total Presupuestos</p>
-              <p className="text-4xl font-bold">{(stats.totalQuotesValue / 1000).toFixed(1)}k€</p>
-              <p className="text-xs opacity-75 mt-2">{stats.totalQuotes} presupuestos</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
-            <CardContent className="p-6">
-              <p className="text-sm opacity-90 mb-1">Presupuestos Aprobados</p>
-              <p className="text-4xl font-bold">{(stats.approvedValue / 1000).toFixed(1)}k€</p>
-              <p className="text-xs opacity-75 mt-2">{stats.approvedQuotes} proyectos</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
-            <CardContent className="p-6">
-              <p className="text-sm opacity-90 mb-1">Valor Inventario</p>
-              <p className="text-4xl font-bold">{(stats.totalInventoryValue / 1000).toFixed(1)}k€</p>
-              <p className="text-xs opacity-75 mt-2">{stats.totalStockItems} productos</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
-            <CardContent className="p-6">
-              <p className="text-sm opacity-90 mb-1">Eficiencia</p>
-              <p className="text-4xl font-bold">{efficiency}%</p>
-              <p className="text-xs opacity-75 mt-2">
-                {stats.totalHoursWorked.toFixed(0)}h / {stats.totalHoursPlanned.toFixed(0)}h
-              </p>
-            </CardContent>
-          </Card>
+          <>
+            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+              <CardContent className="p-6">
+                <p className="text-sm opacity-90 mb-1">Valor Total Presupuestos</p>
+                <p className="text-4xl font-bold">{(stats.totalQuotesValue / 1000).toFixed(1)}k€</p>
+                <p className="text-xs opacity-75 mt-2">{stats.totalQuotes} presupuestos</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+              <CardContent className="p-6">
+                <p className="text-sm opacity-90 mb-1">Presupuestos Aprobados</p>
+                <p className="text-4xl font-bold">{(stats.approvedValue / 1000).toFixed(1)}k€</p>
+                <p className="text-xs opacity-75 mt-2">{stats.approvedQuotes} proyectos</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+              <CardContent className="p-6">
+                <p className="text-sm opacity-90 mb-1">Valor Inventario</p>
+                <p className="text-4xl font-bold">{(stats.totalInventoryValue / 1000).toFixed(1)}k€</p>
+                <p className="text-xs opacity-75 mt-2">{stats.totalStockItems} productos</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+              <CardContent className="p-6">
+                <p className="text-sm opacity-90 mb-1">Eficiencia</p>
+                <p className="text-4xl font-bold">{efficiency}%</p>
+                <p className="text-xs opacity-75 mt-2">
+                  {stats.totalHoursWorked.toFixed(0)}h / {stats.totalHoursPlanned.toFixed(0)}h
+                </p>
+              </CardContent>
+            </Card>
+          </>
         </div>
 
         {/* Alertas críticas */}

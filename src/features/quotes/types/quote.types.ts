@@ -130,11 +130,15 @@ export interface QuoteItem {
   laborHours: number
   laborCost: number
   totalCost: number
+  catalogData?: CatalogProduct // Permite que los productos manuales lleven los datos necesarios para automatización
 }
 
 export interface Quote {
   id: string
   quoteNumber: string
+
+  // Vínculo CRM (opcional: enlaza el presupuesto a un lead)
+  lead_id?: string
   
   // Datos básicos del cliente (necesarios para guardar/enviar)
   clientName: string
@@ -146,7 +150,7 @@ export interface Quote {
   // Datos de facturación (necesarios solo para aprobar)
   billingData?: {
     nif: string                    // NIF/CIF
-    fiscalName?: string            // Razón social (si es empresa)
+    fiscalName: string             // Razón social (si es empresa)
     address: string                // Dirección completa
     postalCode: string             // Código postal
     city: string                   // Ciudad

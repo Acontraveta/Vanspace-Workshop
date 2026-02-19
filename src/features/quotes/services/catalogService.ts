@@ -129,7 +129,7 @@ export class CatalogService {
     // Sincronizar si no hay sync previo o pasaron más de 1 hora
     if (!lastSync || (now.getTime() - new Date(lastSync).getTime() > 3600000)) {
       console.log('🔄 Sincronizando catálogo desde Storage...')
-      await this.importFromStorage()
+      await this.loadFromSupabase()
     }
   }
 }

@@ -9,6 +9,7 @@ import { PurchaseService } from '@/features/purchases/services/purchaseService'
 import { StockService } from '@/features/purchases/services/stockService'
 import { PurchaseItem, StockItem } from '@/features/purchases/types/purchase.types'
 import { useAuth } from '@/app/providers/AuthProvider'
+import MyHoursWidget from '@/features/timeclock/components/MyHoursWidget'
 
 export default function ComprasDashboard() {
   const { user } = useAuth()
@@ -21,8 +22,8 @@ export default function ComprasDashboard() {
     loadData()
   }, [])
 
-  const loadData = () => {
-    setPurchases(PurchaseService.getAllPurchases())
+  const loadData = async () => {
+    setPurchases(await PurchaseService.getAllPurchases())
     setStock(StockService.getStock())
     setLoading(false)
   }
@@ -290,6 +291,10 @@ export default function ComprasDashboard() {
             </div>
           </CardContent>
         </Card>
+      </div>
+      <div className="mt-6">
+        <h2 className="text-xl font-bold mb-4">⏰ Mis Horas</h2>
+        <MyHoursWidget />
       </div>
     </PageLayout>
   )

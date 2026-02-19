@@ -32,28 +32,35 @@ export interface ProductionProject {
 export interface ProductionTask {
   id: string
   project_id: string
-  
   task_name: string
   product_name?: string
-  
   estimated_hours: number
   actual_hours?: number
-  
   assigned_to?: string
   assigned_date?: string
-  
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED'
-  
   requires_material?: string
   material_ready: boolean
   requires_design: boolean
   design_ready: boolean
   blocked_reason?: string
-  
   order_index: number
-  
   completed_at?: string
   created_at: string
+
+  // Datos del catálogo (guardados en Supabase desde QuoteAutomation)
+  materials?: { name: string; quantity: number; unit: string }[]
+  consumables?: { name: string; quantity: number; unit: string }[]
+  instructions_design?: string
+  tipo_diseno?: string
+  requiere_diseno?: boolean
+  catalog_sku?: string
+
+  // Datos de bloque
+  task_block_id?: string
+  block_order?: number
+  is_block_first?: boolean
+  materials_collected?: boolean
 }
 
 export interface CalendarEvent {
@@ -81,4 +88,13 @@ export interface ScheduleSuggestion {
   conflictingProjects: ProductionProject[]
   score: number
   reason: string
+  /** Capacity analysis for this slot (populated when AvailabilityService is used) */
+  capacity?: {
+    dailyCapacity: number
+    employeeCount: number
+    peakUtilization: number
+    avgUtilization: number
+    canFit: boolean
+    hasCapacity: boolean
+  }
 }

@@ -4,7 +4,7 @@ import { UserRole } from '@/shared/utils/constants'
 export function usePermissions() {
   const { user } = useAuth()
   
-  const userRole = (user?.user_metadata?.role || 'ADMIN') as UserRole
+  const userRole = ((user?.role?.toUpperCase()) || 'ADMIN') as UserRole
 
   const can = (action: string, resource: string): boolean => {
     // Admin puede todo

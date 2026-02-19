@@ -1,10 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Security } from '@/lib/security'
+import { TimeclockService } from '@/features/timeclock/services/timeclockService'
 // Definición de usuario extendido
 export interface User {
   id: string
   email: string
-  role: 'admin' | 'manager' | 'worker' | 'viewer'
+  role: 'admin' | 'encargado' | 'encargado_taller' | 'compras' | 'operario'
   permissions: Record<string, boolean>
   name?: string
 }
@@ -16,7 +18,7 @@ interface AuthContextType {
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
-  signUp: (email: string, password: string) => Promise<{ user: User | null; session: Session | null } | undefined>
+  signUp: (email: string, password: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -26,35 +28,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    console.log('🔍 AuthProvider: Iniciando...')
     const storedUser = localStorage.getItem('auth_user')
-    console.log('🔍 Stored user:', storedUser)
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser)
-        console.log('✅ Usuario cargado:', parsed)
         setUser(parsed)
       } catch (error) {
-        console.error('❌ Error parsing user:', error)
+        console.error('Error parsing stored user:', error)
         localStorage.removeItem('auth_user')
       }
-    } else {
-      console.log('ℹ️ No hay usuario guardado')
     }
     setLoading(false)
-    console.log('✅ AuthProvider ready. User:', user ? user.email : 'No user')
   }, [])
-
-  console.log('🔍 AuthProvider render. Loading:', loading, 'User:', user?.email || 'none')
 
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true)
-      // Buscar empleado por email
+      // Admin hardcoded
+      if (email === 'admin@vanspace.com') {
+        if (password !== 'admin123456') {
+          throw new Error('Credenciales inválidas')
+        }
+        const adminUser: User = {
+          id: 'admin',
+          email: 'admin@vanspace.com',
+          role: 'admin',
+          permissions: { 'admin.full': true },
+          name: 'Administrador'
+        }
+        setUser(adminUser)
+        localStorage.setItem('auth_user', JSON.stringify(adminUser))
+        return
+      }
+
+      // Buscar empleado
       const { data: employee, error } = await supabase
         .from('production_employees')
         .select('*')
-        .eq('email', email)
+        .eq('email', email.toLowerCase().trim())
         .eq('activo', true)
         .single()
 
@@ -62,16 +73,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Credenciales inválidas')
       }
 
-      // Verificar contraseña (en producción usar hash bcrypt)
-      // Por ahora comparación simple para demo
-      if (employee.password_hash !== password) {
+      // Verificar contraseña (soporta texto plano y hash)
+      const isValid = await Security.verifyPassword(password, employee.password_hash)
+      if (!isValid) {
         throw new Error('Credenciales inválidas')
+      }
+
+      // Si la contraseña es texto plano, hashearla ahora
+      if (!employee.password_hash.startsWith('$2')) {
+        const hashed = await Security.hashPassword(password)
+        await supabase
+          .from('production_employees')
+          .update({ password_hash: hashed })
+          .eq('id', employee.id)
+        console.log('🔒 Contraseña migrada a hash')
       }
 
       const user: User = {
         id: employee.id,
         email: employee.email,
-        role: (employee.role ? String(employee.role).toLowerCase() : 'worker'),
+        role: employee.role || 'operario',
         permissions: employee.permissions || {},
         name: employee.nombre
       }
@@ -79,14 +100,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Actualizar last_login
       await supabase
         .from('production_employees')
-        .update({ 
-          last_login: new Date().toISOString(),
-          active_session: true
-        })
+        .update({ last_login: new Date().toISOString() })
         .eq('id', employee.id)
 
       setUser(user)
       localStorage.setItem('auth_user', JSON.stringify(user))
+
+      // REGISTRAR ENTRADA (excepto admin)
+      if (employee.id !== 'admin') {
+        try {
+          await TimeclockService.registerLogin(employee.id, employee.nombre)
+          console.log('✅ Entrada registrada')
+        } catch (error) {
+          console.error('⚠️ Error registrando entrada:', error)
+          // No bloquear el login si falla el fichaje
+        }
+      }
+
       toast.success('¡Bienvenido!')
     } catch (error: any) {
       toast.error(error.message || 'Error al iniciar sesión')
@@ -97,10 +127,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    // Registrar salida antes de borrar usuario
+    if (user && user.id !== 'admin') {
+      try {
+        await TimeclockService.registerLogout(user.id, user.name || user.email)
+      } catch (error) {
+        console.error('Error registrando salida:', error)
+      }
+    }
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
-      
+      await supabase.auth.signOut()
+      localStorage.removeItem('auth_user')
       setUser(null)
       toast.success('Sesión cerrada')
     } catch (error: any) {
@@ -112,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string) => {
     try {
       setLoading(true)
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email,
         password,
       })
@@ -120,8 +157,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error
 
       toast.success('Usuario creado. Revisa tu email para confirmar.')
-      
-      return data
     } catch (error: any) {
       toast.error(error.message || 'Error al registrarse')
       throw error
@@ -152,7 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   console.log('✅ Renderizando children')
   return (
-    <AuthContext.Provider value={{ user, signIn, signOut, loading }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

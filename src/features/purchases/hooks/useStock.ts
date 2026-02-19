@@ -18,5 +18,4 @@ export function useStock() {
     loading,
     stockLoaded,
   }
-  }
 }

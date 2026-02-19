@@ -1,29 +1,57 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { PageLayout } from '@/shared/components/layout/PageLayout'
 import { Header } from '@/shared/components/layout/Header'
 import { Card, CardContent } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
-import Quoteslist from './Quoteslist'
+import QuotesTabbedList from './QuotesTabbedList'
 import QuoteGenerator from './QuoteGenerator'
 
+type LeadData = {
+  lead_id: string
+  clientName: string
+  clientPhone?: string
+  clientEmail?: string
+  vehicleModel?: string
+}
+
 export default function Quotes() {
+  const location = useLocation()
   const [activeTab, setActiveTab] = useState<'list' | 'new'>('list')
   const [editingQuoteId, setEditingQuoteId] = useState<string | undefined>(undefined)
-  const [refreshKey, setRefreshKey] = useState(0) // NUEVO: para forzar refresh
+  const [initialLeadData, setInitialLeadData] = useState<LeadData | undefined>(undefined)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // If navigated from CRM with a lead, open the new-quote tab pre-filled
+  useEffect(() => {
+    const state = location.state as { createFromLead?: LeadData; editQuoteId?: string } | null
+    if (state?.createFromLead) {
+      setInitialLeadData(state.createFromLead)
+      setEditingQuoteId(undefined)
+      setActiveTab('new')
+    } else if (state?.editQuoteId) {
+      setEditingQuoteId(state.editQuoteId)
+      setInitialLeadData(undefined)
+      setActiveTab('new')
+    }
+  }, [location.state])
 
   const handleEditQuote = (quoteId: string) => {
     setEditingQuoteId(quoteId)
+    setInitialLeadData(undefined)
     setActiveTab('new')
   }
 
   const handleNewQuote = () => {
     setEditingQuoteId(undefined)
+    setInitialLeadData(undefined)
     setActiveTab('new')
   }
 
   const handleBackToList = () => {
     setActiveTab('list')
-    setRefreshKey(prev => prev + 1) // NUEVO: forzar refresh de la lista
+    setInitialLeadData(undefined)
+    setRefreshKey(prev => prev + 1)
   }
 
   return (
@@ -43,14 +71,14 @@ export default function Quotes() {
                 onClick={handleBackToList}
                 className="flex-1"
               >
-                📋 Ver Presupuestos
+                📋 Ver Documentos
               </Button>
               <Button
                 variant={activeTab === 'new' ? 'default' : 'outline'}
                 onClick={handleNewQuote}
                 className="flex-1"
               >
-                ➕ Nuevo Presupuesto
+                ✏️ Nuevo Documento
               </Button>
             </div>
           </CardContent>
@@ -58,9 +86,13 @@ export default function Quotes() {
 
         {/* Contenido según tab */}
         {activeTab === 'list' ? (
-          <Quoteslist key={refreshKey} onEditQuote={handleEditQuote} />
+          <QuotesTabbedList key={refreshKey} onEditQuote={handleEditQuote} />
         ) : (
-          <QuoteGenerator quoteId={editingQuoteId} onSaved={handleBackToList} />
+          <QuoteGenerator
+            quoteId={editingQuoteId}
+            initialLeadData={initialLeadData}
+            onSaved={handleBackToList}
+          />
         )}
       </div>
     </PageLayout>

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { PageLayout } from '@/shared/components/layout/PageLayout'
 import { Header } from '@/shared/components/layout/Header'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
+import { Card, CardContent } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
 import { ProductionService } from '@/features/calendar/services/productionService'
-import { ProductionProject, ProductionTask } from '@/features/calendar/types/production.types'
+import { ProductionProject } from '@/features/calendar/types/production.types'
 import { ProductionEmployee } from '@/features/config/types/config.types'
 import { ConfigService } from '@/features/config/services/configService'
 import ProjectCard from './ProjectCard'
@@ -128,7 +128,7 @@ export default function ProductionDashboard() {
             variant={activeView === 'tasks' ? 'default' : 'outline'}
             className="gap-2"
           >
-            ✅ Tareas
+            📦 Bloques de Tareas
           </Button>
         </div>
 
@@ -239,6 +239,8 @@ export default function ProductionDashboard() {
             projects={projects}
             employees={employees}
             onRefresh={loadData}
+            viewMode="all_tasks"
+            canAssignTasks={true}
           />
         )}
 
@@ -249,22 +251,20 @@ export default function ProductionDashboard() {
             onClick={() => setSelectedProject(null)}
           >
             <Card 
-              className="max-w-4xl w-full max-h-[90vh] overflow-hidden"
+              className="max-w-6xl w-full max-h-[90vh] overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <CardHeader className="border-b">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-2xl">{selectedProject.quote_number}</CardTitle>
-                    <p className="text-gray-600 mt-1">{selectedProject.client_name}</p>
-                  </div>
-                  <Button onClick={() => setSelectedProject(null)} variant="outline" size="sm">
-                    ✕ Cerrar
-                  </Button>
+              <div className="p-6 border-b flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">{selectedProject.quote_number}</h2>
+                  <p className="text-gray-600 mt-1">{selectedProject.client_name}</p>
                 </div>
-              </CardHeader>
+                <Button onClick={() => setSelectedProject(null)} variant="outline" size="sm">
+                  ✕ Cerrar
+                </Button>
+              </div>
 
-              <CardContent className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
                 <TaskBoard
                   projects={[selectedProject]}
                   employees={employees}
@@ -272,9 +272,10 @@ export default function ProductionDashboard() {
                     loadData()
                     setSelectedProject(null)
                   }}
-                  compactMode={true}
+                  viewMode="all_tasks"
+                  canAssignTasks={true}
                 />
-              </CardContent>
+              </div>
             </Card>
           </div>
         )}

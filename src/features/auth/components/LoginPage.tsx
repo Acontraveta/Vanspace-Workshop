@@ -12,7 +12,6 @@ export default function LoginPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    console.log('[LoginPage] Render. loading:', loading, 'user:', user)
     if (user) {
       navigate('/', { replace: true })
     }
@@ -21,20 +20,16 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    console.log('[LoginPage] Submit. Email:', email)
 
     if (!email || !password) {
       setError('Por favor completa todos los campos')
-      console.log('[LoginPage] Falta email o password')
       return
     }
 
     try {
       await signIn(email, password)
-      console.log('[LoginPage] Login exitoso')
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesión')
-      console.log('[LoginPage] Error al iniciar sesión:', err)
     }
   }
 
@@ -96,18 +91,8 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
             >
-              {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+              {loading ? 'Iniciando sesión...' : 'Iniciar/continuar jornada'}
             </Button>
-
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-xs text-blue-800 font-medium mb-2">
-                📝 Credenciales de prueba:
-              </p>
-              <p className="text-xs text-blue-700">
-                <strong>Email:</strong> admin@vanspace.com<br />
-                <strong>Password:</strong> admin123456
-              </p>
-            </div>
           </form>
         </CardContent>
       </Card>

@@ -115,7 +115,7 @@ export interface Tarifa {
   updated_at?: string
 }
 
-export interface ProductionEmployee {
+export interface SimpleEmployeeRecord {
   id: string
   nombre: string
   rol: string
@@ -153,7 +153,13 @@ export interface ConfigSetting {
 
 export interface AlertSetting {
   tipo_alerta: string
+  nombre?: string
+  descripcion?: string
+  icono?: string
   activa: boolean
+  dias_umbral?: number
+  roles_destino?: string[]
+  prioridad?: 'alta' | 'media' | 'baja'
   destinatario?: string
   condicion?: string
   created_at?: string

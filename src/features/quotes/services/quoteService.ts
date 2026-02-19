@@ -1,5 +1,36 @@
 import { Quote } from '../types/quote.types'
 import toast from 'react-hot-toast'
+import { supabase } from '@/lib/supabase'
+
+// Map Quote → Supabase row
+function toDb(q: Quote) {
+  return {
+    id: q.id,
+    quote_number: q.quoteNumber,
+    lead_id: q.lead_id ?? null,
+    client_name: q.clientName,
+    client_email: q.clientEmail ?? null,
+    client_phone: q.clientPhone ?? null,
+    vehicle_model: q.vehicleModel ?? null,
+    vehicle_size: (q as any).vehicleSize ?? null,
+    billing_data: q.billingData ?? null,
+    tarifa: q.tarifa ?? {},
+    items: q.items ?? [],
+    subtotal_materials: q.subtotalMaterials ?? 0,
+    subtotal_labor: q.subtotalLabor ?? 0,
+    subtotal: q.subtotal ?? 0,
+    profit_margin: q.profitMargin ?? 0,
+    profit_amount: q.profitAmount ?? 0,
+    total: q.total ?? 0,
+    total_hours: q.totalHours ?? 0,
+    valid_until: q.validUntil instanceof Date ? q.validUntil.toISOString() : q.validUntil,
+    approved_at: q.approvedAt instanceof Date ? q.approvedAt.toISOString() : (q.approvedAt ?? null),
+    cancelled_at: q.cancelledAt instanceof Date ? q.cancelledAt.toISOString() : (q.cancelledAt ?? null),
+    status: q.status,
+    notes: (q as any).notes ?? null,
+    created_at: q.createdAt instanceof Date ? q.createdAt.toISOString() : q.createdAt,
+  }
+}
 
 export class QuoteService {
   private static STORAGE_KEY = 'saved_quotes'
@@ -17,6 +48,10 @@ export class QuoteService {
     }
     
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(quotes))
+    // Persist to Supabase in background
+    supabase.from('quotes').upsert(toDb(quote)).then(({ error }) => {
+      if (error) console.warn('Supabase quote sync failed:', error.message)
+    })
     toast.success('Presupuesto guardado')
   }
 
@@ -114,6 +149,15 @@ export class QuoteService {
     quote.approvedAt = new Date()
     
     this.saveQuote(quote)
+
+    // Actualizar el lead en CRM si el presupuesto está vinculado a uno
+    if (quote.lead_id) {
+      import('@/features/crm/services/leadService')
+        .then(({ updateLead }) =>
+          updateLead(quote.lead_id!, { estado: 'Aprobado' })
+        )
+        .catch(e => console.warn('No se pudo actualizar el lead en CRM:', e))
+    }
     
     toast.success('¡Presupuesto aprobado! Iniciando automatización...')
     
@@ -153,6 +197,10 @@ export class QuoteService {
     
     const filtered = quotes.filter(q => q.id !== quoteId)
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered))
+    // Remove from Supabase in background
+    supabase.from('quotes').delete().eq('id', quoteId).then(({ error }) => {
+      if (error) console.warn('Supabase quote delete failed:', error.message)
+    })
     toast.success('Presupuesto eliminado')
   }
 

@@ -1,6 +1,8 @@
 import { Quote, QuoteItem } from '../types/quote.types'
 import { PurchaseItem } from '@/features/purchases/types/purchase.types'
 import { StockService } from '@/features/purchases/services/stockService'
+import { PurchaseService } from '@/features/purchases/services/purchaseService'
+import { supabase } from '@/lib/supabase'
 
 interface AutomationResult {
   success: boolean
@@ -23,14 +25,19 @@ export class QuoteAutomation {
     let totalDesignInstructions = 0
     
     try {
-      // 1. Generar pedidos de materiales (considerando stock)
-      const purchaseItems = this.generatePurchaseList(quote)
+      // 1. Generar pedidos de materiales (considerando stock desde Supabase)
+      const purchaseItems = await this.generatePurchaseList(quote)
       totalPurchaseItems = purchaseItems.length
       
-      // Guardar pedidos
-      const existingPurchases = JSON.parse(localStorage.getItem('purchase_items') || '[]')
-      const allPurchases = [...existingPurchases, ...purchaseItems]
-      localStorage.setItem('purchase_items', JSON.stringify(allPurchases))
+      // Guardar pedidos en Supabase (error no-bloquea la automatización)
+      if (purchaseItems.length > 0) {
+        try {
+          await PurchaseService.savePurchases(purchaseItems)
+        } catch (saveErr: any) {
+          console.error('⚠️ Error guardando pedidos en Supabase:', saveErr)
+          errors.push('Pedidos no guardados en Supabase: ' + saveErr.message)
+        }
+      }
       
       console.log(`📦 ${totalPurchaseItems} pedidos de compra generados`)
       
@@ -59,10 +66,13 @@ export class QuoteAutomation {
       // 4. Añadir pedidos para stock bajo
       const lowStockPurchases = this.generateLowStockPurchases()
       if (lowStockPurchases.length > 0) {
-        const allPurchasesWithLowStock = [...allPurchases, ...lowStockPurchases]
-        localStorage.setItem('purchase_items', JSON.stringify(allPurchasesWithLowStock))
-        totalPurchaseItems += lowStockPurchases.length
-        console.log(`⚠️ ${lowStockPurchases.length} pedidos adicionales por stock bajo`)
+        try {
+          await PurchaseService.savePurchases(lowStockPurchases)
+          totalPurchaseItems += lowStockPurchases.length
+          console.log(`⚠️ ${lowStockPurchases.length} pedidos adicionales por stock bajo`)
+        } catch (lsErr: any) {
+          console.warn('⚠️ Error guardando pedidos de stock bajo:', lsErr.message)
+        }
       }
       
       // 5. NUEVO: Crear proyecto de producción en el calendario
@@ -83,6 +93,7 @@ export class QuoteAutomation {
           requires_design: designInstructions.length > 0,
           design_ready: false,
           notes: `Presupuesto ID: ${quote.id}\n` +
+                 (quote.lead_id ? `CRM Lead ID: ${quote.lead_id}\n` : '') +
                  `Aprobado: ${quote.total.toFixed(2)}€\n` +
                  `📦 Materiales: ${totalPurchaseItems} pedidos\n` +
                  `⚙️ Tareas: ${totalTasks}\n` +
@@ -91,23 +102,92 @@ export class QuoteAutomation {
         
         console.log('✅ Proyecto creado en calendario:', project.id)
         
+        // Vincular los pedidos de compra recién creados a este proyecto en Supabase
+        if (purchaseItems.length > 0) {
+          try {
+            await supabase
+              .from('purchase_items')
+              .update({ project_id: project.id })
+              .in('id', purchaseItems.map(p => p.id))
+            console.log(`🔗 ${purchaseItems.length} pedidos vinculados al proyecto ${project.id}`)
+          } catch (e) {
+            console.warn('No se pudieron vincular los pedidos al proyecto:', e)
+          }
+        }
+        // Agrupar tasks por productSKU para saber cuál es la primera de cada bloque
+        const tasksByBlock: Record<string, typeof tasks> = {};
+        const blockMaterialsCollected: Record<string, boolean> = {};
+        tasks.forEach(task => {
+          const blockId = task.productSKU || task.productName;
+          if (!tasksByBlock[blockId]) tasksByBlock[blockId] = [];
+          tasksByBlock[blockId].push(task);
+        });
+        // Determinar si algún task del bloque ha recogido materiales
+        Object.keys(tasksByBlock).forEach(blockId => {
+          const blockTasks = tasksByBlock[blockId];
+          // Si algún task tiene materials_collected true, el bloque está recogido
+          blockMaterialsCollected[blockId] = blockTasks.some(t => t.materials_collected === true);
+        });
+
         // Crear tareas de producción en Supabase
         for (const task of tasks) {
+          const blockId = task.productSKU || task.productName;
+          const blockTasks = tasksByBlock[blockId];
+          const isFirst = blockTasks.indexOf(task) === 0;
+          const blockOrder = blockTasks.indexOf(task);
+          // Nuevo: materiales_collected a nivel de bloque
+          const materialsCollected = blockMaterialsCollected[blockId] || false;
+
+          // ► Determinar si esta tarea debe bloquearse:
+          //   Solo si ALGUNO de sus materiales no tenía stock suficiente
+          //   (= fue añadido a purchaseItems).
+          //   Matching por nombre de material, no por productName (que no se guarda en purchases).
+          const pendingMaterials = purchaseItems.filter(p =>
+            task.materialsList?.some((m: any) =>
+              m.name?.toLowerCase().trim() === p.materialName?.toLowerCase().trim()
+            )
+          );
+          const isBlocked = task.requiresMaterial && pendingMaterials.length > 0;
+
+          // Construir blocked_reason solo si realmente está bloqueada
+          let blockedReason: string | undefined = undefined;
+          if (isBlocked) {
+            const lines = pendingMaterials.map(p => {
+              const deliveryDays = p.deliveryDays ||
+                quote.items.find(i => i.productName === task.productName || i.catalogSKU === task.productSKU)
+                  ?.catalogData?.DIAS_ENTREGA_PROVEEDOR || 7;
+              const arrivalDate = new Date();
+              arrivalDate.setDate(arrivalDate.getDate() + Number(deliveryDays));
+              const arrivalStr = arrivalDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+              return `• ${p.materialName} (${p.quantity} ${p.unit}) · Llega ~${arrivalStr}`;
+            });
+            blockedReason = `Esperando materiales:\n${lines.join('\n')}`;
+          }
+
           await ProductionService.createTask({
             project_id: project.id,
             task_name: task.taskName,
             product_name: task.productName,
             estimated_hours: task.duration,
-            status: task.status === 'BLOCKED' ? 'BLOCKED' : 'PENDING',
+            status: isBlocked ? 'BLOCKED' : 'PENDING',
             requires_material: task.requiresMaterial ? 'Materiales del producto' : undefined,
-            material_ready: !task.requiresMaterial,
+            material_ready: !isBlocked,
             requires_design: task.requiresDesign,
-            design_ready: !task.requiresDesign,
-            blocked_reason: task.blocked ? 'Esperando materiales/diseño' : undefined,
-            order_index: tasks.indexOf(task)
-          })
+            design_ready: true,
+            blocked_reason: blockedReason,
+            order_index: tasks.indexOf(task),
+            materials: task.materialsList || [],
+            consumables: task.consumablesList || [],
+            instructions_design: task.instructions || '',
+            catalog_sku: task.productSKU || '',
+            requiere_diseno: task.requiresDesign || false,
+            task_block_id: blockId,
+            block_order: blockOrder,
+            is_block_first: isFirst,
+            materials_collected: materialsCollected,
+          });
         }
-        
+
         console.log(`✅ ${tasks.length} tareas añadidas al proyecto del calendario`)
         
       } catch (calendarError) {
@@ -126,88 +206,76 @@ export class QuoteAutomation {
       }
       
     } catch (error: any) {
-      console.error('❌ Error en automatización:', error)
+      console.error('❌ Error crítico en automatización:', error.message, error)
       return {
         success: false,
-        details: {
-          totalPurchaseItems: 0,
-          totalTasks: 0,
-          totalDesignInstructions: 0
-        },
+        details: { totalPurchaseItems, totalTasks, totalDesignInstructions },
         errors: [error.message]
       }
     }
   }
   
-  private static generatePurchaseList(quote: Quote): PurchaseItem[] {
+  private static async generatePurchaseList(quote: Quote): Promise<PurchaseItem[]> {
     const purchases: PurchaseItem[] = []
     const projectId = quote.id.slice(-5)
     
     console.log('🔍 GENERANDO PEDIDOS PARA:', quote.quoteNumber)
     console.log('📋 Total items en presupuesto:', quote.items.length)
     
-    quote.items.forEach((item: QuoteItem, idx) => {
+    for (let idx = 0; idx < quote.items.length; idx++) {
+      const item = quote.items[idx] as QuoteItem
       console.log(`\n--- ITEM ${idx + 1}: ${item.productName} ---`)
       console.log('Catalog data:', item.catalogData)
       
       // Obtener materiales del producto
       const materials = this.extractMaterials(item)
-      console.log(`📦 Materiales extraídos:`, materials.length)
+      console.log(`\ud83d\udce6 Materiales extra\u00eddos:`, materials.length)
       
-      materials.forEach((material, matIdx) => {
-        console.log(`\n  Material ${matIdx + 1}:`, material.name, '-', material.quantity, material.unit)
-        
-        // VERIFICAR STOCK DISPONIBLE
-        const stockItem = StockService.findItemByName(material.name)
-        console.log(`  Stock encontrado:`, stockItem ? `${stockItem.ARTICULO} (${stockItem.CANTIDAD} ${stockItem.UNIDAD})` : '❌ NO ENCONTRADO')
-        
-        const stockDisponible = stockItem?.CANTIDAD || 0
-        const cantidadNecesaria = material.quantity
-        
-        console.log(`  Necesario: ${cantidadNecesaria} | Disponible: ${stockDisponible}`)
-        
-        // Solo crear pedido si NO hay suficiente stock
-        if (stockDisponible < cantidadNecesaria) {
-          const cantidadAPedir = cantidadNecesaria - stockDisponible
-          console.log(`  ✅ CREAR PEDIDO: ${cantidadAPedir} ${material.unit}`)
+      for (let matIdx = 0; matIdx < materials.length; matIdx++) {
+        const material = materials[matIdx]
+        console.log(`\n  Material ${matIdx + 1}:`, material.name, '-', material.quantity)
           
-          // Calcular prioridad basada en días de entrega
-          const deliveryDays = material.deliveryDays || 7
-          let priority = 5
+          // VERIFICAR STOCK DISPONIBLE (desde Supabase)
+          const { data: stockRow } = await supabase
+            .from('stock_items')
+            .select('cantidad, articulo, unidad')
+            .or(`articulo.ilike.%${material.name}%,referencia.ilike.%${material.name}%`)
+            .maybeSingle()
+          console.log(`  Stock encontrado:`, stockRow ? `${stockRow.articulo} (${stockRow.cantidad} ${stockRow.unidad})` : '❌ NO ENCONTRADO')
           
-          if (deliveryDays >= 14) {
-            priority = 9
-          } else if (deliveryDays >= 7) {
-            priority = 7
-          } else if (deliveryDays >= 3) {
-            priority = 5
+          const stockDisponible = (stockRow?.cantidad as number) || 0
+          const cantidadNecesaria = material.quantity
+          
+          console.log(`  Necesario: ${cantidadNecesaria} | Disponible: ${stockDisponible}`)
+          
+          // Solo crear pedido si NO hay suficiente stock
+          if (stockDisponible < cantidadNecesaria) {
+            const cantidadAPedir = cantidadNecesaria - stockDisponible
+            console.log(`  ✅ CREAR PEDIDO: ${cantidadAPedir} ${material.unit}`)
+            
+            // Calcular prioridad basada en días de entrega
+            const deliveryDays = material.deliveryDays || 7
+            let priority = 5
+            
+            if (deliveryDays >= 14) {
+              priority = 3
+            }
+            purchases.push({
+              id: crypto.randomUUID(),
+              referencia: '',
+              materialName: material.name,
+              quantity: cantidadAPedir,
+              unit: material.unit,
+              priority,
+              status: 'PENDING',
+              createdAt: new Date(),
+              notes: ''
+            })
           } else {
-            priority = 3
+            console.log(`  ⏭️ OMITIR: Hay suficiente stock`)
           }
-          
-          const purchase: PurchaseItem = {
-            id: `purchase-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            projectId,
-            projectNumber: quote.quoteNumber,
-            referencia: stockItem?.REFERENCIA,
-            materialName: material.name,
-            quantity: cantidadAPedir,
-            unit: material.unit,
-            provider: material.provider,
-            deliveryDays: deliveryDays,
-            priority: priority,
-            productSKU: item.catalogSKU,
-            productName: item.productName,
-            status: 'PENDING',
-            createdAt: new Date()
-          }
-          
-          purchases.push(purchase)
-        } else {
-          console.log(`  ⏭️ OMITIR: Hay suficiente stock`)
         }
-      })
-    })
+      }
     
     console.log(`\n✅ TOTAL PEDIDOS GENERADOS: ${purchases.length}`)
     
@@ -224,7 +292,7 @@ export class QuoteAutomation {
       
       if (cantidadAPedir > 0) {
         const purchase: PurchaseItem = {
-          id: `lowstock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: crypto.randomUUID(),
           referencia: item.REFERENCIA,
           materialName: item.ARTICULO,
           quantity: cantidadAPedir,
@@ -256,6 +324,11 @@ export class QuoteAutomation {
       provider?: string
       deliveryDays?: number
     }> = []
+
+    if (!item.catalogData) {
+      console.log('  ⚠️ Sin catalogData en item:', item.productName)
+      return materials
+    }
     
     console.log('  🔍 Extrayendo materiales de catalogData...')
 
@@ -313,21 +386,70 @@ export class QuoteAutomation {
     const projectId = quote.id.slice(-5)
     
     quote.items.forEach((item: QuoteItem) => {
+      // Extraer materiales y consumibles del producto
+      const materialsList = [];
+      const consumablesList = [];
+      for (let m = 1; m <= 10; m++) {
+        const matKey = `MATERIAL_${m}`;
+        const cantKey = `MATERIAL_${m}_CANT`;
+        const unidadKey = `MATERIAL_${m}_UNIDAD`;
+        if (item.catalogData && item.catalogData[matKey]) {
+          materialsList.push({
+            name: item.catalogData[matKey],
+            quantity: item.catalogData[cantKey] || 1,
+            unit: item.catalogData[unidadKey] || 'ud',
+          });
+        }
+        const consKey = `CONSUMIBLE_${m}`;
+        const consCantKey = `CONSUMIBLE_${m}_CANT`;
+        const consUnidadKey = `CONSUMIBLE_${m}_UNIDAD`;
+        if (item.catalogData && item.catalogData[consKey]) {
+          consumablesList.push({
+            name: item.catalogData[consKey],
+            quantity: item.catalogData[consCantKey] || 1,
+            unit: item.catalogData[consUnidadKey] || 'ud',
+          });
+        }
+      }
+      // Si no hay catalogData ni tareas definidas, generar una tarea genérica por defecto
+      if (!item.catalogData) {
+        const genericTask = {
+          id: crypto.randomUUID(),
+          projectId,
+          projectNumber: quote.quoteNumber,
+          productSKU: item.catalogSKU,
+          productName: item.productName,
+          taskName: item.productName,
+          duration: item.laborHours,
+          requiresMaterial: false,
+          requiresDesign: false,
+          blocked: false,
+          status: 'READY',
+          assignedTo: null,
+          createdAt: new Date(),
+          materialsList: [],
+          consumablesList: [],
+          instructions: '',
+        };
+        tasks.push(genericTask);
+        return;
+      }
+
       // Extraer tareas del producto
+      let hasExplicitTasks = false;
       for (let i = 1; i <= 12; i++) {
-        const tareaKey = `TAREA_${i}_NOMBRE` as keyof typeof item.catalogData
-        const duracionKey = `TAREA_${i}_DURACION` as keyof typeof item.catalogData
-        const requiereMaterialKey = `TAREA_${i}_REQUIERE_MATERIAL` as keyof typeof item.catalogData
-        const requiereDiseñoKey = `TAREA_${i}_REQUIERE_DISEÑO` as keyof typeof item.catalogData
-        
-        const tareaNombre = item.catalogData[tareaKey]
-        const duracion = parseFloat(String(item.catalogData[duracionKey] || 0))
-        const requiereMaterial = item.catalogData[requiereMaterialKey] === 'SI' || item.catalogData[requiereMaterialKey] === true
-        const requiereDiseño = item.catalogData[requiereDiseñoKey] === 'SI' || item.catalogData[requiereDiseñoKey] === true
-        
+        const tareaKey = `TAREA_${i}_NOMBRE` as keyof typeof item.catalogData;
+        const duracionKey = `TAREA_${i}_DURACION` as keyof typeof item.catalogData;
+        const requiereMaterialKey = `TAREA_${i}_REQUIERE_MATERIAL` as keyof typeof item.catalogData;
+        const requiereDiseñoKey = `TAREA_${i}_REQUIERE_DISEÑO` as keyof typeof item.catalogData;
+        const tareaNombre = item.catalogData[tareaKey];
+        const duracion = parseFloat(String(item.catalogData[duracionKey] || 0));
+        const requiereMaterial = String(item.catalogData[requiereMaterialKey]) === 'SÍ';
+        const requiereDiseño = String(item.catalogData[requiereDiseñoKey]) === 'SÍ';
         if (tareaNombre && duracion > 0) {
+          hasExplicitTasks = true;
           const task = {
-            id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: crypto.randomUUID(),
             projectId,
             projectNumber: quote.quoteNumber,
             productSKU: item.catalogSKU,
@@ -336,16 +458,42 @@ export class QuoteAutomation {
             duration: duracion,
             requiresMaterial: requiereMaterial,
             requiresDesign: requiereDiseño,
-            blocked: requiereMaterial || requiereDiseño,
-            status: (requiereMaterial || requiereDiseño) ? 'BLOCKED' : 'READY',
+            blocked: requiereMaterial, // Solo se bloquea si falta material
+            status: requiereMaterial ? 'BLOCKED' : 'READY',
             assignedTo: null,
-            createdAt: new Date()
-          }
-          
-          tasks.push(task)
+            createdAt: new Date(),
+            materialsList,
+            consumablesList,
+            instructions: item.catalogData && item.catalogData.INSTRUCCIONES_DISEÑO ? item.catalogData.INSTRUCCIONES_DISEÑO : '',
+          };
+          tasks.push(task);
         }
       }
-    })
+
+      // Si no se encontraron tareas explícitas, crear una tarea genérica
+      if (!hasExplicitTasks) {
+        const hasMaterials = materialsList.length + consumablesList.length > 0;
+        const genericTask = {
+          id: crypto.randomUUID(),
+          projectId,
+          projectNumber: quote.quoteNumber,
+          productSKU: item.catalogSKU,
+          productName: item.productName,
+          taskName: item.productName,
+          duration: item.laborHours,
+          requiresMaterial: hasMaterials,
+          requiresDesign: item.catalogData.REQUIERE_DISEÑO === 'SÍ',
+          blocked: hasMaterials,
+          status: hasMaterials ? 'BLOCKED' : 'READY',
+          assignedTo: null,
+          createdAt: new Date(),
+          materialsList,
+          consumablesList,
+          instructions: item.catalogData.INSTRUCCIONES_DISEÑO || '',
+        };
+        tasks.push(genericTask);
+      }
+    });
     
     return tasks
   }
@@ -355,11 +503,12 @@ export class QuoteAutomation {
     const projectId = quote.id.slice(-5)
     
     quote.items.forEach((item: QuoteItem) => {
-      const requiereDiseno = item.catalogData.REQUIERE_DISEÑO === 'SI' || item.catalogData.REQUIERE_DISEÑO === true
+      if (!item.catalogData) return
+      const requiereDiseno = item.catalogData.REQUIERE_DISEÑO === 'SÍ'
       
       if (requiereDiseno) {
         const design = {
-          id: `design-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: crypto.randomUUID(),
           projectId,
           projectNumber: quote.quoteNumber,
           productSKU: item.catalogSKU,

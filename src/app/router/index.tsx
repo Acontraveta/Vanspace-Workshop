@@ -12,6 +12,8 @@ const ProductionDashboard = lazy(() => import('@/features/production/components/
 const PurchaseList = lazy(() => import('@/features/purchases/components/PurchaseList'))
 const ProductionCalendar = lazy(() => import('@/features/calendar/components/ProductionCalendar'))
 const ConfigurationPanel = lazy(() => import('@/features/config/components/ConfigurationPanel'))
+const TimeclockPage = lazy(() => import('@/features/timeclock/components/TimeclockPage'))
+const CRMDashboard = lazy(() => import('@/features/crm/components/CRMDashboard'))
 
 // Dashboards
 const AdminDashboard = lazy(() => import('@/features/dashboards/AdminDashboard'))
@@ -167,6 +169,26 @@ export const router = createBrowserRouter([
           <Suspense fallback={<PageLoading />}>
             <PermissionGuard permission="config.view">
               <ConfigurationPanel />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'crm',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <CRMDashboard />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'timeclock',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard permission="admin.full">
+              <TimeclockPage />
             </PermissionGuard>
           </Suspense>
         )

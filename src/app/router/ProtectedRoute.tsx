@@ -1,15 +1,13 @@
 
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../providers/AuthProvider'
-import Sidebar from '../../../components/Sidebar'
+import { Sidebar } from '@/shared/components/layout/Sidebar'
+import MyHoursWidget from '@/features/timeclock/components/MyHoursWidget'
 
 export function ProtectedRoute() {
-  const { user, loading, signOut } = useAuth()
-
-  console.log('🔍 ProtectedRoute. Loading:', loading, 'User:', user?.email || 'none')
+  const { user, loading } = useAuth()
 
   if (loading) {
-    console.log('⏳ ProtectedRoute: Mostrando loading')
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -21,16 +19,17 @@ export function ProtectedRoute() {
   }
 
   if (!user) {
-    console.log('❌ No user, redirect to login')
     return <Navigate to="/login" replace />
   }
-
-  console.log('✅ User authenticated, showing content')
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar currentView="dashboard" onViewChange={() => {}} currentUser={user} onLogout={signOut} />
+      <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <Outlet />
+        {/* Widget de horas flotante para no-admin */}
+        {user.email !== 'admin@vanspace.com' && user.role !== 'admin' && (
+          <MyHoursWidget />
+        )}
       </main>
     </div>
   )

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { ProductionProject, ProductionTask, CalendarEvent, ScheduleSuggestion } from '../types/production.types'
+import { AvailabilityService } from './availabilityService'
 import { addDays, addWeeks, isWeekend, nextMonday, format, parseISO, differenceInDays } from 'date-fns'
 
 export class ProductionService {
@@ -78,7 +79,7 @@ export class ProductionService {
   }
 
   // ============================================
-  // SUGERENCIAS DE CALENDARIO
+  // SUGERENCIAS DE CALENDARIO (con capacidad)
   // ============================================
   
   static async getSuggestions(projectId: string): Promise<ScheduleSuggestion[]> {
@@ -103,60 +104,125 @@ export class ProductionService {
         'calendario.margen_seguridad_diseño'
       ])
 
-    const marginDays = config?.find(c => c.key === 'calendario.margen_seguridad_compras')?.value || '2'
-    
-    const suggestions: ScheduleSuggestion[] = []
-    let currentDate = new Date()
+    const marginDays = parseInt(
+      config?.find(c => c.key === 'calendario.margen_seguridad_compras')?.value || '2'
+    )
 
-    // Añadir margen si requiere materiales
+    // ── Employee capacity ──────────────────────────────────
+    const { employeeCount, dailyHours } = await AvailabilityService.getTallerCapacity()
+
+    const suggestions: ScheduleSuggestion[] = []
+    let baseDate = new Date()
+
+    // Add materials/design margin before starting
     if (project.requires_materials && !project.materials_ready) {
-      currentDate = addDays(currentDate, parseInt(marginDays))
+      baseDate = addDays(baseDate, marginDays)
+    }
+    if (project.requires_design && !project.design_ready) {
+      baseDate = addDays(baseDate, marginDays)
     }
 
-    // Generar sugerencias para las próximas 4 semanas
-    for (let week = 0; week < 4; week++) {
-      let startDate = addWeeks(currentDate, week)
-      
-      // Si cae en fin de semana, mover al lunes
+    // Generate candidates: next 6 Mondays (so we can pick the best 4)
+    for (let week = 0; week < 6; week++) {
+      let startDate = addWeeks(baseDate, week)
       if (isWeekend(startDate)) {
         startDate = nextMonday(startDate)
       }
 
-      const endDate = this.calculateEndDate(startDate, project.total_days)
+      // Build capacity window for this slot
+      const window = AvailabilityService.buildCapacityWindow(
+        startDate,
+        project,
+        scheduledProjects || [],
+        dailyHours,
+        employeeCount,
+      )
 
-      // Verificar conflictos
-      const conflicts = this.checkConflicts(startDate, endDate, scheduledProjects || [])
-      
-      // Calcular puntuación
-      const score = this.calculateScore(startDate, conflicts, project)
+      // Check date-range conflicts (existing projects that overlap)
+      const conflicts = this.checkConflicts(
+        parseISO(window.startDate),
+        parseISO(window.endDate),
+        scheduledProjects || [],
+      )
+
+      const score = this.calculateScoreWithCapacity(
+        startDate,
+        conflicts,
+        project,
+        window.avgUtilization,
+        window.canFit,
+        week,
+      )
 
       suggestions.push({
-        start_date: format(startDate, 'yyyy-MM-dd'),
-        end_date: format(endDate, 'yyyy-MM-dd'),
+        start_date: window.startDate,
+        end_date: window.endDate,
         conflicts: conflicts.length > 0,
         conflictingProjects: conflicts,
         score,
-        reason: this.getScoreReason(score, conflicts, week)
+        reason: this.getScoreReasonWithCapacity(score, conflicts, week, window.avgUtilization, window.canFit),
+        capacity: {
+          dailyCapacity: window.dailyCapacity,
+          employeeCount: window.employeeCount,
+          peakUtilization: window.peakUtilization,
+          avgUtilization: window.avgUtilization,
+          canFit: window.canFit,
+          hasCapacity: window.hasCapacity,
+        },
       })
     }
 
-    return suggestions.sort((a, b) => b.score - a.score)
+    return suggestions.sort((a, b) => b.score - a.score).slice(0, 4)
   }
 
-  private static calculateEndDate(startDate: Date, totalDays: number): Date {
-    let remainingDays = totalDays
-    let currentDate = new Date(startDate)
+  private static calculateScoreWithCapacity(
+    startDate: Date,
+    conflicts: ProductionProject[],
+    project: ProductionProject,
+    avgUtilization: number,
+    canFit: boolean,
+    week: number,
+  ): number {
+    let score = 100
 
-    while (remainingDays > 0) {
-      if (!isWeekend(currentDate)) {
-        remainingDays--
-      }
-      if (remainingDays > 0) {
-        currentDate = addDays(currentDate, 1)
-      }
-    }
+    // Penalize for date-range conflicts with other projects
+    score -= conflicts.length * 15
 
-    return currentDate
+    // Penalize by capacity utilization (canFit = all days have room)
+    if (!canFit) score -= 30
+    else if (avgUtilization > 80) score -= 10
+    else if (avgUtilization > 60) score -= 5
+
+    // Penalize for distance in time (prefer sooner)
+    const daysAway = differenceInDays(startDate, new Date())
+    score -= Math.min(daysAway * 1.5, 25)
+
+    // Bonus if materials/design ready
+    if (!project.requires_materials || project.materials_ready) score += 8
+    if (!project.requires_design || project.design_ready) score += 8
+
+    // Priority bonus
+    score += (project.priority - 5) * 4
+
+    return Math.max(0, Math.min(100, Math.round(score)))
+  }
+
+  private static getScoreReasonWithCapacity(
+    score: number,
+    conflicts: ProductionProject[],
+    week: number,
+    avgUtilization: number,
+    canFit: boolean,
+  ): string {
+    const utilLabel = `${avgUtilization}% carga media`
+
+    if (!canFit && conflicts.length > 0) return `🔴 Sin capacidad + ${conflicts.length} conflicto(s)`
+    if (!canFit) return `🔴 Capacidad insuficiente (${utilLabel})`
+    if (conflicts.length > 0) return `🟡 ${conflicts.length} proyecto(s) solapado(s) · ${utilLabel}`
+    if (score >= 85) return `✅ Óptimo · ${utilLabel}`
+    if (score >= 70) return `🟢 Buena disponibilidad · ${utilLabel}`
+    if (score >= 50) return `🟡 Aceptable · ${utilLabel}`
+    return `⏰ Fecha lejana · ${utilLabel}`
   }
 
   private static checkConflicts(
@@ -166,49 +232,10 @@ export class ProductionService {
   ): ProductionProject[] {
     return projects.filter(p => {
       if (!p.start_date || !p.end_date) return false
-      
       const pStart = parseISO(p.start_date)
       const pEnd = parseISO(p.end_date)
-      
-      return (start <= pEnd && end >= pStart)
+      return start <= pEnd && end >= pStart
     })
-  }
-
-  private static calculateScore(
-    startDate: Date,
-    conflicts: ProductionProject[],
-    project: ProductionProject
-  ): number {
-    let score = 100
-
-    // Penalizar por conflictos
-    score -= conflicts.length * 20
-
-    // Penalizar por lejanía (preferir fechas más cercanas)
-    const daysAway = differenceInDays(startDate, new Date())
-    score -= Math.min(daysAway * 2, 30)
-
-    // Bonificar si materiales/diseño están listos
-    if (!project.requires_materials || project.materials_ready) {
-      score += 10
-    }
-    if (!project.requires_design || project.design_ready) {
-      score += 10
-    }
-
-    // Bonificar por prioridad
-    score += (project.priority - 5) * 5
-
-    return Math.max(0, Math.min(100, score))
-  }
-
-  private static getScoreReason(score: number, conflicts: ProductionProject[], week: number): string {
-    if (score >= 90) return '✅ Fecha óptima - Sin conflictos'
-    if (score >= 70) return '🟢 Buena fecha - Pocos conflictos'
-    if (score >= 50) return '🟡 Fecha aceptable - Algunos conflictos'
-    if (conflicts.length > 0) return `🔴 ${conflicts.length} conflictos detectados`
-    if (week >= 3) return '⏰ Fecha lejana'
-    return '🟡 Revisar disponibilidad'
   }
 
   // ============================================
@@ -219,18 +246,35 @@ export class ProductionService {
     const { data, error } = await supabase
       .from('calendar_events')
       .select('*')
-      .gte('start_date', startDate)
-      .lte('end_date', endDate)
-      .order('start_date')
+      .gte('event_date', startDate)
+      .lte('event_date', endDate)
+      .order('event_date')
     
     if (error) throw error
     return data || []
   }
 
   static async createCalendarEvent(event: Omit<CalendarEvent, 'id' | 'created_at'>): Promise<CalendarEvent> {
+    const e = event as any
+    // Map old CalendarEvent shape (start_date, color, all_day, project_id)
+    // to the actual DB schema (event_date, branch, source_id)
+    const payload: Record<string, any> = {
+      title:         e.title,
+      description:   e.description ?? null,
+      event_date:    e.start_date ?? e.event_date,
+      end_date:      e.end_date ?? null,
+      event_time:    e.event_time ?? null,
+      branch:        e.branch ?? 'produccion',
+      event_type:    (e.event_type === 'production' ? 'PROYECTO_SPAN' : e.event_type) ?? null,
+      source_id:     e.project_id ?? e.source_id ?? null,
+      metadata:      e.metadata ?? (e.project_id ? { projectId: e.project_id } : {}),
+      visible_roles: e.visible_roles ?? ['admin','encargado','encargado_taller','compras','operario'],
+      created_by:    e.created_by ?? null,
+    }
+
     const { data, error } = await supabase
       .from('calendar_events')
-      .insert(event)
+      .insert(payload)
       .select()
       .single()
     
@@ -268,16 +312,36 @@ export class ProductionService {
       .order('order_index')
     
     if (error) throw error
-    return data || []
+    // Parse JSON string columns stored by createTask
+    return (data || []).map(row => ({
+      ...row,
+      materials_list: typeof row.materials_list === 'string'
+        ? (() => { try { return JSON.parse(row.materials_list) } catch { return [] } })()
+        : (row.materials_list ?? []),
+      consumables_list: typeof row.consumables_list === 'string'
+        ? (() => { try { return JSON.parse(row.consumables_list) } catch { return [] } })()
+        : (row.consumables_list ?? []),
+      materials: typeof row.materials === 'string'
+        ? (() => { try { return JSON.parse(row.materials) } catch { return [] } })()
+        : (row.materials ?? []),
+      consumables: typeof row.consumables === 'string'
+        ? (() => { try { return JSON.parse(row.consumables) } catch { return [] } })()
+        : (row.consumables ?? []),
+    }))
   }
 
   static async createTask(task: Omit<ProductionTask, 'id' | 'created_at'>): Promise<ProductionTask> {
+    const taskAny = task as any
+    const payload: any = {
+      ...task,
+      materials: task.materials ? JSON.stringify(task.materials) : (taskAny.materials_list ? JSON.stringify(taskAny.materials_list) : null),
+      consumables: task.consumables ? JSON.stringify(task.consumables) : (taskAny.consumables_list ? JSON.stringify(taskAny.consumables_list) : null),
+    }
     const { data, error } = await supabase
       .from('production_tasks')
-      .insert(task)
+      .insert(payload)
       .select()
       .single()
-    
     if (error) throw error
     return data
   }

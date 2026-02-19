@@ -9,33 +9,45 @@ import { ProductionProject } from '../types/production.types'
 import WaitingList from './WaitingList'
 import CalendarView from './CalendarView'
 import ProjectDetails from './ProjectDetails'
+import { useCalendarEvents } from '../hooks/useCalendarEvents'
 import toast from 'react-hot-toast'
 
 export default function ProductionCalendar() {
   const [waitingProjects, setWaitingProjects] = useState<ProductionProject[]>([])
-  const [scheduledProjects, setScheduledProjects] = useState<ProductionProject[]>([])
   const [selectedProject, setSelectedProject] = useState<ProductionProject | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loadingProjects, setLoadingProjects] = useState(true)
   const [activeView, setActiveView] = useState<'waiting' | 'calendar'>('waiting')
+
+  // Unified calendar events hook
+  const {
+    filteredEvents,
+    loading: eventsLoading,
+    loadEvents,
+    createEvent,
+    deleteEvent,
+    countByBranch,
+    userRole,
+  } = useCalendarEvents()
 
   useEffect(() => {
     loadProjects()
   }, [])
 
   const loadProjects = async () => {
+    setLoadingProjects(true)
     try {
       const waiting = await ProductionService.getWaitingProjects()
-      const all = await ProductionService.getProjects()
-      const scheduled = all.filter(p => p.status === 'SCHEDULED' || p.status === 'IN_PROGRESS')
-      
       setWaitingProjects(waiting)
-      setScheduledProjects(scheduled)
     } catch (error) {
       toast.error('Error cargando proyectos')
     } finally {
-      setLoading(false)
+      setLoadingProjects(false)
     }
+  }
+
+  const handleRefresh = async () => {
+    await Promise.all([loadProjects(), loadEvents()])
   }
 
   const handleSchedule = (project: ProductionProject) => {
@@ -44,12 +56,14 @@ export default function ProductionCalendar() {
   }
 
   const handleProjectScheduled = async () => {
-    await loadProjects()
+    await handleRefresh()
     setShowScheduleModal(false)
     setSelectedProject(null)
     setActiveView('calendar')
     toast.success('Proyecto planificado correctamente')
   }
+
+  const loading = loadingProjects && eventsLoading
 
   if (loading) {
     return (
@@ -67,8 +81,8 @@ export default function ProductionCalendar() {
   return (
     <PageLayout>
       <Header
-        title="📅 Planificación de Producción"
-        description="Gestión de proyectos y calendario de taller"
+        title="📅 Calendario"
+        description="Planificación, recepciones, pedidos y eventos del taller"
       />
 
       <div className="p-8">
@@ -90,8 +104,8 @@ export default function ProductionCalendar() {
             className="gap-2"
           >
             📅 Calendario
-            {scheduledProjects.length > 0 && (
-              <Badge>{scheduledProjects.length}</Badge>
+            {countByBranch.total > 0 && (
+              <Badge>{countByBranch.total}</Badge>
             )}
           </Button>
         </div>
@@ -105,8 +119,11 @@ export default function ProductionCalendar() {
           />
         ) : (
           <CalendarView
-            projects={scheduledProjects}
-            onRefresh={loadProjects}
+            events={filteredEvents}
+            onRefresh={handleRefresh}
+            onCreate={createEvent}
+            onDelete={deleteEvent}
+            userRole={userRole}
           />
         )}
 

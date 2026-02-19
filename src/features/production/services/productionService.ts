@@ -55,26 +55,8 @@ export class ProductionService {
       end_date,
       status: 'SCHEDULED'
     })
-
-    // Crear evento en calendario
-    const { data: project } = await supabase
-      .from('production_projects')
-      .select('*')
-      .eq('id', id)
-      .single()
-
-    if (project) {
-      await this.createCalendarEvent({
-        project_id: id,
-        title: `${project.quote_number} - ${project.client_name}`,
-        description: project.vehicle_model,
-        start_date,
-        end_date,
-        all_day: true,
-        color: '#3b82f6',
-        event_type: 'production'
-      })
-    }
+    // Note: no separate calendar_events insert needed — the unified calendar
+    // reads production projects live from production_projects.
   }
 
   // ============================================
@@ -219,18 +201,32 @@ export class ProductionService {
     const { data, error } = await supabase
       .from('calendar_events')
       .select('*')
-      .gte('start_date', startDate)
-      .lte('end_date', endDate)
-      .order('start_date')
+      .gte('event_date', startDate)
+      .lte('event_date', endDate)
+      .order('event_date')
     
     if (error) throw error
     return data || []
   }
 
   static async createCalendarEvent(event: Omit<CalendarEvent, 'id' | 'created_at'>): Promise<CalendarEvent> {
+    const e = event as any
+    const payload: Record<string, any> = {
+      title:         e.title,
+      description:   e.description ?? null,
+      event_date:    e.start_date ?? e.event_date,
+      end_date:      e.end_date ?? null,
+      event_time:    e.event_time ?? null,
+      branch:        e.branch ?? 'produccion',
+      event_type:    (e.event_type === 'production' ? 'PROYECTO_SPAN' : e.event_type) ?? null,
+      source_id:     e.project_id ?? e.source_id ?? null,
+      metadata:      e.metadata ?? (e.project_id ? { projectId: e.project_id } : {}),
+      visible_roles: e.visible_roles ?? ['admin','encargado','encargado_taller','compras','operario'],
+      created_by:    e.created_by ?? null,
+    }
     const { data, error } = await supabase
       .from('calendar_events')
-      .insert(event)
+      .insert(payload)
       .select()
       .single()
     

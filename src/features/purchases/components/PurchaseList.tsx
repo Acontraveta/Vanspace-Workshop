@@ -30,6 +30,18 @@ export default function PurchaseList() {
   const [selectedItem, setSelectedItem] = useState<StockItem | null>(null)
   const [newLocation, setNewLocation] = useState('')
   const [warehouseShelves, setWarehouseShelves] = useState<{code: string, niveles: number, huecos: number}[]>([])
+  const [showNewPurchaseModal, setShowNewPurchaseModal] = useState(false)
+  const [newPurchaseForm, setNewPurchaseForm] = useState({
+    materialName: '',
+    quantity: 1,
+    unit: 'ud',
+    provider: '',
+    priority: 5,
+    referencia: '',
+    projectNumber: '',
+    notes: '',
+  })
+  const [groupByProvider, setGroupByProvider] = useState(false)
 
   // Validar si una ubicación existe realmente en alguna estantería
   const isValidLocation = (ubicacion?: string) => {
@@ -52,7 +64,7 @@ export default function PurchaseList() {
   }
 
   const refreshData = async () => {
-    setPurchases(PurchaseService.getAllPurchases())
+    setPurchases(await PurchaseService.getAllPurchases())
     // Cargar stock desde Supabase
     const { data: stockData, error } = await supabase
       .from('stock_items')
@@ -139,34 +151,151 @@ export default function PurchaseList() {
 
   // Note: stock import now handled via /setup page (sync from Supabase)
 
-  const handleMarkAsOrdered = (itemId: string) => {
-    PurchaseService.markAsOrdered(itemId)
+  const handleMarkAsOrdered = async (itemId: string) => {
+    await PurchaseService.markAsOrdered(itemId)
     refreshData()
   }
 
+  const handleCreateManualPurchase = async () => {
+    const { materialName, quantity, unit, provider, priority, referencia, projectNumber, notes } = newPurchaseForm
+    if (!materialName.trim()) {
+      toast.error('El nombre del material es obligatorio')
+      return
+    }
+    const item: PurchaseItem = {
+      id: `manual-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      materialName: materialName.trim(),
+      quantity,
+      unit: unit || 'ud',
+      provider: provider.trim() || undefined,
+      priority,
+      referencia: referencia.trim() || undefined,
+      projectNumber: projectNumber.trim() || undefined,
+      notes: notes.trim() || undefined,
+      status: 'PENDING',
+      createdAt: new Date(),
+    }
+    await PurchaseService.savePurchase(item)
+    toast.success('Pedido creado correctamente')
+    setNewPurchaseForm({ materialName: '', quantity: 1, unit: 'ud', provider: '', priority: 5, referencia: '', projectNumber: '', notes: '' })
+    setShowNewPurchaseModal(false)
+    refreshData()
+  }
+
+  // Desbloquear tareas de producción relacionadas al recibir material
+  const unblockRelatedTasks = async (item: PurchaseItem) => {
+    try {
+      if (!item.projectId) {
+        // Sin projectId → buscar tareas bloqueadas que mencionen este material en
+        // requires_material, product_name O blocked_reason (que contiene los nombres
+        // de los materiales pendientes como texto)
+        const needle = (item.productName || item.materialName).toLowerCase()
+        const { data: allBlocked } = await supabase
+          .from('production_tasks')
+          .select('id, requires_material, product_name, blocked_reason')
+          .eq('status', 'BLOCKED')
+
+        const matches = (allBlocked || []).filter(t =>
+          t.requires_material?.toLowerCase().includes(needle) ||
+          t.product_name?.toLowerCase().includes(needle) ||
+          t.blocked_reason?.toLowerCase().includes(needle)
+        )
+
+        if (matches.length > 0) {
+          const ids = matches.map(t => t.id)
+          const { data: unblocked } = await supabase
+            .from('production_tasks')
+            .update({ status: 'PENDING', blocked_reason: null, material_ready: true })
+            .in('id', ids)
+            .select('id')
+          const count = unblocked?.length || 0
+          if (count > 0) {
+            toast.success(`🔓 ${count} tarea(s) desbloqueadas al recibir material`, { duration: 4000 })
+          }
+        }
+        return
+      }
+
+      // ► Verificar pedidos pendientes en este proyecto desde Supabase
+      const stillPending = (await PurchaseService.getAllPurchases()).filter(
+        p =>
+          p.projectId === item.projectId &&
+          (p.status === 'PENDING' || p.status === 'ORDERED') &&
+          p.id !== item.id
+      )
+
+      if (stillPending.length > 0) {
+        // Aún faltan materiales → actualizar blocked_reason con los que quedan
+        const pendingNames = stillPending.map(p => `• ${p.materialName}`).join('\n')
+
+        await supabase
+          .from('production_tasks')
+          .update({ blocked_reason: `Esperando materiales:\n${pendingNames}` })
+          .eq('project_id', item.projectId)
+          .eq('status', 'BLOCKED')
+
+        toast(`📦 Recibido. Faltan ${stillPending.length} material(es):\n${pendingNames}`, {
+          duration: 4000,
+          icon: '⏳',
+        })
+      } else {
+        // Todos los materiales recibidos → desbloquear tareas + actualizar proyecto
+        const { data: unblocked, error: unlockErr } = await supabase
+          .from('production_tasks')
+          .update({ status: 'PENDING', blocked_reason: null, material_ready: true })
+          .eq('project_id', item.projectId)
+          .eq('status', 'BLOCKED')
+          .select('id')
+
+        if (unlockErr) {
+          console.error('Error desbloqueando tareas:', unlockErr)
+        }
+
+        // Marcar el proyecto como materiales listos
+        await supabase
+          .from('production_projects')
+          .update({ materials_ready: true })
+          .eq('id', item.projectId)
+
+        const count = unblocked?.length || 0
+        if (count > 0) {
+          toast.success(
+            `🔓 ¡${count} tarea(s) desbloqueadas! Todos los materiales del proyecto han llegado.`,
+            { duration: 5000 }
+          )
+        } else {
+          // No había tareas BLOCKED pero sí completamos todos los materiales
+          toast.success('✅ Todos los materiales recibidos. El proyecto puede continuar.', { duration: 4000 })
+        }
+      }
+    } catch (error) {
+      console.error('Error desbloqueando tareas:', error)
+    }
+  }
+
   const handleMarkAsReceived = async (itemId: string) => {
-    // Buscar el item antes de marcarlo para saber si ya existía en stock
     const item = purchases.find(p => p.id === itemId)
-    const existedInStock = item?.referencia 
-      ? !!StockService.getItemByReference(item.referencia) 
+    const existedInStock = item?.referencia
+      ? !!StockService.getItemByReference(item.referencia)
       : false
 
     const qrDataURL = await PurchaseService.markAsReceived(itemId)
-    
+
     if (qrDataURL) {
-      // Guardar el QR
-      PurchaseService.saveQR(itemId, qrDataURL)
-      
-      // Mostrar el QR
       setShowQR(qrDataURL)
-      
+
       if (existedInStock) {
-        toast.success(`✅ Recibido y cantidad actualizada en stock. Imprime el QR para etiquetar.`, { duration: 5000 })
+        toast.success('✅ Recibido y cantidad actualizada en stock.', { duration: 5000 })
       } else {
-        toast.success(`✅ Recibido y añadido al inventario. Imprime el QR para etiquetar.`, { duration: 5000 })
+        toast.success('✅ Recibido y añadido al inventario.', { duration: 5000 })
       }
     }
-    
+
+    // ← NUEVO: Desbloquear tareas de producción relacionadas
+    if (item) {
+      await unblockRelatedTasks(item)
+    }
+
     refreshData()
   }
 
@@ -201,6 +330,26 @@ export default function PurchaseList() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     })
 
+  // Agrupación por proveedor
+  const purchaseGroups: [string, PurchaseItem[]][] | null = groupByProvider
+    ? (() => {
+        const groups: Record<string, PurchaseItem[]> = {}
+        const sinProveedor: PurchaseItem[] = []
+        filteredPurchases.forEach(item => {
+          if (item.provider) {
+            if (!groups[item.provider]) groups[item.provider] = []
+            groups[item.provider].push(item)
+          } else {
+            sinProveedor.push(item)
+          }
+        })
+        return [
+          ...Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)),
+          ...(sinProveedor.length > 0 ? [['Sin proveedor', sinProveedor] as [string, PurchaseItem[]]] : [])
+        ]
+      })()
+    : null
+
   // Obtener estanterías únicas
   const estanterias = [...new Set(
     stock
@@ -228,101 +377,97 @@ export default function PurchaseList() {
   const receivedCount = purchases.filter(p => p.status === 'RECEIVED').length
 
   const PurchaseCard = ({ item }: { item: PurchaseItem }) => {
-    const getPriorityColor = (priority: number) => {
-      if (priority >= 8) return 'destructive'
-      if (priority >= 6) return 'warning'
-      return 'secondary'
-    }
-
-    const getPriorityLabel = (priority: number) => {
-      if (priority >= 8) return '🔴 Urgente'
-      if (priority >= 6) return '🟡 Alta'
-      if (priority >= 4) return '🟢 Media'
-      return '⚪ Baja'
-    }
-
+    const borderColor = item.priority >= 8 ? 'border-l-red-500' : item.priority >= 6 ? 'border-l-amber-400' : item.priority >= 4 ? 'border-l-green-400' : 'border-l-gray-300'
+    const priorityLabel = item.priority >= 8 ? '🔴 Urgente' : item.priority >= 6 ? '🟡 Alta' : item.priority >= 4 ? '🟢 Media' : '⚪ Baja'
+    const priorityBadge = item.priority >= 8 ? 'bg-red-100 text-red-700' : item.priority >= 6 ? 'bg-amber-100 text-amber-700' : item.priority >= 4 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
     const isLowStockReplenishment = item.id.startsWith('lowstock-')
+    const daysSinceOrdered = item.orderedAt
+      ? Math.floor((Date.now() - new Date(item.orderedAt).getTime()) / 86400000)
+      : null
 
     return (
-      <Card className={`hover:shadow-md transition ${isLowStockReplenishment ? 'border-orange-300 bg-orange-50' : ''}`}>
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900">{item.materialName}</h3>
+      <div className={`bg-white rounded-xl border border-gray-100 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow flex flex-col`}>
+        <div className="p-4 flex flex-col flex-1">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-gray-900 leading-tight truncate" title={item.materialName}>
+                {item.materialName}
+              </h3>
               {item.productName && (
-                <p className="text-sm text-gray-600">Para: {item.productName}</p>
-              )}
-              {item.projectNumber ? (
-                <p className="text-xs text-gray-500">📋 Proyecto: {item.projectNumber}</p>
-              ) : (
-                <p className="text-xs text-orange-600 font-medium">⚠️ Reposición de stock</p>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">Para: {item.productName}</p>
               )}
             </div>
-            <Badge variant={getPriorityColor(item.priority)}>
-              {getPriorityLabel(item.priority)}
-            </Badge>
+            <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${priorityBadge}`}>
+              {priorityLabel}
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-            <div>
-              <p className="text-gray-600">Cantidad:</p>
-              <p className="font-medium">{item.quantity} {item.unit}</p>
-            </div>
+          {/* Tags */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {item.projectNumber ? (
+              <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                📋 {item.projectNumber}
+              </span>
+            ) : isLowStockReplenishment ? (
+              <span className="inline-flex items-center gap-1 text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full">
+                ⚠️ Reposición stock
+              </span>
+            ) : null}
             {item.provider && (
-              <div>
-                <p className="text-gray-600">Proveedor:</p>
-                <p className="font-medium">{item.provider}</p>
-              </div>
+              <span className="inline-flex items-center gap-1 text-xs bg-gray-50 text-gray-600 px-2 py-0.5 rounded-full border border-gray-200">
+                🏭 {item.provider}
+              </span>
             )}
+          </div>
+
+          {/* Info row */}
+          <div className="flex flex-wrap items-center gap-3 text-sm mb-3">
+            <span className="font-semibold text-gray-900">{item.quantity} {item.unit}</span>
             {item.deliveryDays && (
-              <div>
-                <p className="text-gray-600">Entrega:</p>
-                <p className="font-medium">{item.deliveryDays} días</p>
-              </div>
+              <span className="text-gray-400 text-xs">⏱ {item.deliveryDays}d</span>
             )}
-            {item.orderedAt && (
-              <div>
-                <p className="text-gray-600">Pedido:</p>
-                <p className="font-medium text-xs">
-                  {new Date(item.orderedAt).toLocaleDateString('es-ES')}
-                </p>
-              </div>
+            {daysSinceOrdered !== null && (
+              <span className={`text-xs font-medium ml-auto ${
+                daysSinceOrdered > (item.deliveryDays ?? 7) ? 'text-red-600' : 'text-amber-600'
+              }`}>
+                {daysSinceOrdered > 0 ? `Esperando ${daysSinceOrdered}d` : 'Pedido hoy'}
+              </span>
             )}
           </div>
 
           {item.notes && (
-            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+            <p className="text-xs bg-amber-50 text-amber-800 border border-amber-100 rounded px-2 py-1.5 mb-3 line-clamp-2">
               {item.notes}
-            </div>
+            </p>
           )}
 
-          <div className="flex gap-2">
+          {/* Action */}
+          <div className="mt-auto">
             {item.status === 'PENDING' && (
-              <Button
-                size="sm"
-                className="flex-1"
+              <button
                 onClick={() => handleMarkAsOrdered(item.id)}
+                className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
               >
-                📦 Marcar como Pedido
-              </Button>
+                📦 Marcar como pedido
+              </button>
             )}
             {item.status === 'ORDERED' && (
-              <Button
-                size="sm"
-                className="flex-1 bg-green-600 hover:bg-green-700"
+              <button
                 onClick={() => handleMarkAsReceived(item.id)}
+                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition"
               >
-                ✅ Marcar como Recibido
-              </Button>
+                ✅ Marcar como recibido
+              </button>
             )}
             {item.status === 'RECEIVED' && (
-              <Badge variant="success" className="flex-1 justify-center py-2">
-                ✅ Recibido
-              </Badge>
+              <div className="w-full py-2 rounded-lg bg-gray-50 text-gray-500 text-sm font-medium text-center border border-gray-200">
+                ✅ Recibido · {item.receivedAt ? new Date(item.receivedAt).toLocaleDateString('es-ES') : ''}
+              </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
@@ -445,6 +590,7 @@ export default function PurchaseList() {
       <Header
         title="Pedidos y Stock"
         description="Gestión de compras y control de inventario"
+        action={{ label: '➕ Nuevo pedido', onClick: () => setShowNewPurchaseModal(true) }}
       />
 
       <div className="p-8 space-y-6">
@@ -534,170 +680,124 @@ export default function PurchaseList() {
           </Card>
         )}
 
-        {/* Alertas de stock bajo */}
+        {/* Alertas de stock bajo — banner compacto */}
         {lowStockItems.length > 0 && (
-          <Card className="border-orange-300 bg-orange-50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <span>⚠️ Stock Bajo</span>
-                <Badge variant="warning">{lowStockItems.length} items</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {lowStockItems.slice(0, 5).map(item => (
-                  <div key={item.REFERENCIA} className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{item.ARTICULO}</span>
-                    <span className="text-orange-600">
-                      {item.CANTIDAD}/{item.STOCK_MINIMO} {item.UNIDAD}
-                    </span>
-                  </div>
-                ))}
-                {lowStockItems.length > 5 && (
-                  <p className="text-xs text-gray-600">
-                    ... y {lowStockItems.length - 5} más
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <button
+            onClick={() => setSelectedTab('stock')}
+            className="w-full flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-xl hover:bg-orange-100 transition text-left"
+          >
+            <span className="text-xl">⚠️</span>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-semibold text-orange-800">
+                {lowStockItems.length} artículo{lowStockItems.length > 1 ? 's' : ''} con stock bajo
+              </span>
+              <span className="text-xs text-orange-600 ml-2 hidden sm:inline">
+                {lowStockItems.slice(0, 3).map(i => i.ARTICULO).join(' · ')}{lowStockItems.length > 3 ? ` · +${lowStockItems.length - 3} más` : ''}
+              </span>
+            </div>
+            <span className="text-orange-400 text-xs">Ver inventario →</span>
+          </button>
         )}
 
+        {/* Stats bar */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: 'Pendientes', value: pendingCount, icon: '⏳', bg: 'bg-blue-50 border-blue-200', text: 'text-blue-700', tab: 'pending' as const },
+            { label: 'En camino', value: orderedCount, icon: '🚚', bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', tab: 'ordered' as const },
+            { label: 'Recibidos', value: receivedCount, icon: '✅', bg: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', tab: 'received' as const },
+            { label: 'Stock bajo', value: lowStockItems.length, icon: '⚠️', bg: 'bg-red-50 border-red-200', text: 'text-red-700', tab: 'stock' as const },
+          ].map(s => (
+            <button
+              key={s.label}
+              onClick={() => setSelectedTab(s.tab)}
+              className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer hover:opacity-80 transition ${s.bg} ${selectedTab === s.tab ? 'ring-2 ring-offset-1 ring-blue-400' : ''}`}
+            >
+              <span className="text-2xl">{s.icon}</span>
+              <div className="text-left">
+                <div className={`text-2xl font-bold leading-none ${s.text}`}>{s.value}</div>
+                <div className="text-xs text-gray-500 font-medium mt-0.5">{s.label}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+
         {/* Tabs principales */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              <button
-                onClick={() => setSelectedTab('pending')}
-                className={`px-4 py-3 rounded-lg font-medium transition ${
-                  selectedTab === 'pending'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                Pendientes
-                <Badge variant={selectedTab === 'pending' ? 'secondary' : 'outline'} className="ml-2">
-                  {pendingCount}
-                </Badge>
-              </button>
-              
-              <button
-                onClick={() => setSelectedTab('ordered')}
-                className={`px-4 py-3 rounded-lg font-medium transition ${
-                  selectedTab === 'ordered'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                Pedidos
-                <Badge variant={selectedTab === 'ordered' ? 'secondary' : 'outline'} className="ml-2">
-                  {orderedCount}
-                </Badge>
-              </button>
-              
-              <button
-                onClick={() => setSelectedTab('received')}
-                className={`px-4 py-3 rounded-lg font-medium transition ${
-                  selectedTab === 'received'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                Recibidos
-                <Badge variant={selectedTab === 'received' ? 'secondary' : 'outline'} className="ml-2">
-                  {receivedCount}
-                </Badge>
-              </button>
-              
-              <button
-                onClick={() => setSelectedTab('stock')}
-                className={`px-4 py-3 rounded-lg font-medium transition ${
-                  selectedTab === 'stock'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                Inventario
-                <Badge variant={selectedTab === 'stock' ? 'secondary' : 'outline'} className="ml-2">
-                  {stock.length}
-                </Badge>
-              </button>
-
-              <button
-                onClick={() => setSelectedTab('warehouse')}
-                className={`px-4 py-3 rounded-lg font-medium transition ${
-                  selectedTab === 'warehouse'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                Almacén
-                {stockLoaded && (
-                  <Badge variant={selectedTab === 'warehouse' ? 'secondary' : 'outline'} className="ml-2">
-                    {stock.filter(s => isValidLocation(s.UBICACION)).length}
-                  </Badge>
-                )}
-              </button>
-
-              <button
-                onClick={() => setSelectedTab('scanner')}
-                className={`px-4 py-3 rounded-lg font-medium transition ${
-                  selectedTab === 'scanner'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                📷 Escanear QR
-              </button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl overflow-x-auto">
+          {([
+            { id: 'pending', icon: '⏳', label: 'Pendientes', count: pendingCount },
+            { id: 'ordered', icon: '🚚', label: 'En camino', count: orderedCount },
+            { id: 'received', icon: '✅', label: 'Recibidos', count: receivedCount },
+            { id: 'stock', icon: '📦', label: 'Inventario', count: stock.length },
+            { id: 'warehouse', icon: '🏭', label: 'Almacén', count: stockLoaded ? stock.filter(s => isValidLocation(s.UBICACION)).length : undefined },
+            { id: 'scanner', icon: '📷', label: 'Escanear QR', count: undefined },
+          ] as { id: typeof selectedTab; icon: string; label: string; count: number | undefined }[]).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setSelectedTab(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                selectedTab === tab.id
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+              {tab.count !== undefined && (
+                <span className={`min-w-[1.25rem] text-center text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                  selectedTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
 
         {/* Filtros */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <Input
-                placeholder="🔍 Buscar..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="flex-1"
-              />
-              {selectedTab === 'stock' && estanterias.length > 0 && (
-                <div className="flex gap-2 items-center">
-                  <span className="text-sm text-gray-600">Estantería:</span>
-                  <select
-                    value={selectedEstanteria}
-                    onChange={(e) => setSelectedEstanteria(e.target.value)}
-                    className="px-4 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="all">Todas</option>
-                    {estanterias.map(est => (
-                      <option key={est} value={est}>
-                        Estantería {est}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              
-              {selectedTab !== 'stock' && providers.length > 0 && (
-                <select
-                  value={selectedProvider}
-                  onChange={(e) => setSelectedProvider(e.target.value)}
-                  className="px-4 py-2 border rounded-lg"
-                >
-                  <option value="all">Todos los proveedores</option>
-                  {providers.map(provider => (
-                    <option key={provider} value={provider}>
-                      {provider}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            placeholder="🔍 Buscar material, proyecto, proveedor..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1"
+          />
+          {selectedTab === 'stock' && estanterias.length > 0 && (
+            <select
+              value={selectedEstanteria}
+              onChange={(e) => setSelectedEstanteria(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+            >
+              <option value="all">Todas las estanterías</option>
+              {estanterias.map(est => (
+                <option key={est} value={est}>Estantería {est}</option>
+              ))}
+            </select>
+          )}
+          {['pending','ordered','received'].includes(selectedTab) && providers.length > 0 && (
+            <select
+              value={selectedProvider}
+              onChange={(e) => setSelectedProvider(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+            >
+              <option value="all">Todos los proveedores</option>
+              {providers.map(provider => (
+                <option key={provider} value={provider}>{provider}</option>
+              ))}
+            </select>
+          )}
+          {['pending','ordered','received'].includes(selectedTab) && (
+            <button
+              onClick={() => setGroupByProvider(g => !g)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
+                groupByProvider
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              🏭 Por proveedor
+            </button>
+          )}
+        </div>
 
         {/* Contenido según tab */}
         {selectedTab === 'warehouse' ? (
@@ -826,18 +926,173 @@ export default function PurchaseList() {
                   <p className="text-gray-500 text-lg mb-2">
                     No hay pedidos {selectedTab === 'pending' ? 'pendientes' : selectedTab === 'ordered' ? 'en curso' : 'recibidos'}
                   </p>
-                  <p className="text-sm text-gray-400">
-                    Los pedidos se generan automáticamente al aprobar presupuestos
-                  </p>
+                  {selectedTab === 'pending' && (
+                    <>
+                      <p className="text-sm text-gray-400 mb-4">
+                        Los pedidos se generan automáticamente al aprobar presupuestos, o puedes crear uno manualmente
+                      </p>
+                      <Button onClick={() => setShowNewPurchaseModal(true)} className="gap-2">
+                        ➕ Nuevo pedido manual
+                      </Button>
+                    </>
+                  )}
+                  {selectedTab !== 'pending' && (
+                    <p className="text-sm text-gray-400">
+                      Los pedidos se generan automáticamente al aprobar presupuestos
+                    </p>
+                  )}
                 </CardContent>
               </Card>
+            ) : purchaseGroups ? (
+              <div className="space-y-6">
+                {purchaseGroups.map(([prov, items]) => (
+                  <div key={prov}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="font-semibold text-gray-700 text-sm">🏭 {prov}</span>
+                      <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{items.length}</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {items.map(item => <PurchaseCard key={item.id} item={item} />)}
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filteredPurchases.map(item => (
                   <PurchaseCard key={item.id} item={item} />
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Modal Nuevo Pedido Manual */}
+        {showNewPurchaseModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowNewPurchaseModal(false)}>
+            <Card className="w-full max-w-lg" onClick={e => e.stopPropagation()}>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between">
+                  <span>➕ Nuevo pedido manual</span>
+                  <button onClick={() => setShowNewPurchaseModal(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">✕</button>
+                </CardTitle>
+                <p className="text-sm text-gray-500">Crea un pedido personalizado independiente de un presupuesto</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Material */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Material <span className="text-red-500">*</span></label>
+                  <Input
+                    placeholder="Nombre del material o producto"
+                    value={newPurchaseForm.materialName}
+                    onChange={e => setNewPurchaseForm(f => ({ ...f, materialName: e.target.value }))}
+                    autoFocus
+                  />
+                </div>
+
+                {/* Cantidad + Unidad */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                    <Input
+                      type="number" min={0.01} step="0.01"
+                      value={newPurchaseForm.quantity}
+                      onChange={e => setNewPurchaseForm(f => ({ ...f, quantity: parseFloat(e.target.value) || 1 }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
+                    <select
+                      value={newPurchaseForm.unit}
+                      onChange={e => setNewPurchaseForm(f => ({ ...f, unit: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500"
+                    >
+                      {['ud','uds','m','m²','m³','kg','g','l','ml','caja','rollo','paquete'].map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Prioridad */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 3, label: '⚪ Baja',    cls: 'border-gray-300 text-gray-600 hover:bg-gray-50' },
+                      { value: 5, label: '🟢 Media',   cls: 'border-green-300 text-green-700 hover:bg-green-50' },
+                      { value: 7, label: '🟡 Alta',    cls: 'border-yellow-300 text-yellow-700 hover:bg-yellow-50' },
+                      { value: 9, label: '🔴 Urgente', cls: 'border-red-300 text-red-700 hover:bg-red-50' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setNewPurchaseForm(f => ({ ...f, priority: opt.value }))}
+                        className={`flex-1 text-xs px-2 py-2 rounded-lg border font-medium transition ${
+                          newPurchaseForm.priority === opt.value
+                            ? opt.cls + ' ring-2 ring-offset-1'
+                            : 'border-gray-200 text-gray-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Proveedor + Referencia */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
+                    <Input
+                      placeholder="Nombre del proveedor"
+                      value={newPurchaseForm.provider}
+                      onChange={e => setNewPurchaseForm(f => ({ ...f, provider: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Referencia</label>
+                    <Input
+                      placeholder="Código / SKU"
+                      value={newPurchaseForm.referencia}
+                      onChange={e => setNewPurchaseForm(f => ({ ...f, referencia: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Nº Proyecto */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nº Proyecto <span className="text-gray-400 font-normal">(opcional)</span></label>
+                  <Input
+                    placeholder="Asociar a un proyecto existente"
+                    value={newPurchaseForm.projectNumber}
+                    onChange={e => setNewPurchaseForm(f => ({ ...f, projectNumber: e.target.value }))}
+                  />
+                </div>
+
+                {/* Notas */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas <span className="text-gray-400 font-normal">(opcional)</span></label>
+                  <textarea
+                    rows={2}
+                    placeholder="Especificaciones, dimensiones, color..."
+                    value={newPurchaseForm.notes}
+                    onChange={e => setNewPurchaseForm(f => ({ ...f, notes: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <Button onClick={handleCreateManualPurchase} className="flex-1">
+                    ✅ Crear pedido
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowNewPurchaseModal(false)} className="flex-1">
+                    Cancelar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 

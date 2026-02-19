@@ -2,9 +2,9 @@ import { Link, useLocation, NavLink } from 'react-router-dom'
 import { cn } from '@/shared/utils/cn'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { usePermissions } from '@/hooks/usePermissions'
-
 import { useState } from 'react'
 import { Button } from '../ui/button'
+import { AlertsBell } from '@/features/alerts/components/AlertsBell'
 export function Sidebar() {
   const location = useLocation()
   const { user, signOut } = useAuth()
@@ -51,13 +51,25 @@ export function Sidebar() {
       icon: '🏭',
       label: 'Producción',
       path: '/production',
-      show: canAccessModule('production')
+      show: canAccessModule('production') && user?.role !== 'operario'
     },
     {
       icon: '📅',
       label: 'Calendario',
       path: '/calendar',
       show: canAccessModule('calendar')
+    },
+    {
+      icon: '👥',
+      label: 'CRM',
+      path: '/crm',
+      show: canAccessModule('quotes')
+    },
+    {
+      icon: '⏰',
+      label: 'Fichajes',
+      path: '/timeclock',
+      show: hasPermission('admin.full')
     },
     {
       icon: '⚙️',
@@ -68,17 +80,22 @@ export function Sidebar() {
   ]
 
       return (
-          <aside className="w-64 bg-white text-gray-800 flex flex-col">
+        <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full shadow-sm">
           {/* Header */}
-          <div className="p-6 border-b border-gray-200 bg-white">
-            <h1 className="text-2xl font-bold">VanSpace</h1>
-            <p className="text-xs text-gray-500 mt-1">Workshop Manager</p>
+          <div className="px-6 py-5 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🚐</span>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 leading-none">VanSpace</h1>
+                <p className="text-xs text-gray-400 mt-0.5">Workshop Manager</p>
+              </div>
+            </div>
           </div>
 
           {/* User info */}
-          <div className="px-6 py-4 border-b border-gray-200 bg-white">
-            <p className="text-sm font-semibold text-gray-800">{user?.name || user?.email}</p>
-            <p className="text-xs font-bold text-blue-600 capitalize">
+          <div className="px-6 py-3 border-b border-gray-100 bg-gray-50">
+            <p className="text-sm font-semibold text-gray-800 truncate">{user?.name || user?.email}</p>
+            <p className="text-xs text-blue-600 font-medium mt-0.5">
               {user?.role === 'admin' && '⚡ Administrador'}
               {user?.role === 'encargado' && '👔 Encargado'}
               {user?.role === 'encargado_taller' && '🏭 Enc. Taller'}
@@ -88,7 +105,7 @@ export function Sidebar() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 py-6 space-y-2">
+          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
             {menuItems
               .filter(item => item.show)
               .map((item) => (
@@ -96,30 +113,34 @@ export function Sidebar() {
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 py-3 rounded-lg transition ${
+                    `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                       isActive
                         ? 'bg-blue-600 text-white'
-                        : 'text-gray-300 hover:bg-gray-800'
+                        : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                     }`
                   }
                 >
-                  <span className="text-xl">{item.icon}</span>
-                  <span className="font-semibold text-gray-800">{item.label}</span>
+                  <span className="text-lg leading-none">{item.icon}</span>
+                  <span className="font-medium text-sm">{item.label}</span>
                 </NavLink>
               ))}
           </nav>
 
+          {/* Alerts bell */}
+          {(['admin', 'encargado', 'compras'] as string[]).includes((user?.role as string) ?? '') && (
+            <div className="px-4 pb-2">
+              <AlertsBell />
+            </div>
+          )}
+
           {/* Footer */}
-            <div className="p-4 border-t border-gray-200 bg-gray-50">
+          <div className="p-4 border-t border-gray-200 bg-gray-50">
             <Button
-              onClick={() => {
-                localStorage.removeItem('auth_user')
-                window.location.href = '/login'
-              }}
+              onClick={signOut}
               variant="outline"
-              className="w-full"
+              className="w-full text-sm"
             >
-              🚪 Cerrar Sesión
+              🚪 Finalizar/pausar jornada
             </Button>
           </div>
         </aside>

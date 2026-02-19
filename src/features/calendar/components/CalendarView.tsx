@@ -1,356 +1,378 @@
-import { useState, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
-import { ProductionProject } from '../../production/types/production.types'
+import {
+  CalendarEvent,
+  CalendarEventForm,
+  EventBranch,
+  BRANCH_META,
+  EVENT_TYPE_LABELS,
+} from '../types/calendar.types'
+import EventModal from './EventModal'
+import { UnifiedCalendarService } from '../services/calendarService'
 import { ProductionService } from '../../production/services/productionService'
-import { 
-  format, 
-  startOfMonth, 
-  endOfMonth, 
-  eachDayOfInterval, 
-  isSameMonth, 
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
   isSameDay,
   addMonths,
   subMonths,
   isWeekend,
   parseISO,
   startOfWeek,
-  endOfWeek
+  endOfWeek,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 
+// ─────────────────────────────────────────────────────────────
+
 interface CalendarViewProps {
-  projects: ProductionProject[]
+  events: CalendarEvent[]
   onRefresh: () => void
+  onCreate: (form: CalendarEventForm) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+  userRole: string
 }
 
-export default function CalendarView({ projects, onRefresh }: CalendarViewProps) {
+const ALL_BRANCHES: EventBranch[] = ['produccion', 'crm', 'pedidos', 'presupuestos', 'general']
+
+// Roles that can CREATE new calendar events
+const CAN_CREATE_ROLES = ['admin', 'encargado', 'compras']
+
+// ─────────────────────────────────────────────────────────────
+
+export default function CalendarView({
+  events,
+  onRefresh,
+  onCreate,
+  onDelete,
+  userRole,
+}: CalendarViewProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
-  const [selectedProject, setSelectedProject] = useState<ProductionProject | null>(null)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [draggedProject, setDraggedProject] = useState<ProductionProject | null>(null)
+  const [activeBranches, setActiveBranches] = useState<EventBranch[]>([])
+
+  // Event modal
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
+  const [modalMode, setModalMode] = useState<'view' | 'create'>('create')
+  const [newEventDate, setNewEventDate] = useState<string>('')
+  const [showModal, setShowModal] = useState(false)
+
+  // Drag for production
+  const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null)
+  // Prevent onClick from firing after a drag completes
+  const wasDragging = useRef(false)
+
+  const canCreate = CAN_CREATE_ROLES.includes(userRole)
+
+  // ── Date grid ─────────────────────────────────────────
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 })
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
-  
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd })
 
-  const getProjectsForDay = (day: Date) => {
-    return projects.filter(project => {
-      if (!project.start_date || !project.end_date) return false
-      
-      const start = parseISO(project.start_date)
-      const end = parseISO(project.end_date)
-      
-      return day >= start && day <= end
-    })
+  // ── Filter logic ──────────────────────────────────────
+
+  const filteredEvents = activeBranches.length === 0
+    ? events
+    : events.filter((e) => activeBranches.includes(e.branch))
+
+  const getEventsForDay = (day: Date) => {
+    const dateStr = format(day, 'yyyy-MM-dd')
+    return UnifiedCalendarService.eventsForDay(filteredEvents, dateStr)
   }
 
-  const handlePrevMonth = () => {
-    setCurrentMonth(subMonths(currentMonth, 1))
+  // ── Branch toggle ─────────────────────────────────────
+
+  const toggleBranch = (branch: EventBranch) => {
+    setActiveBranches((prev) =>
+      prev.includes(branch) ? prev.filter((b) => b !== branch) : [...prev, branch],
+    )
   }
 
-  const handleNextMonth = () => {
-    setCurrentMonth(addMonths(currentMonth, 1))
+  // ── Handlers ──────────────────────────────────────────
+
+  const handleDayClick = (day: Date) => {
+    if (wasDragging.current) { wasDragging.current = false; return }
+    if (!canCreate) return
+    if (isWeekend(day)) return
+    if (!isSameMonth(day, currentMonth)) return
+    const dateStr = format(day, 'yyyy-MM-dd')
+    setNewEventDate(dateStr)
+    setSelectedEvent(null)
+    setModalMode('create')
+    setShowModal(true)
   }
 
-  const handleToday = () => {
-    setCurrentMonth(new Date())
+  const handleEventClick = (e: React.MouseEvent, event: CalendarEvent) => {
+    e.stopPropagation()
+    setSelectedEvent(event)
+    setModalMode('view')
+    setShowModal(true)
   }
 
-  const handleDragStart = (project: ProductionProject) => {
-    setDraggedProject(project)
+  // ── Production drag-and-drop ──────────────────────────
+
+  const handleDragStart = (event: CalendarEvent) => {
+    if (event.branch === 'produccion') {
+      setDraggedEvent(event)
+      wasDragging.current = true
+    }
   }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
+  const handleDragEnd = () => {
+    setDraggedEvent(null)
+    // Keep the flag for a tick so the day's onClick handler can detect it
+    setTimeout(() => { wasDragging.current = false }, 50)
   }
+
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault()
 
   const handleDrop = async (day: Date) => {
-    if (!draggedProject || !draggedProject.start_date || !draggedProject.end_date) return
-
+    if (!draggedEvent || !draggedEvent.sourceId) { setDraggedEvent(null); return }
     if (isWeekend(day)) {
       toast.error('No se puede planificar en fin de semana')
-      setDraggedProject(null)
+      setDraggedEvent(null)
       return
     }
 
-    const start = parseISO(draggedProject.start_date)
-    const end = parseISO(draggedProject.end_date)
-    const duration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+    const startStr = draggedEvent.date
+    const endStr = draggedEvent.endDate ?? startStr
+    const start = parseISO(startStr)
+    const end = parseISO(endStr)
+    const durationMs = end.getTime() - start.getTime()
 
     const newStart = format(day, 'yyyy-MM-dd')
-    const newEnd = format(new Date(day.getTime() + duration * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
+    const newEnd = format(new Date(day.getTime() + durationMs), 'yyyy-MM-dd')
 
     try {
-      await ProductionService.scheduleProject(draggedProject.id, newStart, newEnd)
+      await ProductionService.scheduleProject(draggedEvent.sourceId, newStart, newEnd)
       toast.success(`Proyecto movido a ${format(day, 'dd/MM/yyyy', { locale: es })}`)
       onRefresh()
-    } catch (error) {
+    } catch {
       toast.error('Error moviendo proyecto')
     }
-
-    setDraggedProject(null)
+    setDraggedEvent(null)
   }
 
-  const handleProjectClick = (project: ProductionProject) => {
-    setSelectedProject(project)
-    setShowEditModal(true)
-  }
+  // ── Month counts for badge ────────────────────────────
 
-  const handleDeleteProject = async (projectId: string) => {
-    if (!confirm('¿Eliminar este proyecto del calendario?')) return
+  const monthStr = format(currentMonth, 'yyyy-MM')
+  const monthEvents = filteredEvents.filter(
+    (e) => e.date.startsWith(monthStr) || (e.endDate && e.endDate >= `${monthStr}-01`)
+  )
 
-    try {
-      await ProductionService.updateProject(projectId, {
-        status: 'WAITING',
-        start_date: undefined,
-        end_date: undefined
-      })
-      
-      toast.success('Proyecto devuelto a lista de espera')
-      onRefresh()
-      setShowEditModal(false)
-    } catch (error) {
-      toast.error('Error eliminando proyecto')
-    }
-  }
-
+  // ─────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
-      {/* Header del calendario */}
+    <div className="space-y-4">
+      {/* Header */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <CardTitle className="text-2xl">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Month navigation */}
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-xl capitalize">
                 {format(currentMonth, 'MMMM yyyy', { locale: es })}
               </CardTitle>
-              <div className="flex gap-2">
-                <Button onClick={handlePrevMonth} variant="outline" size="sm">
-                  ← Anterior
-                </Button>
-                <Button onClick={handleToday} variant="outline" size="sm">
-                  Hoy
-                </Button>
-                <Button onClick={handleNextMonth} variant="outline" size="sm">
-                  Siguiente →
-                </Button>
+              <div className="flex gap-1">
+                <Button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} variant="outline" size="sm">←</Button>
+                <Button onClick={() => setCurrentMonth(new Date())} variant="outline" size="sm">Hoy</Button>
+                <Button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} variant="outline" size="sm">→</Button>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-gray-600">
-                {projects.length} proyecto{projects.length !== 1 ? 's' : ''} planificado{projects.length !== 1 ? 's' : ''}
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">
+                {monthEvents.length} evento{monthEvents.length !== 1 ? 's' : ''} este mes
+              </span>
+              {canCreate && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setNewEventDate(format(new Date(), 'yyyy-MM-dd'))
+                    setSelectedEvent(null)
+                    setModalMode('create')
+                    setShowModal(true)
+                  }}
+                >
+                  ＋ Nuevo evento
+                </Button>
+              )}
             </div>
+          </div>
+
+          {/* Branch filters */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={() => setActiveBranches([])}
+              className={`px-3 py-1 rounded-full text-xs border transition
+                ${activeBranches.length === 0
+                  ? 'bg-gray-800 text-white border-gray-800'
+                  : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}
+            >
+              Todas las ramas
+            </button>
+            {ALL_BRANCHES.map((branch) => {
+              const meta = BRANCH_META[branch]
+              const active = activeBranches.includes(branch)
+              const count = events.filter((e) => e.branch === branch).length
+              if (count === 0 && !active) return null
+              return (
+                <button
+                  key={branch}
+                  onClick={() => toggleBranch(branch)}
+                  className={`px-3 py-1 rounded-full text-xs border transition flex items-center gap-1
+                    ${active
+                      ? `${meta.bgClass} ${meta.borderClass} ${meta.textClass} font-medium`
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}
+                >
+                  {meta.icon} {meta.label}
+                  <span className={`ml-1 rounded-full px-1 text-[10px] font-bold ${active ? meta.textClass : 'text-gray-500'}`}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </CardHeader>
       </Card>
 
-      {/* Calendario */}
+      {/* Calendar grid */}
       <Card>
-        <CardContent className="p-6">
-          {/* Headers de días de la semana */}
-          <div className="grid grid-cols-7 gap-2 mb-2">
-            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => (
-              <div key={day} className="text-center font-bold text-sm text-gray-600 py-2">
-                {day}
-              </div>
+        <CardContent className="p-4">
+          {/* Day-of-week headers */}
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
+              <div key={d} className="text-center text-xs font-bold text-gray-500 py-2">{d}</div>
             ))}
           </div>
 
-          {/* Grid de días */}
-          <div className="grid grid-cols-7 gap-2">
+          {/* Days */}
+          <div className="grid grid-cols-7 gap-1">
             {days.map((day) => {
-              const dayProjects = getProjectsForDay(day)
+              const dayEvents = getEventsForDay(day)
               const isToday = isSameDay(day, new Date())
-              const isCurrentMonth = isSameMonth(day, currentMonth)
+              const isCurrentM = isSameMonth(day, currentMonth)
               const isWeekendDay = isWeekend(day)
+              const dateStr = format(day, 'yyyy-MM-dd')
 
               return (
                 <div
-                  key={day.toISOString()}
-                  className={`
-                    min-h-[120px] border-2 rounded-lg p-2 transition
-                    ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}
-                    ${!isCurrentMonth ? 'bg-gray-50 opacity-50' : 'bg-white'}
-                    ${isWeekendDay ? 'bg-gray-100' : ''}
-                    ${dayProjects.length > 0 ? 'hover:border-blue-400' : ''}
-                  `}
+                  key={dateStr}
+                  onClick={() => handleDayClick(day)}
                   onDragOver={handleDragOver}
                   onDrop={() => handleDrop(day)}
+                  className={`
+                    min-h-[130px] border rounded-lg p-1.5 transition select-none
+                    ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}
+                    ${!isCurrentM ? 'opacity-40 bg-gray-50' : 'bg-white'}
+                    ${isWeekendDay ? 'bg-gray-50' : ''}
+                    ${canCreate && !isWeekendDay && isCurrentM ? 'cursor-pointer hover:border-blue-300 hover:bg-blue-50/30' : ''}
+                  `}
                 >
-                  {/* Número del día */}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`
-                      text-sm font-bold
-                      ${isToday ? 'text-blue-600' : ''}
-                      ${!isCurrentMonth ? 'text-gray-400' : 'text-gray-700'}
-                    `}>
+                  {/* Day number */}
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-xs font-bold ${isToday ? 'text-blue-600' : 'text-gray-600'}`}>
                       {format(day, 'd')}
                     </span>
-                    {isWeekendDay && (
-                      <span className="text-[10px] text-gray-500">FIN</span>
-                    )}
+                    {isWeekendDay && <span className="text-[9px] text-gray-400">FIN</span>}
                   </div>
 
-                  {/* Proyectos del día */}
+                  {/* Events */}
                   <div className="space-y-1">
-                    {dayProjects.map((project) => {
-                      const isStart = project.start_date && isSameDay(parseISO(project.start_date), day)
-                      const isEnd = project.end_date && isSameDay(parseISO(project.end_date), day)
+                    {dayEvents.slice(0, 3).map((ev) => {
+                      const meta = BRANCH_META[ev.branch]
+                      const isSpan = ev.eventType === 'PROYECTO_SPAN'
+                      // For continuation days of a multi-day span, use a lighter visual
+                      const isContinuation = isSpan && ev.date.substring(0, 10) !== dateStr
 
                       return (
                         <div
-                          key={project.id}
-                          draggable
-                          onDragStart={() => handleDragStart(project)}
-                          onClick={() => handleProjectClick(project)}
+                          key={ev.id}
+                          draggable={ev.branch === 'produccion'}
+                          onDragStart={() => handleDragStart(ev)}
+                          onDragEnd={handleDragEnd}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => { e.stopPropagation(); handleDrop(day) }}
+                          onClick={(e) => handleEventClick(e, ev)}
+                          title={ev.title + (ev.description ? '\n' + ev.description : '')}
                           className={`
-                            text-xs p-2 rounded cursor-move hover:shadow-md transition
-                            ${project.status === 'IN_PROGRESS' 
-                              ? 'bg-green-100 border-green-400 text-green-800' 
-                              : 'bg-blue-100 border-blue-400 text-blue-800'
-                            }
-                            border-l-4
+                            px-1.5 py-1 rounded cursor-pointer
+                            hover:opacity-80 transition-opacity
+                            ${meta.bgClass} ${meta.textClass}
+                            ${isContinuation
+                              ? `border-y border-r ${meta.borderClass} opacity-60 rounded-l-none`
+                              : `border-l-4 ${meta.borderClass}`}
                           `}
-                          title={`${project.quote_number} - ${project.client_name}`}
                         >
-                          <div className="font-bold truncate">
-                            {isStart && '▶ '}
-                            {project.quote_number}
-                            {isEnd && ' ◀'}
+                          <div className="flex items-center gap-1 text-[9px] opacity-60 font-semibold uppercase tracking-wide leading-none">
+                            <span>{meta.icon}</span>
+                            <span className="truncate">{EVENT_TYPE_LABELS[ev.eventType] ?? meta.label}</span>
+                            {ev.time && <span className="ml-auto shrink-0">{ev.time}</span>}
                           </div>
-                          <div className="truncate text-[10px] opacity-75">
-                            {project.client_name}
-                          </div>
+                          <div className="text-[11px] font-semibold truncate mt-0.5 leading-tight">{ev.title}</div>
                         </div>
                       )
                     })}
+                    {dayEvents.length > 3 && (
+                      <div className="text-[9px] text-gray-500 pl-1 font-medium">
+                        +{dayEvents.length - 3} más
+                      </div>
+                    )}
                   </div>
                 </div>
               )
             })}
           </div>
 
-          {/* Leyenda */}
-          <div className="mt-6 pt-4 border-t flex items-center gap-6 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-100 border-l-4 border-blue-400 rounded"></div>
-              <span className="text-gray-600">Planificado</span>
+          {/* Legend */}
+          <div className="mt-4 pt-3 border-t flex flex-wrap gap-3 items-center">
+            {ALL_BRANCHES.map((branch) => {
+              const meta = BRANCH_META[branch]
+              return (
+                <div key={branch} className="flex items-center gap-1.5 text-xs text-gray-600">
+                  <div className={`w-3 h-3 rounded ${meta.bgClass} border-l-2 ${meta.borderClass}`}></div>
+                  <span>{meta.icon} {meta.label}</span>
+                </div>
+              )
+            })}
+            <div className="flex items-center gap-1.5 text-xs text-gray-600">
+              <div className="w-3 h-3 rounded border-2 border-blue-500 bg-blue-50"></div>
+              <span>Hoy</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-green-100 border-l-4 border-green-400 rounded"></div>
-              <span className="text-gray-600">En progreso</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-50 border-2 border-blue-500 rounded"></div>
-              <span className="text-gray-600">Hoy</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-gray-100 rounded"></div>
-              <span className="text-gray-600">Fin de semana</span>
-            </div>
+            {canCreate && (
+              <span className="text-[10px] text-gray-400 ml-auto">
+                💡 Clic en un día para crear evento · Arrastra 🔧 para reprogramar
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Modal de edición */}
-      {showEditModal && selectedProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowEditModal(false)}>
-          <Card className="max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle>{selectedProject.quote_number}</CardTitle>
-                  <p className="text-gray-600 mt-1">{selectedProject.client_name}</p>
-                </div>
-                <Button onClick={() => setShowEditModal(false)} variant="outline" size="sm">
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              {/* Información */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 rounded p-3">
-                  <p className="text-xs text-gray-600 mb-1">Inicio planificado</p>
-                  <p className="font-bold">
-                    {selectedProject.start_date 
-                      ? format(parseISO(selectedProject.start_date), 'dd/MM/yyyy', { locale: es })
-                      : '-'
-                    }
-                  </p>
-                </div>
-
-                <div className="bg-gray-50 rounded p-3">
-                  <p className="text-xs text-gray-600 mb-1">Fin planificado</p>
-                  <p className="font-bold">
-                    {selectedProject.end_date 
-                      ? format(parseISO(selectedProject.end_date), 'dd/MM/yyyy', { locale: es })
-                      : '-'
-                    }
-                  </p>
-                </div>
-
-                <div className="bg-blue-50 rounded p-3">
-                  <p className="text-xs text-gray-600 mb-1">Tiempo estimado</p>
-                  <p className="font-bold text-blue-700">
-                    {selectedProject.total_hours}h ({selectedProject.total_days} días)
-                  </p>
-                </div>
-
-                <div className="bg-purple-50 rounded p-3">
-                  <p className="text-xs text-gray-600 mb-1">Estado</p>
-                  <Badge variant={
-                    selectedProject.status === 'IN_PROGRESS' ? 'success' :
-                    selectedProject.status === 'SCHEDULED' ? 'default' :
-                    'secondary'
-                  }>
-                    {selectedProject.status}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Acciones */}
-              <div className="flex gap-2 pt-4 border-t">
-                <Button
-                  onClick={() => {
-                    ProductionService.updateProject(selectedProject.id, { 
-                      status: selectedProject.status === 'IN_PROGRESS' ? 'SCHEDULED' : 'IN_PROGRESS' 
-                    }).then(() => {
-                      toast.success('Estado actualizado')
-                      onRefresh()
-                      setShowEditModal(false)
-                    })
-                  }}
-                  className="flex-1"
-                  variant={selectedProject.status === 'IN_PROGRESS' ? 'outline' : 'default'}
-                >
-                  {selectedProject.status === 'IN_PROGRESS' ? '⏸ Pausar' : '▶ Iniciar Producción'}
-                </Button>
-
-                <Button
-                  onClick={() => handleDeleteProject(selectedProject.id)}
-                  variant="destructive"
-                  className="flex-1"
-                >
-                  🗑️ Quitar del Calendario
-                </Button>
-              </div>
-
-              <p className="text-xs text-gray-500 text-center">
-                💡 Arrastra el proyecto en el calendario para reprogramarlo
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+      {/* Event modal */}
+      {showModal && (
+        modalMode === 'view' && selectedEvent ? (
+          <EventModal
+            event={selectedEvent}
+            canEdit={canCreate && selectedEvent.branch !== 'produccion'}
+            onClose={() => setShowModal(false)}
+            onCreate={onCreate}
+            onDelete={onDelete}
+          />
+        ) : (
+          <EventModal
+            initialDate={newEventDate}
+            canEdit={canCreate}
+            onClose={() => setShowModal(false)}
+            onCreate={onCreate}
+          />
+        )
       )}
     </div>
   )

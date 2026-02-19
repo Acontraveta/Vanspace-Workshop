@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
+import CRMLinkModal, { type LinkedLeadData } from './CRMLinkModal'
 
 interface ClientDataFormProps {
   // Datos básicos
@@ -28,6 +30,11 @@ interface ClientDataFormProps {
   // Estado
   disabled?: boolean
   showBillingData?: boolean
+
+  // CRM link
+  linkedLeadName?: string
+  onLinkLead?: (data: LinkedLeadData) => void
+  onUnlinkLead?: () => void
 }
 
 export default function ClientDataForm({
@@ -43,8 +50,12 @@ export default function ClientDataForm({
   setBillingData,
   disabled = false,
   showBillingData = false,
+  linkedLeadName,
+  onLinkLead,
+  onUnlinkLead,
 }: ClientDataFormProps) {
-  
+  const [showCRMModal, setShowCRMModal] = useState(false)
+
   const updateBillingData = (field: string, value: string) => {
     setBillingData({ ...billingData, [field]: value })
   }
@@ -61,16 +72,48 @@ export default function ClientDataForm({
 
   return (
     <div className="space-y-6">
+      {showCRMModal && onLinkLead && (
+        <CRMLinkModal
+          onSelect={data => { onLinkLead(data); setShowCRMModal(false) }}
+          onClose={() => setShowCRMModal(false)}
+        />
+      )}
+
       {/* Datos Básicos del Cliente */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle>👤 Datos del Cliente</CardTitle>
-            {isBasicDataComplete ? (
-              <Badge variant="success">✅ Completo</Badge>
-            ) : (
-              <Badge variant="secondary">⚠️ Incompleto</Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {linkedLeadName ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-green-100 text-green-800 border border-green-200">
+                  👥 {linkedLeadName}
+                  {onUnlinkLead && !disabled && (
+                    <button
+                      type="button"
+                      onClick={onUnlinkLead}
+                      className="text-green-600 hover:text-red-600 transition leading-none ml-0.5"
+                      title="Desvincular lead"
+                    >✕</button>
+                  )}
+                </span>
+              ) : (
+                onLinkLead && !disabled && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCRMModal(true)}
+                    className="text-xs px-2.5 py-1 rounded-full border border-blue-300 text-blue-700 hover:bg-blue-50 transition font-medium"
+                  >
+                    🔗 Vincular lead CRM
+                  </button>
+                )
+              )}
+              {isBasicDataComplete ? (
+                <Badge variant="success">✅ Completo</Badge>
+              ) : (
+                <Badge variant="secondary">⚠️ Incompleto</Badge>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>

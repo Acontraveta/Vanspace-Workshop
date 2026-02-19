@@ -192,6 +192,33 @@ export default function ProjectDetails({ project, onClose, onScheduled }: Projec
                             {suggestion.reason}
                           </p>
 
+                          {/* Capacity bar */}
+                          {suggestion.capacity && (
+                            <div className="mt-2 mb-2">
+                              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                                <span>
+                                  👷 {suggestion.capacity.employeeCount} operario{suggestion.capacity.employeeCount !== 1 ? 's' : ''}
+                                  &nbsp;·&nbsp;{suggestion.capacity.dailyCapacity}h/día disponibles
+                                </span>
+                                <span className={suggestion.capacity.canFit ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                                  {Math.round(suggestion.capacity.avgUtilization)}% carga media
+                                </span>
+                              </div>
+                              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${
+                                    suggestion.capacity.avgUtilization > 90 ? 'bg-red-500' :
+                                    suggestion.capacity.avgUtilization > 70 ? 'bg-orange-400' : 'bg-green-500'
+                                  }`}
+                                  style={{ width: `${Math.min(100, suggestion.capacity.avgUtilization)}%` }}
+                                />
+                              </div>
+                              {!suggestion.capacity.canFit && (
+                                <p className="text-xs text-red-600 mt-1">⚠️ Capacidad insuficiente en uno o más días</p>
+                              )}
+                            </div>
+                          )}
+
                           {suggestion.conflicts && suggestion.conflictingProjects.length > 0 && (
                             <div className="bg-orange-50 border border-orange-200 rounded p-2 mt-2">
                               <p className="text-xs font-medium text-orange-800 mb-1">

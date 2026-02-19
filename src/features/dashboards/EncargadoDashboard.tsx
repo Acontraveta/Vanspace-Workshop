@@ -11,6 +11,7 @@ import { StockService } from '@/features/purchases/services/stockService'
 import { QuoteService } from '@/features/quotes/services/quoteService'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { differenceInDays, parseISO } from 'date-fns'
+import MyHoursWidget from '@/features/timeclock/components/MyHoursWidget'
 
 export default function EncargadoDashboard() {
   const { user } = useAuth()
@@ -57,7 +58,7 @@ export default function EncargadoDashboard() {
       }).length
 
       // Pedidos
-      const purchases = PurchaseService.getAllPurchases()
+      const purchases = await PurchaseService.getAllPurchases()
       
       // Stock
       const stock = StockService.getStock()
@@ -330,6 +331,10 @@ export default function EncargadoDashboard() {
             </p>
           </CardContent>
         </Card>
+      </div>
+      <div className="mt-6">
+        <h2 className="text-xl font-bold mb-4">⏰ Mis Horas</h2>
+        <MyHoursWidget />
       </div>
     </PageLayout>
   )

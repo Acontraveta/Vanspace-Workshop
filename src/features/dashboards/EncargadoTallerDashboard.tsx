@@ -11,6 +11,7 @@ import { ProductionEmployee } from '@/features/config/types/config.types'
 import { ConfigService } from '@/features/config/services/configService'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { differenceInDays, parseISO } from 'date-fns'
+import MyHoursWidget from '@/features/timeclock/components/MyHoursWidget'
 
 export default function EncargadoTallerDashboard() {
   const { user } = useAuth()
@@ -299,6 +300,10 @@ export default function EncargadoTallerDashboard() {
             </div>
           </CardContent>
         </Card>
+      </div>
+      <div className="mt-6">
+        <h2 className="text-xl font-bold mb-4">⏰ Mis Horas</h2>
+        <MyHoursWidget />
       </div>
     </PageLayout>
   )

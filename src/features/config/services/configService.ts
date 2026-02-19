@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { Tarifa, ProductionEmployee, Role, ConfigSetting, AlertSetting, CompanyInfo } from '../types/config.types'
+import { Security } from '@/lib/security'
 
 export class ConfigService {
   
@@ -65,43 +66,59 @@ export class ConfigService {
   }
 
   static async updateEmployee(id: string, updates: Partial<ProductionEmployee>): Promise<void> {
+    const updateData: any = { ...updates, updated_at: new Date().toISOString() }
+    // Solo hashear si se proporcionó nueva contraseña
+    if (updates.password_hash && updates.password_hash.trim() !== '') {
+      updateData.password_hash = await Security.hashPassword(updates.password_hash)
+    } else {
+      delete updateData.password_hash // No actualizar si está vacío
+    }
     const { error } = await supabase
       .from('production_employees')
-      .update({
-        nombre: updates.nombre,
-        especialidad_principal: updates.especialidad_principal,
-        especialidad_secundaria: updates.especialidad_secundaria,
-        tarifa_hora_eur: updates.tarifa_hora_eur,
-        horas_semanales: updates.horas_semanales,
-        email: updates.email,
-        password_hash: updates.password_hash, // Solo se incluye si se proporcionó
-        telefono: updates.telefono,
-        activo: updates.activo,
-        role: updates.role,
-        permissions: updates.permissions,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', id)
     if (error) throw error
   }
 
   static async createEmployee(employee: Omit<ProductionEmployee, 'created_at' | 'updated_at'>): Promise<void> {
+    // Hashear contraseña antes de guardar
+    const hashedPassword = employee.password_hash 
+      ? await Security.hashPassword(employee.password_hash)
+      : await Security.hashPassword(Security.generateTempPassword())
+
     const { error } = await supabase
       .from('production_employees')
       .insert({
+        id: crypto.randomUUID(),
         nombre: employee.nombre,
         especialidad_principal: employee.especialidad_principal,
         especialidad_secundaria: employee.especialidad_secundaria,
         tarifa_hora_eur: employee.tarifa_hora_eur,
         horas_semanales: employee.horas_semanales,
-        email: employee.email,
-        password_hash: employee.password_hash, // TODO: En producción, hashear con bcrypt
+        email: employee.email?.toLowerCase().trim(),
+        password_hash: hashedPassword, // ← Siempre hasheado
         telefono: employee.telefono,
         activo: employee.activo,
         role: employee.role,
+        rol: employee.rol || employee.role,
         permissions: employee.permissions || {}
       })
     if (error) throw error
+    }
+
+    // Nuevo método para resetear contraseña
+    static async resetPassword(employeeId: string): Promise<string> {
+    const tempPassword = Security.generateTempPassword()
+    const hashedPassword = await Security.hashPassword(tempPassword)
+
+    const { error } = await supabase
+      .from('production_employees')
+      .update({ password_hash: hashedPassword })
+      .eq('id', employeeId)
+
+    if (error) throw error
+
+    return tempPassword // Devolver la contraseña temporal para mostrar al admin
   }
 
   static async deleteEmployee(id: string): Promise<void> {
