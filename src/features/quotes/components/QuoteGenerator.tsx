@@ -22,6 +22,8 @@ import toast from 'react-hot-toast'
 import ManualProductModal from './ManualProductModal'
 import QuotePreview from './QuotePreview'
 import QuickDocumentModal, { QuickDocType } from './QuickDocumentModal'
+import ConsumableResolverModal, { UnresolvedConsumable } from './ConsumableResolverModal'
+import { StockService } from '@/features/purchases/services/stockService'
 
 const TARIFAS_FALLBACK: Tarifa[] = [
   { id: 'camperizacion_total', name: 'Camperización Total', hourlyRate: 50, profitMargin: 25 },
@@ -132,6 +134,10 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
   const [showManualProductModal, setShowManualProductModal] = useState(false)
   const [showPreview, setShowPreview] = useState<'PRESUPUESTO' | 'FACTURA' | null>(null)
   const [quickDocType, setQuickDocType] = useState<QuickDocType | null>(null)
+  const [consumableResolver, setConsumableResolver] = useState<{
+    product: CatalogProduct
+    unresolved: UnresolvedConsumable[]
+  } | null>(null)
   
   // Estado para acordeones
   const [expandedFamily, setExpandedFamily] = useState<string | null>(null)
@@ -210,6 +216,55 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
     const item = PriceCalculator.calculateQuoteItem(product, quantity, selectedTarifa)
     setItems([...items, item])
     toast.success(`${product.NOMBRE} añadido`)
+  }
+
+  /** Returns consumables whose name is generic (not in stock) but matches catalog products */
+  const findUnresolvedConsumables = (product: CatalogProduct): UnresolvedConsumable[] => {
+    const unresolved: UnresolvedConsumable[] = []
+    for (let i = 1; i <= 10; i++) {
+      const name = (product as any)[`CONSUMIBLE_${i}`] as string | undefined
+      if (!name) continue
+      const quantity: number = (product as any)[`CONSUMIBLE_${i}_CANT`] || 1
+      const unit: string = (product as any)[`CONSUMIBLE_${i}_UNIDAD`] || 'ud'
+      // If it already matches a stock item exactly, no resolution needed
+      if (StockService.findItemByName(name)) continue
+      // Search catalog for products whose NOMBRE contains this generic name
+      const matches = products.filter(p =>
+        p.NOMBRE.toLowerCase().includes(name.toLowerCase()) ||
+        name.toLowerCase().includes(p.NOMBRE.toLowerCase())
+      )
+      if (matches.length > 0) {
+        unresolved.push({ index: i, genericName: name, quantity, unit, matches, selectedSKU: matches[0].SKU, skipped: false })
+      }
+    }
+    return unresolved
+  }
+
+  /** Called when user confirms consumable resolution in the modal */
+  const handleConsumableResolution = (resolved: UnresolvedConsumable[]) => {
+    if (!consumableResolver) return
+    const product: CatalogProduct = { ...consumableResolver.product }
+    for (const c of resolved) {
+      if (!c.skipped) {
+        const selected = c.matches.find(m => m.SKU === c.selectedSKU)
+        if (selected) {
+          ;(product as any)[`CONSUMIBLE_${c.index}`] = selected.NOMBRE
+        }
+      }
+    }
+    addProduct(product)
+    setConsumableResolver(null)
+  }
+
+  /** Tries to add a catalog product; opens resolver modal if generic consumables exist */
+  const tryAddProduct = (product: CatalogProduct) => {
+    if (currentQuote?.status === 'APPROVED') return
+    const unresolved = findUnresolvedConsumables(product)
+    if (unresolved.length > 0) {
+      setConsumableResolver({ product, unresolved })
+    } else {
+      addProduct(product)
+    }
   }
 
   const removeItem = (itemId: string) => {
@@ -642,7 +697,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                                               </div>
                                               <Button
                                                 size="sm"
-                                                onClick={() => addProduct(product)}
+                                                onClick={() => tryAddProduct(product)}
                                                 disabled={currentQuote?.status === 'APPROVED'}
                                               >
                                                 ➕
@@ -866,6 +921,20 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
             })),
           }}
           onClose={() => setQuickDocType(null)}
+        />
+      )}
+
+      {/* Consumable resolver modal */}
+      {consumableResolver && (
+        <ConsumableResolverModal
+          productName={consumableResolver.product.NOMBRE}
+          unresolved={consumableResolver.unresolved}
+          onConfirm={handleConsumableResolution}
+          onSkipAll={() => {
+            addProduct(consumableResolver.product)
+            setConsumableResolver(null)
+          }}
+          onCancel={() => setConsumableResolver(null)}
         />
       )}
 
