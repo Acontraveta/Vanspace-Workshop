@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo, useCallback } from 'react'
-import { Canvas, useFrame, useThree, ThreeEvent } from '@react-three/fiber'
-import { OrbitControls, Environment, Html } from '@react-three/drei'
+import { Canvas, useThree, ThreeEvent } from '@react-three/fiber'
+import { OrbitControls, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { InteractivePiece, ModuleDimensions, CatalogMaterial } from '../types/furniture.types'
 import { PIECE_COLORS } from '../constants/furniture.constants'
@@ -128,14 +128,14 @@ function ModuleOutline({ module: m }: { module: ModuleDimensions }) {
 function CameraSetup({ module: m }: { module: ModuleDimensions }) {
   const { camera } = useThree()
   const hasSet = useRef(false)
-  useFrame(() => {
-    if (hasSet.current) return
+  // Set once on mount
+  if (!hasSet.current) {
     hasSet.current = true
     const maxDim = Math.max(m.width, m.height, m.depth)
     const dist = maxDim * 1.6
     camera.position.set(m.width * 0.8, m.height * 0.9, m.depth + dist * 0.6)
     camera.lookAt(m.width / 2, m.height / 2, m.depth / 2)
-  })
+  }
   return null
 }
 
@@ -178,9 +178,10 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, ca
       {/* Three.js Canvas */}
       <div className="flex-1 relative" style={{ minHeight: 500 }}>
         <Canvas
-          gl={{ antialias: true, alpha: false }}
+          camera={{ near: 1, far: 100000, fov: 50 }}
+          gl={{ antialias: true, alpha: false, logarithmicDepthBuffer: true }}
           onPointerMissed={handleBgClick}
-          style={{ background: '#f8fafc' }}
+          onCreated={({ scene }) => { scene.background = new THREE.Color('#f1f5f9') }}
         >
           <CameraSetup module={mod} />
           <OrbitControls
