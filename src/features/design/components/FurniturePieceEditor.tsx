@@ -844,21 +844,32 @@ export function FurniturePieceEditor({
                     const dotColor = selectedId === p.id ? typeColors.selected : typeColors.fill
                     const pMat = getMaterial(p.materialId)
                     return (
-                      <button key={p.id}
-                        onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
-                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all ${
+                      <div key={p.id} className={`flex items-center gap-1 px-1 py-0.5 rounded-lg transition-all ${
                           selectedId === p.id
                             ? 'bg-blue-100 border border-blue-300'
                             : 'hover:bg-slate-50 border border-transparent'
                         }`}>
-                        <span className="w-3 h-3 rounded flex-shrink-0 border border-slate-200"
-                          style={{ backgroundColor: dotColor }} />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-[10px] font-bold text-slate-700 truncate block">{p.name}</span>
-                          {pMat && <span className="text-[8px] text-slate-400 truncate block">{pMat.texture_label}</span>}
-                        </div>
-                        <span className="text-[8px] font-mono text-slate-400 flex-shrink-0">{p.w}×{p.h}</span>
-                      </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); updatePiece(p.id, { hidden: !p.hidden }) }}
+                          className={`w-5 h-5 flex items-center justify-center rounded text-[10px] flex-shrink-0 transition-all ${
+                            p.hidden ? 'text-slate-300 hover:text-slate-500' : 'text-slate-500 hover:text-blue-600'
+                          }`}
+                          title={p.hidden ? 'Mostrar pieza' : 'Ocultar pieza'}
+                        >
+                          {p.hidden ? '👁‍🗨' : '👁'}
+                        </button>
+                        <button
+                          onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+                          className={`flex-1 flex items-center gap-2 px-1.5 py-1 rounded text-left ${p.hidden ? 'opacity-40' : ''}`}>
+                          <span className="w-3 h-3 rounded flex-shrink-0 border border-slate-200"
+                            style={{ backgroundColor: dotColor }} />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[10px] font-bold text-slate-700 truncate block">{p.name}</span>
+                            {pMat && <span className="text-[8px] text-slate-400 truncate block">{pMat.texture_label}</span>}
+                          </div>
+                          <span className="text-[8px] font-mono text-slate-400 flex-shrink-0">{p.w}×{p.h}</span>
+                        </button>
+                      </div>
                     )
                   })}
                 </div>

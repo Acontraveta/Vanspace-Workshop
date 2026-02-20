@@ -98,6 +98,23 @@ export class FurnitureWorkOrderService {
   }
 }
 
+const LS_KEY = 'vanspace_furniture_designs'
+
+// ─── localStorage helpers ─────────────────────────────────────────────────────
+
+function lsGetAll(): FurnitureDesign[] {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] }
+}
+
+function lsSave(designs: FurnitureDesign[]) {
+  localStorage.setItem(LS_KEY, JSON.stringify(designs))
+}
+
+function isTableMissing(err: any): boolean {
+  const msg = String(err?.message ?? err ?? '')
+  return msg.includes('schema cache') || msg.includes('relation') || msg.includes('does not exist')
+}
+
 // ─── Furniture Designs (individual piece designs) ─────────────────────────────
 
 export class FurnitureDesignService {
@@ -125,23 +142,34 @@ export class FurnitureDesignService {
       updated_at:      new Date().toISOString(),
     }
 
-    if (payload.existingId) {
-      const { data, error } = await supabase
-        .from(DES_TABLE)
-        .update(row)
-        .eq('id', payload.existingId)
-        .select()
-        .single()
-      if (error) throw error
-      return data as FurnitureDesign
-    } else {
-      const { data, error } = await supabase
-        .from(DES_TABLE)
-        .insert(row)
-        .select()
-        .single()
-      if (error) throw error
-      return data as FurnitureDesign
+    try {
+      if (payload.existingId) {
+        const { data, error } = await supabase
+          .from(DES_TABLE)
+          .update(row)
+          .eq('id', payload.existingId)
+          .select()
+          .single()
+        if (error) throw error
+        return data as FurnitureDesign
+      } else {
+        const { data, error } = await supabase
+          .from(DES_TABLE)
+          .insert(row)
+          .select()
+          .single()
+        if (error) throw error
+        return data as FurnitureDesign
+      }
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        return FurnitureDesignService._saveToLocalStorage({
+          ...row,
+          id: payload.existingId || `local-${Date.now()}`,
+          created_at: new Date().toISOString(),
+        } as FurnitureDesign)
+      }
+      throw err
     }
   }
 
@@ -149,60 +177,85 @@ export class FurnitureDesignService {
     workOrderId: string,
     quoteItemName: string
   ): Promise<FurnitureDesign | null> {
-    const { data, error } = await supabase
-      .from(DES_TABLE)
-      .select('*')
-      .eq('work_order_id', workOrderId)
-      .eq('quote_item_name', quoteItemName)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (error) throw error
-    return data as FurnitureDesign | null
+    try {
+      const { data, error } = await supabase
+        .from(DES_TABLE)
+        .select('*')
+        .eq('work_order_id', workOrderId)
+        .eq('quote_item_name', quoteItemName)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      return data as FurnitureDesign | null
+    } catch (err: any) {
+      if (isTableMissing(err)) return null
+      throw err
+    }
   }
 
   /** All designs saved for a CRM lead — used in LeadDocuments */
   static async getByLead(leadId: string): Promise<FurnitureDesign[]> {
-    const { data, error } = await supabase
-      .from(DES_TABLE)
-      .select('*')
-      .eq('lead_id', leadId)
-      .order('updated_at', { ascending: false })
-    if (error) throw error
-    return (data ?? []) as FurnitureDesign[]
+    try {
+      const { data, error } = await supabase
+        .from(DES_TABLE)
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('updated_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as FurnitureDesign[]
+    } catch (err: any) {
+      if (isTableMissing(err)) return lsGetAll().filter(d => d.lead_id === leadId)
+      throw err
+    }
   }
 
   /** All designs for a work order */
   static async getByWorkOrder(workOrderId: string): Promise<FurnitureDesign[]> {
-    const { data, error } = await supabase
-      .from(DES_TABLE)
-      .select('*')
-      .eq('work_order_id', workOrderId)
-      .order('updated_at', { ascending: false })
-    if (error) throw error
-    return (data ?? []) as FurnitureDesign[]
+    try {
+      const { data, error } = await supabase
+        .from(DES_TABLE)
+        .select('*')
+        .eq('work_order_id', workOrderId)
+        .order('updated_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as FurnitureDesign[]
+    } catch (err: any) {
+      if (isTableMissing(err)) return lsGetAll().filter(d => d.work_order_id === workOrderId)
+      throw err
+    }
   }
 
   /** Get a single design by its id */
   static async getById(id: string): Promise<FurnitureDesign | null> {
-    const { data, error } = await supabase
-      .from(DES_TABLE)
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
-    if (error) throw error
-    return data as FurnitureDesign | null
+    try {
+      const { data, error } = await supabase
+        .from(DES_TABLE)
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+      if (error) throw error
+      return data as FurnitureDesign | null
+    } catch (err: any) {
+      if (isTableMissing(err)) return lsGetAll().find(d => d.id === id) ?? null
+      throw err
+    }
   }
 
   /** All standalone designs (no work order), newest first — the "library" */
   static async getAllStandalone(): Promise<FurnitureDesign[]> {
-    const { data, error } = await supabase
-      .from(DES_TABLE)
-      .select('*')
-      .is('work_order_id', null)
-      .order('updated_at', { ascending: false })
-    if (error) throw error
-    return (data ?? []) as FurnitureDesign[]
+    try {
+      const { data, error } = await supabase
+        .from(DES_TABLE)
+        .select('*')
+        .is('work_order_id', null)
+        .order('updated_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as FurnitureDesign[]
+    } catch (err: any) {
+      if (isTableMissing(err)) return lsGetAll().filter(d => !d.work_order_id)
+      throw err
+    }
   }
 
   /** Save a standalone design (no work order) — create or update */
@@ -224,28 +277,59 @@ export class FurnitureDesignService {
       updated_at:      new Date().toISOString(),
     }
 
-    if (payload.existingId) {
-      const { data, error } = await supabase
-        .from(DES_TABLE)
-        .update(row)
-        .eq('id', payload.existingId)
-        .select()
-        .single()
-      if (error) throw error
-      return data as FurnitureDesign
-    } else {
-      const { data, error } = await supabase
-        .from(DES_TABLE)
-        .insert(row)
-        .select()
-        .single()
-      if (error) throw error
-      return data as FurnitureDesign
+    try {
+      if (payload.existingId) {
+        const { data, error } = await supabase
+          .from(DES_TABLE)
+          .update(row)
+          .eq('id', payload.existingId)
+          .select()
+          .single()
+        if (error) throw error
+        return data as FurnitureDesign
+      } else {
+        const { data, error } = await supabase
+          .from(DES_TABLE)
+          .insert(row)
+          .select()
+          .single()
+        if (error) throw error
+        return data as FurnitureDesign
+      }
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        return FurnitureDesignService._saveToLocalStorage({
+          ...row,
+          id: payload.existingId || `local-${Date.now()}`,
+          quote_item_name: payload.name,
+          created_at: new Date().toISOString(),
+        } as FurnitureDesign)
+      }
+      throw err
     }
   }
 
   static async delete(id: string): Promise<void> {
-    const { error } = await supabase.from(DES_TABLE).delete().eq('id', id)
-    if (error) throw error
+    try {
+      const { error } = await supabase.from(DES_TABLE).delete().eq('id', id)
+      if (error) throw error
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        const all = lsGetAll().filter(d => d.id !== id)
+        lsSave(all)
+        return
+      }
+      throw err
+    }
+  }
+
+  /** Private: save/update a design in localStorage when Supabase table is missing */
+  static _saveToLocalStorage(design: FurnitureDesign): FurnitureDesign {
+    const all = lsGetAll()
+    const idx = all.findIndex(d => d.id === design.id)
+    if (idx >= 0) all[idx] = design
+    else all.unshift(design)
+    lsSave(all)
+    return design
   }
 }

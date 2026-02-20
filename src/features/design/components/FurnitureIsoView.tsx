@@ -253,7 +253,7 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, on
   const [transparent, setTransparent]   = useState(false)
 
   const visiblePieces = useMemo(
-    () => pieces.filter(p => showFrontals || p.type !== 'frontal'),
+    () => pieces.filter(p => !p.hidden && (showFrontals || p.type !== 'frontal')),
     [pieces, showFrontals]
   )
 

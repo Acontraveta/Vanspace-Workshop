@@ -93,7 +93,7 @@ export function FurnitureFrontView({
 
   // Sort pieces by depth so front-most renders last (on top = clickable first)
   const sortedPieces = useMemo(() => {
-    const sorted = [...pieces]
+    const sorted = pieces.filter(p => !p.hidden)
     switch (view) {
       case 'frontal': sorted.sort((a, b) => a.z - b.z); break // closer Z = higher
       case 'lateral': sorted.sort((a, b) => a.x - b.x); break

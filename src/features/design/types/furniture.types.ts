@@ -39,6 +39,7 @@ export interface InteractivePiece {
   h: number // Alto  (eje Y)
   d: number // Fondo (eje Z)
   materialId?: string       // links to CatalogMaterial.id
+  hidden?: boolean           // hide piece in 2D/3D views without deleting
 }
 
 export interface ModuleDimensions {
