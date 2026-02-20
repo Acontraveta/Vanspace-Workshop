@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo, useCallback } from 'react'
+import { useRef, useState, useMemo, useCallback, useEffect } from 'react'
 import { InteractivePiece, CatalogMaterial } from '../types/furniture.types'
 import { SNAP_DISTANCE, PIECE_COLORS } from '../constants/furniture.constants'
 
@@ -59,7 +59,9 @@ export function FurnitureFrontView({
 
   const baseScale = Math.min(560 / workspace.w, 520 / workspace.h)
   const scale = baseScale * zoom
-  const HANDLE_R = 5 / scale
+  // Handle size: constant ~4 screen pixels regardless of zoom
+  const vbH_ = workspace.h * scale + 80
+  const HANDLE_R = 4 * (vbH_ / 500)
 
   /** Convert client (mouse) coords to SVG user-space coords */
   const clientToSvg = useCallback((clientX: number, clientY: number) => {
@@ -72,6 +74,38 @@ export function FurnitureFrontView({
       y: (clientY - ctm.f) / ctm.d,
     }
   }, [])
+
+  // Auto-switch view to show the best face of the selected piece
+  useEffect(() => {
+    if (!selectedId) return
+    const piece = pieces.find(p => p.id === selectedId)
+    if (!piece) return
+    // Pick the view that shows the piece's two largest dimensions
+    // (i.e. the view perpendicular to the thinnest dimension)
+    const dims: { dim: number; v: ViewType }[] = [
+      { dim: piece.d, v: 'frontal' },  // thin in Z → frontal shows X×Y
+      { dim: piece.w, v: 'lateral' },   // thin in X → lateral shows Z×Y
+      { dim: piece.h, v: 'planta' },    // thin in Y → planta shows X×Z
+    ]
+    const best = dims.reduce((a, b) => (a.dim < b.dim ? a : b))
+    setView(best.v)
+  }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sort pieces by depth so front-most renders last (on top = clickable first)
+  const sortedPieces = useMemo(() => {
+    const sorted = [...pieces]
+    switch (view) {
+      case 'frontal': sorted.sort((a, b) => a.z - b.z); break // closer Z = higher
+      case 'lateral': sorted.sort((a, b) => a.x - b.x); break
+      case 'planta':  sorted.sort((a, b) => a.y - b.y); break
+    }
+    // Selected piece always rendered last (topmost, never hidden behind others)
+    if (selectedId) {
+      const idx = sorted.findIndex(p => p.id === selectedId)
+      if (idx >= 0) sorted.push(sorted.splice(idx, 1)[0])
+    }
+    return sorted
+  }, [pieces, view, selectedId])
 
   /** Snap value to nearby edges */
   const snap = (val: number, targets: number[]) => {
@@ -255,7 +289,7 @@ export function FurnitureFrontView({
         <line x1="0" y1="0" x2={workspace.w * scale} y2="0" stroke="#334155" strokeWidth="1" />
         <line x1="0" y1="0" x2="0" y2={-workspace.h * scale} stroke="#334155" strokeWidth="1" />
 
-        {pieces.map(p => {
+        {sortedPieces.map(p => {
           const isSelected = selectedId === p.id
           const c = get2D(p)
           const colors = PIECE_COLORS[p.type]
