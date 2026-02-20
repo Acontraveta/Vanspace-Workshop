@@ -183,6 +183,67 @@ export class FurnitureDesignService {
     return (data ?? []) as FurnitureDesign[]
   }
 
+  /** Get a single design by its id */
+  static async getById(id: string): Promise<FurnitureDesign | null> {
+    const { data, error } = await supabase
+      .from(DES_TABLE)
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+    if (error) throw error
+    return data as FurnitureDesign | null
+  }
+
+  /** All standalone designs (no work order), newest first — the "library" */
+  static async getAllStandalone(): Promise<FurnitureDesign[]> {
+    const { data, error } = await supabase
+      .from(DES_TABLE)
+      .select('*')
+      .is('work_order_id', null)
+      .order('updated_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []) as FurnitureDesign[]
+  }
+
+  /** Save a standalone design (no work order) — create or update */
+  static async saveStandalone(payload: {
+    name: string
+    module: ModuleDimensions
+    pieces: InteractivePiece[]
+    optimizedCuts: PlacedPiece[]
+    existingId?: string
+  }): Promise<FurnitureDesign> {
+    const row = {
+      work_order_id:   null,
+      lead_id:         null,
+      project_task_id: null,
+      quote_item_name: payload.name,
+      module:          payload.module,
+      pieces:          payload.pieces,
+      optimized_cuts:  payload.optimizedCuts,
+      updated_at:      new Date().toISOString(),
+    }
+
+    if (payload.existingId) {
+      const { data, error } = await supabase
+        .from(DES_TABLE)
+        .update(row)
+        .eq('id', payload.existingId)
+        .select()
+        .single()
+      if (error) throw error
+      return data as FurnitureDesign
+    } else {
+      const { data, error } = await supabase
+        .from(DES_TABLE)
+        .insert(row)
+        .select()
+        .single()
+      if (error) throw error
+      return data as FurnitureDesign
+    }
+  }
+
   static async delete(id: string): Promise<void> {
     const { error } = await supabase.from(DES_TABLE).delete().eq('id', id)
     if (error) throw error

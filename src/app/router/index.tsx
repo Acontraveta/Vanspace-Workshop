@@ -16,6 +16,7 @@ const TimeclockPage = lazy(() => import('@/features/timeclock/components/Timeclo
 const CRMDashboard = lazy(() => import('@/features/crm/components/CRMDashboard'))
 const FurnitureWorkOrderPage = lazy(() => import('@/features/design/pages/FurnitureWorkOrderPage'))
 const FurnitureDesignList = lazy(() => import('@/features/design/pages/FurnitureDesignList'))
+const FurnitureStandaloneEditor = lazy(() => import('@/features/design/pages/FurnitureStandaloneEditor'))
 
 // Dashboards
 const AdminDashboard = lazy(() => import('@/features/dashboards/AdminDashboard'))
@@ -200,6 +201,22 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <FurnitureDesignList />
+          </Suspense>
+        )
+      },
+      {
+        path: 'furniture-design/new',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <FurnitureStandaloneEditor />
+          </Suspense>
+        )
+      },
+      {
+        path: 'furniture-design/edit/:designId',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <FurnitureStandaloneEditor />
           </Suspense>
         )
       },

@@ -19,7 +19,7 @@ import { FurnitureStickersView } from '../components/FurnitureStickersView'
 import { optimizeCutList } from '../utils/geometry'
 import toast from 'react-hot-toast'
 
-type PageView = 'list' | 'editor' | 'cutlist' | 'stickers'
+type PageView = 'list' | 'editor' | 'cutlist' | 'stickers' | 'pick-source'
 
 export default function FurnitureWorkOrderPage() {
   const { workOrderId } = useParams<{ workOrderId: string }>()
@@ -27,6 +27,7 @@ export default function FurnitureWorkOrderPage() {
 
   const [wo, setWo]               = useState<FurnitureWorkOrder | null>(null)
   const [designs, setDesigns]     = useState<FurnitureDesign[]>([])
+  const [library, setLibrary]     = useState<FurnitureDesign[]>([])
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [pageView, setPageView]   = useState<PageView>('list')
@@ -45,6 +46,11 @@ export default function FurnitureWorkOrderPage() {
       ])
       setWo(woData)
       setDesigns(designsData)
+      // Load library for the source picker
+      try {
+        const lib = await FurnitureDesignService.getAllStandalone()
+        setLibrary(lib)
+      } catch { /* non-critical */ }
     } catch (err: any) {
       toast.error('Error cargando orden de trabajo: ' + err.message)
     } finally {
@@ -98,7 +104,29 @@ export default function FurnitureWorkOrderPage() {
 
   const openEditor = async (item: FurnitureWorkOrderItem) => {
     setActiveItem(item)
-    setSavedDesignForItem(designByItem[item.quoteItemName] ?? null)
+    const existing = designByItem[item.quoteItemName]
+    if (existing) {
+      // Already has a design — open editor directly
+      setSavedDesignForItem(existing)
+      setPageView('editor')
+    } else if (library.length > 0) {
+      // No design yet and library has items — let user choose source
+      setPageView('pick-source')
+    } else {
+      // No library — go straight to blank editor
+      setSavedDesignForItem(null)
+      setPageView('editor')
+    }
+  }
+
+  const startFromScratch = () => {
+    setSavedDesignForItem(null)
+    setPageView('editor')
+  }
+
+  const startFromLibrary = (libraryDesign: FurnitureDesign) => {
+    // Clone library design as initial state (don't link IDs)
+    setSavedDesignForItem({ ...libraryDesign, id: '' } as FurnitureDesign)
     setPageView('editor')
   }
 
@@ -162,6 +190,57 @@ export default function FurnitureWorkOrderPage() {
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <p className="text-slate-500">Orden de trabajo no encontrada</p>
         <button onClick={() => navigate(-1)} className="text-sm text-blue-600 underline">Volver</button>
+      </div>
+    )
+  }
+
+  // ── Source picker ──────────────────────────────────────────────────────────
+  if (pageView === 'pick-source' && activeItem) {
+    return (
+      <div className="p-6 max-w-3xl mx-auto space-y-6">
+        <div>
+          <button onClick={() => { setPageView('list'); setActiveItem(null) }}
+            className="text-sm text-blue-600 underline">← Volver</button>
+          <h2 className="text-lg font-black text-slate-900 mt-2">
+            ¿Cómo quieres diseñar &ldquo;{activeItem.quoteItemName}&rdquo;?
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Empieza desde cero o usa un diseño de la biblioteca como base.
+          </p>
+        </div>
+
+        <button onClick={startFromScratch}
+          className="w-full bg-white border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-amber-400 hover:bg-amber-50/30 transition-all">
+          <div className="text-3xl mb-2">✨</div>
+          <p className="font-bold text-slate-800">Diseño nuevo desde cero</p>
+          <p className="text-xs text-slate-400 mt-1">Estructura vacía con dimensiones por defecto</p>
+        </button>
+
+        {library.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">📚 Desde biblioteca</h3>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {library.map(d => {
+                const m = d.module as { name?: string; type?: string; width?: number; height?: number; depth?: number }
+                const pCount = Array.isArray(d.pieces) ? d.pieces.length : 0
+                return (
+                  <button key={d.id} onClick={() => startFromLibrary(d)}
+                    className="bg-white border border-slate-200 rounded-2xl p-4 text-left hover:border-amber-300 hover:shadow-md transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-xl">🪑</div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-800 truncate">{d.quote_item_name}</p>
+                        <p className="text-[10px] text-slate-400">
+                          {m.width}×{m.height}×{m.depth}mm · {pCount} pieza{pCount !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     )
   }
