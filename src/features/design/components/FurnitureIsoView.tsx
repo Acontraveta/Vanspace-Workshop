@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo, useCallback } from 'react'
+import { useRef, useState, useMemo, useCallback, useEffect } from 'react'
 import { Canvas, useThree, ThreeEvent } from '@react-three/fiber'
 import { OrbitControls, Html } from '@react-three/drei'
 import * as THREE from 'three'
@@ -10,6 +10,7 @@ interface FurnitureIsoViewProps {
   pieces: InteractivePiece[]
   selectedId: string | null
   onSelect: (id: string | null) => void
+  onUpdatePiece?: (id: string, updates: Partial<InteractivePiece>) => void
   catalogMaterials?: CatalogMaterial[]
 }
 
@@ -139,9 +140,109 @@ function CameraSetup({ module: m }: { module: ModuleDimensions }) {
   return null
 }
 
+// ─── Scene content — Three.js objects + drag controller ──────────────────────
+
+function SceneContent({
+  mod, visiblePieces, selectedId, onSelect, onUpdatePiece, wireframe, catalogMaterials,
+}: {
+  mod: ModuleDimensions
+  visiblePieces: InteractivePiece[]
+  selectedId: string | null
+  onSelect: (id: string | null) => void
+  onUpdatePiece?: (id: string, updates: Partial<InteractivePiece>) => void
+  wireframe: boolean
+  catalogMaterials: CatalogMaterial[]
+}) {
+  const { camera, gl, raycaster } = useThree()
+  const controlsRef = useRef<any>(null)
+  const dragRef = useRef<{
+    id: string; startPoint: THREE.Vector3
+    startPos: { x: number; y: number; z: number }; plane: THREE.Plane
+  } | null>(null)
+
+  // DOM-level pointer events for reliable drag tracking
+  useEffect(() => {
+    const canvas = gl.domElement
+    const handleMove = (e: PointerEvent) => {
+      const dr = dragRef.current
+      if (!dr || !onUpdatePiece) return
+      const rect = canvas.getBoundingClientRect()
+      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      const ny = -((e.clientY - rect.top) / rect.height) * 2 + 1
+      raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera)
+      const target = new THREE.Vector3()
+      if (raycaster.ray.intersectPlane(dr.plane, target)) {
+        const delta = target.clone().sub(dr.startPoint)
+        onUpdatePiece(dr.id, {
+          x: Math.round(dr.startPos.x + delta.x),
+          y: Math.round(dr.startPos.y + delta.y),
+          z: Math.round(dr.startPos.z + delta.z),
+        })
+      }
+    }
+    const handleUp = () => {
+      if (dragRef.current) {
+        dragRef.current = null
+        if (controlsRef.current) controlsRef.current.enabled = true
+        canvas.style.cursor = ''
+      }
+    }
+    canvas.addEventListener('pointermove', handleMove)
+    canvas.addEventListener('pointerup', handleUp)
+    return () => {
+      canvas.removeEventListener('pointermove', handleMove)
+      canvas.removeEventListener('pointerup', handleUp)
+    }
+  }, [camera, gl, raycaster, onUpdatePiece])
+
+  const handlePieceDown = useCallback((e: ThreeEvent<PointerEvent>, p: InteractivePiece) => {
+    e.stopPropagation()
+    if (selectedId === p.id && onUpdatePiece) {
+      // Already selected → start drag on camera-facing plane
+      const normal = camera.getWorldDirection(new THREE.Vector3()).negate()
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, e.point)
+      dragRef.current = {
+        id: p.id, startPoint: e.point.clone(),
+        startPos: { x: p.x, y: p.y, z: p.z }, plane,
+      }
+      if (controlsRef.current) controlsRef.current.enabled = false
+      gl.domElement.style.cursor = 'grabbing'
+    }
+    onSelect(p.id)
+  }, [selectedId, onUpdatePiece, onSelect, camera, gl])
+
+  return (
+    <>
+      <CameraSetup module={mod} />
+      <OrbitControls
+        ref={controlsRef}
+        target={[mod.width / 2, mod.height / 2, mod.depth / 2]}
+        enableDamping dampingFactor={0.12}
+        minDistance={100} maxDistance={Math.max(mod.width, mod.height, mod.depth) * 5}
+      />
+      <ambientLight intensity={0.55} />
+      <hemisphereLight args={['#dbeafe', '#e2e8f0', 0.4]} />
+      <directionalLight position={[mod.width * 2, mod.height * 3, mod.depth * 2]} intensity={0.6} />
+      <directionalLight position={[-mod.width, mod.height * 1.5, -mod.depth]} intensity={0.3} />
+      <directionalLight position={[mod.width * 0.5, -mod.height, mod.depth * 1.5]} intensity={0.15} />
+      <GroundPlane width={mod.width} depth={mod.depth} />
+      {wireframe && <ModuleOutline module={mod} />}
+      {visiblePieces.map(p => {
+        const mat = catalogMaterials.find(m => m.id === p.materialId)
+        return (
+          <PieceBox key={p.id} piece={p} isSelected={p.id === selectedId}
+            onPointerDown={e => handlePieceDown(e, p)}
+            materialColor={mat?.color_hex} />
+        )
+      })}
+      <DimensionLabels module={mod} />
+    </>
+  )
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 
-export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, catalogMaterials = [] }: FurnitureIsoViewProps) {
+export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, onUpdatePiece, catalogMaterials = [] }: FurnitureIsoViewProps) {
   const [showFrontals, setShowFrontals] = useState(true)
   const [wireframe, setWireframe]       = useState(false)
 
@@ -159,7 +260,7 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, ca
       {/* Header controls */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-gray-50">
         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-          Vista 3D · Orbitar
+          Vista 3D · Selecciona y arrastra
         </span>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1.5 cursor-pointer">
@@ -183,60 +284,18 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, ca
           onPointerMissed={handleBgClick}
           onCreated={({ scene }) => { scene.background = new THREE.Color('#f1f5f9') }}
         >
-          <CameraSetup module={mod} />
-          <OrbitControls
-            target={[mod.width / 2, mod.height / 2, mod.depth / 2]}
-            enableDamping
-            dampingFactor={0.12}
-            minDistance={100}
-            maxDistance={Math.max(mod.width, mod.height, mod.depth) * 5}
+          <SceneContent
+            mod={mod} visiblePieces={visiblePieces} selectedId={selectedId}
+            onSelect={onSelect} onUpdatePiece={onUpdatePiece}
+            wireframe={wireframe} catalogMaterials={catalogMaterials}
           />
-
-          {/* Lighting — no shadows to avoid dark cutting artifacts */}
-          <ambientLight intensity={0.55} />
-          <hemisphereLight args={['#dbeafe', '#e2e8f0', 0.4]} />
-          <directionalLight
-            position={[mod.width * 2, mod.height * 3, mod.depth * 2]}
-            intensity={0.6}
-          />
-          <directionalLight
-            position={[-mod.width, mod.height * 1.5, -mod.depth]}
-            intensity={0.3}
-          />
-          <directionalLight
-            position={[mod.width * 0.5, -mod.height, mod.depth * 1.5]}
-            intensity={0.15}
-          />
-
-          {/* Ground */}
-          <GroundPlane width={mod.width} depth={mod.depth} />
-
-          {/* Module outline */}
-          {wireframe && <ModuleOutline module={mod} />}
-
-          {/* Pieces */}
-          {visiblePieces.map(p => {
-            const mat = catalogMaterials.find(m => m.id === p.materialId)
-            return (
-              <PieceBox
-                key={p.id}
-                piece={p}
-                isSelected={p.id === selectedId}
-                onPointerDown={e => { e.stopPropagation(); onSelect(p.id) }}
-                materialColor={mat?.color_hex}
-              />
-            )
-          })}
-
-          {/* Dimension labels */}
-          <DimensionLabels module={mod} />
         </Canvas>
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-slate-200 bg-gray-50">
         <span className="text-[10px] font-medium text-slate-500">{pieces.length} piezas</span>
-        <span className="text-[10px] text-slate-400">Clic + arrastrar para orbitar · Scroll para zoom</span>
+        <span className="text-[10px] text-slate-400">1er clic selecciona · 2do clic + arrastrar mueve</span>
       </div>
     </div>
   )

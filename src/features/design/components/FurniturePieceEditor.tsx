@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { InteractivePiece, ModuleDimensions, Piece, PlacedPiece, ModuleType, CatalogMaterial } from '../types/furniture.types'
 import { DEFAULT_THICKNESS, BACK_THICKNESS, MATERIALS, MODULE_TYPES, PIECE_COLORS, DEFAULT_CATALOG_MATERIALS } from '../constants/furniture.constants'
 import { optimizeCutList } from '../utils/geometry'
@@ -147,7 +147,40 @@ export function FurniturePieceEditor({
     (id?: string) => catalogMaterials.find(m => m.id === id) ?? null,
     [catalogMaterials]
   )
+  // ─── Undo history ────────────────────────────────────────────────────────────────────
 
+  const historyRef = useRef<InteractivePiece[][]>([])
+  const skipNextHistory = useRef(false)
+  const prevPiecesJson = useRef(JSON.stringify(pieces))
+
+  useEffect(() => {
+    const json = JSON.stringify(pieces)
+    if (json === prevPiecesJson.current) return
+    if (skipNextHistory.current) {
+      skipNextHistory.current = false
+      prevPiecesJson.current = json
+      return
+    }
+    historyRef.current.push(JSON.parse(prevPiecesJson.current))
+    if (historyRef.current.length > 40) historyRef.current.shift()
+    prevPiecesJson.current = json
+  }, [pieces])
+
+  const undo = useCallback(() => {
+    const prev = historyRef.current.pop()
+    if (!prev) return
+    skipNextHistory.current = true
+    setPieces(prev)
+    setSelectedId(null)
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [undo])
   // ─── Module dimension change ────────────────────────────────────────────────
 
   const handleModuleChange = useCallback(
@@ -202,6 +235,16 @@ export function FurniturePieceEditor({
 
   const updatePiece = (id: string, updates: Partial<InteractivePiece>) =>
     setPieces(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p))
+
+  const applyMaterialToAll = useCallback((materialId: string | undefined) => {
+    setPieces(prev => prev.map(p => ({ ...p, materialId })))
+    if (materialId) {
+      const mat = catalogMaterials.find(m => m.id === materialId)
+      toast.success(`"${mat?.name}" aplicado a todas las piezas`)
+    } else {
+      toast.success('Material retirado de todas las piezas')
+    }
+  }, [catalogMaterials])
 
   const selectedPiece = useMemo(
     () => pieces.find(p => p.id === selectedId) ?? null,
@@ -294,10 +337,16 @@ export function FurniturePieceEditor({
           ))}
         </div>
 
-        <button onClick={handleSave} disabled={saving}
-          className="px-5 py-2.5 bg-blue-600 text-white text-xs font-bold uppercase rounded-xl shadow hover:bg-blue-700 disabled:opacity-50 transition-all">
-          {saving ? 'Guardando…' : '💾 Guardar'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={undo} title="Deshacer (Ctrl+Z)"
+            className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-sm hover:bg-slate-200 transition-all flex items-center justify-center">
+            ↩
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-5 py-2.5 bg-blue-600 text-white text-xs font-bold uppercase rounded-xl shadow hover:bg-blue-700 disabled:opacity-50 transition-all">
+            {saving ? 'Guardando…' : '💾 Guardar'}
+          </button>
+        </div>
       </div>
 
       {/* ── Body ──────────────────────────────────────────────────── */}
@@ -358,6 +407,31 @@ export function FurniturePieceEditor({
                   <button onClick={resetModule}
                     className="w-full py-1.5 bg-slate-50 border border-slate-200 text-slate-500 text-[9px] font-black uppercase rounded-lg hover:bg-slate-100 transition-all">
                     ↺ Reiniciar módulo
+                  </button>
+                </div>
+              </div>
+
+              {/* Material global */}
+              <div className="p-4 border-b border-slate-100">
+                <h3 className="text-[11px] font-bold uppercase text-slate-500 tracking-wide mb-3">🎨 Material global</h3>
+                <div className="space-y-1.5">
+                  <select
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                    value=""
+                    onChange={e => { if (e.target.value) applyMaterialToAll(e.target.value) }}
+                  >
+                    <option value="">Aplicar a todas las piezas…</option>
+                    {catalogMaterials.filter(m => m.in_stock).map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.price_per_m2}€/m²)
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => applyMaterialToAll(undefined)}
+                    className="w-full py-1.5 bg-slate-50 border border-slate-200 text-slate-500 text-[9px] font-bold rounded-lg hover:bg-slate-100 transition-all"
+                  >
+                    ✕ Quitar material de todas
                   </button>
                 </div>
               </div>
@@ -526,6 +600,7 @@ export function FurniturePieceEditor({
                   pieces={pieces}
                   selectedId={selectedId}
                   onSelect={setSelectedId}
+                  onUpdatePiece={(id, updates) => updatePiece(id, updates)}
                   catalogMaterials={catalogMaterials}
                 />
               </div>
