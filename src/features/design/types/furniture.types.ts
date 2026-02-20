@@ -64,6 +64,8 @@ export interface Piece {
 export interface PlacedPiece extends Piece {
   x: number
   y: number
+  board?: number            // 0-indexed board number (legacy data may lack this)
+  rotated?: boolean         // true if piece was rotated 90° during optimisation
 }
 
 // ─── Saved design for a single furniture item ─────────────────────────────────
