@@ -1,0 +1,311 @@
+import { useState, useEffect, useMemo } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import {
+  FurnitureWorkOrderService,
+  FurnitureDesignService,
+} from '../services/furnitureDesignService'
+import {
+  FurnitureWorkOrder,
+  FurnitureWorkOrderItem,
+  FurnitureDesign,
+  InteractivePiece,
+  ModuleDimensions,
+  PlacedPiece,
+  Piece,
+} from '../types/furniture.types'
+import { FurniturePieceEditor } from '../components/FurniturePieceEditor'
+import { FurnitureOptimizerView } from '../components/FurnitureOptimizerView'
+import { FurnitureStickersView } from '../components/FurnitureStickersView'
+import { optimizeCutList } from '../utils/geometry'
+import toast from 'react-hot-toast'
+
+type PageView = 'list' | 'editor' | 'cutlist' | 'stickers'
+
+export default function FurnitureWorkOrderPage() {
+  const { workOrderId } = useParams<{ workOrderId: string }>()
+  const navigate = useNavigate()
+
+  const [wo, setWo]               = useState<FurnitureWorkOrder | null>(null)
+  const [designs, setDesigns]     = useState<FurnitureDesign[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [pageView, setPageView]   = useState<PageView>('list')
+  const [activeItem, setActiveItem] = useState<FurnitureWorkOrderItem | null>(null)
+  const [savedDesignForItem, setSavedDesignForItem] = useState<FurnitureDesign | null>(null)
+
+  // ─── Load ────────────────────────────────────────────────────────────────────
+
+  const refresh = async () => {
+    if (!workOrderId) return
+    try {
+      setLoading(true)
+      const [woData, designsData] = await Promise.all([
+        FurnitureWorkOrderService.getById(workOrderId),
+        FurnitureDesignService.getByWorkOrder(workOrderId),
+      ])
+      setWo(woData)
+      setDesigns(designsData)
+    } catch (err: any) {
+      toast.error('Error cargando orden de trabajo: ' + err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { refresh() }, [workOrderId])
+
+  // ─── Derived ─────────────────────────────────────────────────────────────────
+
+  const designByItem = useMemo(() => {
+    const map: Record<string, FurnitureDesign> = {}
+    designs.forEach(d => { map[d.quote_item_name] = d })
+    return map
+  }, [designs])
+
+  /** All optimised cuts merged from all designed pieces (for combined cut list) */
+  const allCuts = useMemo((): PlacedPiece[] => {
+    const allPieces: Piece[] = designs.flatMap(d =>
+      (d.pieces as InteractivePiece[])
+        .filter(p => p.type !== 'trasera')
+        .map(p => ({
+          ref:  `${d.quote_item_name} · ${p.name}`,
+          w:    p.type === 'estructura' && p.w < p.d ? p.d : p.w,
+          h:    p.h,
+          type: p.type,
+          id:   p.id,
+        }))
+    )
+    return optimizeCutList(allPieces)
+  }, [designs])
+
+  const allStickerPieces = useMemo((): Piece[] =>
+    designs.flatMap(d =>
+      (d.pieces as InteractivePiece[])
+        .filter(p => p.type !== 'trasera')
+        .map(p => ({
+          ref:  `${d.quote_item_name} · ${p.name}`,
+          w:    p.type === 'estructura' && p.w < p.d ? p.d : p.w,
+          h:    p.h,
+          type: p.type,
+          id:   p.id,
+        }))
+    ),
+  [designs])
+
+  const allDesigned = wo?.items.every(i => i.designStatus !== 'pending') ?? false
+
+  // ─── Actions ─────────────────────────────────────────────────────────────────
+
+  const openEditor = async (item: FurnitureWorkOrderItem) => {
+    setActiveItem(item)
+    setSavedDesignForItem(designByItem[item.quoteItemName] ?? null)
+    setPageView('editor')
+  }
+
+  const handleSaveDesign = async (
+    module: ModuleDimensions,
+    pieces: InteractivePiece[],
+    cuts: PlacedPiece[]
+  ) => {
+    if (!wo || !activeItem) return
+    setSaving(true)
+    try {
+      const existing = designByItem[activeItem.quoteItemName]
+      const saved = await FurnitureDesignService.save({
+        workOrderId:     wo.id,
+        leadId:          wo.lead_id,
+        projectTaskId:   wo.project_task_id,
+        quoteItemName:   activeItem.quoteItemName,
+        quoteItemSku:    activeItem.quoteItemSku,
+        module,
+        pieces,
+        optimizedCuts:   cuts,
+        existingId:      existing?.id,
+      })
+
+      // Update work-order item status → 'designed'
+      const newItems = wo.items.map(i =>
+        i.quoteItemName === activeItem.quoteItemName
+          ? { ...i, designId: saved.id, designStatus: 'designed' as const }
+          : i
+      )
+      await FurnitureWorkOrderService.updateItems(wo.id, newItems)
+      toast.success('Diseño guardado')
+      await refresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const approveItem = async (itemName: string) => {
+    if (!wo) return
+    const newItems = wo.items.map(i =>
+      i.quoteItemName === itemName ? { ...i, designStatus: 'approved' as const } : i
+    )
+    await FurnitureWorkOrderService.updateItems(wo.id, newItems)
+    toast.success('Diseño aprobado')
+    await refresh()
+  }
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-400">
+        Cargando orden de diseño…
+      </div>
+    )
+  }
+
+  if (!wo) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-slate-500">Orden de trabajo no encontrada</p>
+        <button onClick={() => navigate(-1)} className="text-sm text-blue-600 underline">Volver</button>
+      </div>
+    )
+  }
+
+  // ── Full-page editor ──────────────────────────────────────────────────────────
+  if (pageView === 'editor' && activeItem) {
+    return (
+      <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col">
+        <FurniturePieceEditor
+          itemName={activeItem.quoteItemName}
+          itemSku={activeItem.quoteItemSku}
+          savedDesign={savedDesignForItem}
+          projectInfo={`${wo.quote_number} · ${wo.client_name}`}
+          onSave={handleSaveDesign}
+          onClose={() => { setPageView('list'); setActiveItem(null) }}
+        />
+      </div>
+    )
+  }
+
+  if (pageView === 'cutlist') {
+    return (
+      <div className="p-6 max-w-4xl mx-auto space-y-4">
+        <div className="flex items-center gap-3 mb-2">
+          <button onClick={() => setPageView('list')} className="text-sm text-blue-600 underline">← Volver</button>
+          <h2 className="text-lg font-black text-slate-900">Despiece conjunto — {wo.quote_number}</h2>
+        </div>
+        <FurnitureOptimizerView placements={allCuts} />
+      </div>
+    )
+  }
+
+  if (pageView === 'stickers') {
+    return (
+      <div className="p-6 max-w-5xl mx-auto space-y-4">
+        <div className="flex items-center gap-3 mb-2 no-print">
+          <button onClick={() => setPageView('list')} className="text-sm text-blue-600 underline">← Volver</button>
+          <h2 className="text-lg font-black text-slate-900">Etiquetas — {wo.quote_number}</h2>
+        </div>
+        <FurnitureStickersView
+          pieces={allStickerPieces}
+          moduleName={wo.quote_number}
+          projectInfo={`${wo.quote_number} · ${wo.client_name}`}
+        />
+      </div>
+    )
+  }
+
+  // ── Work order list ───────────────────────────────────────────────────────────
+  const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+    pending:  { label: 'Pendiente',  color: 'bg-yellow-100 text-yellow-700' },
+    designed: { label: 'Diseñado',   color: 'bg-blue-100 text-blue-700'    },
+    approved: { label: 'Aprobado',   color: 'bg-green-100 text-green-700'  },
+  }
+
+  return (
+    <div className="p-6 max-w-3xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <button onClick={() => navigate(-1)} className="text-xs text-slate-400 hover:text-slate-600 mb-1">
+            ← Volver a producción
+          </button>
+          <h1 className="text-xl font-black text-slate-900">Orden de Diseño de Muebles</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{wo.quote_number} · {wo.client_name}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            disabled={!allDesigned}
+            onClick={() => setPageView('cutlist')}
+            className="px-4 py-2 bg-slate-800 text-white text-xs font-black uppercase rounded-xl disabled:opacity-40 hover:bg-slate-900 transition-all"
+          >
+            📋 Ver despiece
+          </button>
+          <button
+            disabled={!allDesigned}
+            onClick={() => setPageView('stickers')}
+            className="px-4 py-2 bg-blue-600 text-white text-xs font-black uppercase rounded-xl disabled:opacity-40 hover:bg-blue-700 transition-all"
+          >
+            🏷️ Pegatinas
+          </button>
+        </div>
+      </div>
+
+      {!allDesigned && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
+          Diseña todos los muebles para habilitar el despiece y las etiquetas.
+        </div>
+      )}
+
+      {/* Furniture items list */}
+      <div className="space-y-3">
+        {wo.items.map(item => {
+          const s      = STATUS_LABELS[item.designStatus] ?? STATUS_LABELS.pending
+          const design = designByItem[item.quoteItemName]
+          return (
+            <div key={item.quoteItemName}
+              className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-2xl">
+                  🪑
+                </div>
+                <div>
+                  <p className="font-bold text-slate-800">{item.quoteItemName}</p>
+                  {item.quoteItemSku && (
+                    <p className="text-[10px] font-mono text-slate-400">{item.quoteItemSku}</p>
+                  )}
+                  {design && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {(design.pieces as InteractivePiece[]).length} piezas · {design.module.width}×{design.module.height}×{design.module.depth} mm
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${s.color}`}>{s.label}</span>
+
+                <button
+                  onClick={() => openEditor(item)}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-xs font-black uppercase rounded-lg hover:bg-blue-700 transition-all"
+                >
+                  {item.designStatus === 'pending' ? '✏️ Diseñar' : '✏️ Editar'}
+                </button>
+
+                {item.designStatus === 'designed' && (
+                  <button
+                    onClick={() => approveItem(item.quoteItemName)}
+                    className="px-3 py-1.5 bg-green-600 text-white text-xs font-black uppercase rounded-lg hover:bg-green-700 transition-all"
+                  >
+                    ✓ Aprobar
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {allDesigned && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 font-medium">
+          ✅ Todos los muebles están diseñados. Puedes generar el despiece y las etiquetas.
+        </div>
+      )}
+    </div>
+  )
+}

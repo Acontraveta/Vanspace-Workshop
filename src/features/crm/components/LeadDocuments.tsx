@@ -12,12 +12,15 @@
  */
 
 import { useState, useEffect, useRef, DragEvent, ChangeEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   LeadDocumentsService,
   LeadDocument,
   DocCategory,
   DOC_CATEGORIES,
 } from '../services/leadDocumentsService'
+import { FurnitureDesignService } from '@/features/design/services/furnitureDesignService'
+import type { FurnitureDesign } from '@/features/design/types/furniture.types'
 import type { Lead } from '../types/crm.types'
 import toast from 'react-hot-toast'
 
@@ -33,7 +36,9 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
   const [category, setCategory]   = useState<DocCategory>('otro')
   const [notes, setNotes]         = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [furnitureDesigns, setFurnitureDesigns] = useState<FurnitureDesign[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const navigate = useNavigate()
 
   const refresh = async () => {
     try {
@@ -48,6 +53,13 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
   }
 
   useEffect(() => { refresh() }, [lead.id])
+
+  // Load furniture designs for this lead
+  useEffect(() => {
+    FurnitureDesignService.getByLead(lead.id)
+      .then(setFurnitureDesigns)
+      .catch(() => {})
+  }, [lead.id])
 
   // ── Upload ──────────────────────────────────────────────
 
@@ -253,6 +265,44 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* ── Furniture designs ─────────────────────────── */}
+      {furnitureDesigns.length > 0 && (
+        <div className="mt-6 space-y-2">
+          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+            🪑 Diseños de muebles
+          </h4>
+          {furnitureDesigns.map(d => (
+            <div key={d.id}
+              className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <span className="text-xl shrink-0">🪑</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">{d.quote_item_name}</p>
+                <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                  {d.module && (
+                    <span>{(d.module as any).width}×{(d.module as any).height}×{(d.module as any).depth} mm</span>
+                  )}
+                  {d.pieces && (
+                    <><span>·</span><span>{(d.pieces as any[]).length} piezas</span></>
+                  )}
+                  <span>·</span>
+                  <span>{new Date(d.updated_at).toLocaleDateString('es-ES')}</span>
+                </div>
+              </div>
+              {d.work_order_id && (
+                <button
+                  onClick={async () => {
+                    navigate(`/furniture-design/${d.work_order_id}`)
+                  }}
+                  className="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-all shrink-0"
+                >
+                  ✏️ Abrir diseño
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -130,6 +130,7 @@ export class QuoteAutomation {
         });
 
         // Crear tareas de producción en Supabase
+        let furnitureCuttingTaskId: string | undefined
         for (const task of tasks) {
           const blockId = task.productSKU || task.productName;
           const blockTasks = tasksByBlock[blockId];
@@ -164,7 +165,7 @@ export class QuoteAutomation {
             blockedReason = `Esperando materiales:\n${lines.join('\n')}`;
           }
 
-          await ProductionService.createTask({
+          const createdTask = await ProductionService.createTask({
             project_id: project.id,
             task_name: task.taskName,
             product_name: task.productName,
@@ -186,9 +187,44 @@ export class QuoteAutomation {
             is_block_first: isFirst,
             materials_collected: materialsCollected,
           });
+
+          // Track the "Corte de tableros" (furniture group) task ID
+          if (task.productSKU === 'MUEBLES_GROUP') {
+            furnitureCuttingTaskId = createdTask.id
+          }
         }
 
         console.log(`✅ ${tasks.length} tareas añadidas al proyecto del calendario`)
+
+        // ── Furniture work order ─────────────────────────────────────────────
+        const furnitureItems = quote.items.filter((item: QuoteItem) =>
+          (item.catalogData?.FAMILIA ?? '').toLowerCase().includes('mueble') ||
+          (item.catalogSKU ?? '').toLowerCase().startsWith('mue') ||
+          (item.productName ?? '').toLowerCase().includes('mueble')
+        )
+        if (furnitureItems.length > 0) {
+          try {
+            const { FurnitureWorkOrderService } = await import(
+              '@/features/design/services/furnitureDesignService'
+            )
+            const wo = await FurnitureWorkOrderService.create({
+              project_id:      project.id,
+              project_task_id: furnitureCuttingTaskId,
+              lead_id:         quote.lead_id ?? undefined,
+              quote_number:    quote.quoteNumber,
+              client_name:     quote.clientName,
+              items:           furnitureItems.map((i: QuoteItem) => ({
+                quoteItemName:  i.productName,
+                quoteItemSku:   i.catalogSKU ?? undefined,
+                designStatus:   'pending' as const,
+              })),
+              status: 'pending',
+            })
+            console.log(`🪑 Orden de diseño de muebles creada: ${wo.id} (${furnitureItems.length} piezas)`)
+          } catch (woErr) {
+            console.warn('⚠️ No se pudo crear la orden de diseño de muebles:', woErr)
+          }
+        }
         
       } catch (calendarError) {
         console.error('⚠️ Error creando proyecto en calendario (no crítico):', calendarError)

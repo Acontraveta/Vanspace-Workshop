@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
@@ -48,6 +49,8 @@ export default function TaskBoard({
   const [blocks, setBlocks] = useState<TaskBlock[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedBlock, setExpandedBlock] = useState<string | null>(null)
+  const [furnitureWorkOrders, setFurnitureWorkOrders] = useState<Record<string, string>>({})
+  const navigate = useNavigate()
   
   // Modales
   const [taskToStart, setTaskToStart] = useState<ProductionTask | null>(null) // Modal materiales
@@ -61,6 +64,28 @@ export default function TaskBoard({
   const [taskStartTime, setTaskStartTime] = useState<Record<string, string>>({})
 
   useEffect(() => { loadData() }, [projects])
+
+  // Load furniture work orders for MUEBLES_GROUP blocks
+  useEffect(() => {
+    const loadFurnitureWOs = async () => {
+      if (!projects.length) return
+      try {
+        const { FurnitureWorkOrderService } = await import('@/features/design/services/furnitureDesignService')
+        const results = await Promise.all(
+          projects.map(async p => {
+            const wo = await FurnitureWorkOrderService.getByProject(p.id)
+            return wo ? [p.id, wo.id] as [string, string] : null
+          })
+        )
+        const map: Record<string, string> = {}
+        results.forEach(r => { if (r) map[r[0]] = r[1] })
+        setFurnitureWorkOrders(map)
+      } catch (e) {
+        // non-critical
+      }
+    }
+    loadFurnitureWOs()
+  }, [projects])
 
   const loadData = async () => {
     try {
@@ -442,6 +467,11 @@ export default function TaskBoard({
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
                 employees={employees}
+                onFurnitureDesign={
+                  block.blockId === 'MUEBLES_GROUP' && block.project && furnitureWorkOrders[block.project.id]
+                    ? () => navigate(`/furniture-design/${furnitureWorkOrders[block.project!.id]}`)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -468,6 +498,11 @@ export default function TaskBoard({
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
                 employees={employees}
+                onFurnitureDesign={
+                  block.blockId === 'MUEBLES_GROUP' && block.project && furnitureWorkOrders[block.project.id]
+                    ? () => navigate(`/furniture-design/${furnitureWorkOrders[block.project!.id]}`)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -491,6 +526,11 @@ export default function TaskBoard({
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
                 employees={employees}
+                onFurnitureDesign={
+                  block.blockId === 'MUEBLES_GROUP' && block.project && furnitureWorkOrders[block.project.id]
+                    ? () => navigate(`/furniture-design/${furnitureWorkOrders[block.project!.id]}`)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -675,7 +715,7 @@ function KpiCard({ label, value, color }: { label: string; value: number | strin
 }
 
 function BlockCard({
-  block, expanded, onToggle, onStart, onPause, onComplete, canAssign, onAssign, employees
+  block, expanded, onToggle, onStart, onPause, onComplete, canAssign, onAssign, employees, onFurnitureDesign
 }: {
   block: TaskBlock
   expanded: boolean
@@ -686,6 +726,7 @@ function BlockCard({
   canAssign?: boolean
   onAssign?: () => void
   employees?: ProductionEmployee[]
+  onFurnitureDesign?: () => void
 }) {
   const completedCount = block.tasks.filter(t => t.status === 'COMPLETED').length
   const totalCount = block.tasks.length
@@ -744,6 +785,11 @@ function BlockCard({
             </div>
           </div>
           <div className="flex-shrink-0 flex gap-2" onClick={e => e.stopPropagation()}>
+            {onFurnitureDesign && (
+              <Button onClick={onFurnitureDesign} size="sm" className="bg-amber-600 hover:bg-amber-700">
+                🪑 Diseñar muebles
+              </Button>
+            )}
             {canAssign && !block.assignedTo && (
               <Button onClick={onAssign} size="sm" variant="outline">👤 Asignar</Button>
             )}
