@@ -36,33 +36,48 @@ export class FurnitureWorkOrderService {
   }
 
   static async getByProject(projectId: string): Promise<FurnitureWorkOrder | null> {
-    const { data, error } = await supabase
-      .from(WO_TABLE)
-      .select('*')
-      .eq('project_id', projectId)
-      .maybeSingle()
-    if (error) throw error
-    return data as FurnitureWorkOrder | null
+    try {
+      const { data, error } = await supabase
+        .from(WO_TABLE)
+        .select('*')
+        .eq('project_id', projectId)
+        .maybeSingle()
+      if (error) throw error
+      return data as FurnitureWorkOrder | null
+    } catch (err: any) {
+      if (isTableMissing(err)) return null
+      throw err
+    }
   }
 
   static async getByTask(taskId: string): Promise<FurnitureWorkOrder | null> {
-    const { data, error } = await supabase
-      .from(WO_TABLE)
-      .select('*')
-      .eq('project_task_id', taskId)
-      .maybeSingle()
-    if (error) throw error
-    return data as FurnitureWorkOrder | null
+    try {
+      const { data, error } = await supabase
+        .from(WO_TABLE)
+        .select('*')
+        .eq('project_task_id', taskId)
+        .maybeSingle()
+      if (error) throw error
+      return data as FurnitureWorkOrder | null
+    } catch (err: any) {
+      if (isTableMissing(err)) return null
+      throw err
+    }
   }
 
   static async getById(id: string): Promise<FurnitureWorkOrder | null> {
-    const { data, error } = await supabase
-      .from(WO_TABLE)
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
-    if (error) throw error
-    return data as FurnitureWorkOrder | null
+    try {
+      const { data, error } = await supabase
+        .from(WO_TABLE)
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+      if (error) throw error
+      return data as FurnitureWorkOrder | null
+    } catch (err: any) {
+      if (isTableMissing(err)) return null
+      throw err
+    }
   }
 
   /** Update items array and recalculate status */
@@ -80,21 +95,31 @@ export class FurnitureWorkOrderService {
 
   /** List all work orders, newest first */
   static async getAll(): Promise<FurnitureWorkOrder[]> {
-    const { data, error } = await supabase
-      .from(WO_TABLE)
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) throw error
-    return (data ?? []) as FurnitureWorkOrder[]
+    try {
+      const { data, error } = await supabase
+        .from(WO_TABLE)
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as FurnitureWorkOrder[]
+    } catch (err: any) {
+      if (isTableMissing(err)) return []
+      throw err
+    }
   }
 
   /** Link the task id after the production task has been created */
   static async linkTask(id: string, taskId: string): Promise<void> {
-    const { error } = await supabase
-      .from(WO_TABLE)
-      .update({ project_task_id: taskId, updated_at: new Date().toISOString() })
-      .eq('id', id)
-    if (error) throw error
+    try {
+      const { error } = await supabase
+        .from(WO_TABLE)
+        .update({ project_task_id: taskId, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+    } catch (err: any) {
+      if (isTableMissing(err)) return
+      throw err
+    }
   }
 }
 
