@@ -18,6 +18,7 @@ interface FurniturePieceEditorProps {
   itemSku?: string
   savedDesign?: FurnitureDesign | null
   projectInfo?: string
+  isProduction?: boolean      // true = deduct stock on save; false = library only
   onSave: (module: ModuleDimensions, pieces: InteractivePiece[], cuts: PlacedPiece[]) => Promise<void>
   onClose: () => void
 }
@@ -285,7 +286,7 @@ const PRESETS: Preset[] = [
 // ═════════════════════════════════════════════════════════════════════════════
 
 export function FurniturePieceEditor({
-  itemName, itemSku, savedDesign, projectInfo, onSave, onClose,
+  itemName, itemSku, savedDesign, projectInfo, isProduction, onSave, onClose,
 }: FurniturePieceEditorProps) {
   const [tab, setTab]               = useState<Tab>('diseno')
   const [saving, setSaving]         = useState(false)
@@ -478,19 +479,21 @@ export function FurniturePieceEditor({
     try {
       await onSave(module, pieces, optimized)
 
-      // Process stock consumption: deduct boards + auto-purchase if below min
-      const report = await processStockConsumption(pieces, module, catalogMaterials, projectInfo)
-      if (report.items.length > 0) {
-        const sheetsTotal = report.items.reduce((s, i) => s + i.sheetsNeeded, 0)
-        toast.success(`📦 ${sheetsTotal} tablero(s) descontados del stock`)
-      }
-      if (report.purchaseItemsCreated > 0) {
-        toast(`🛒 ${report.purchaseItemsCreated} material(es) añadidos a la lista de compra (stock mínimo)`, { icon: '⚠️' })
-      }
+      // Only deduct stock when saving production pieces (work orders), not library designs
+      if (isProduction) {
+        const report = await processStockConsumption(pieces, module, catalogMaterials, projectInfo)
+        if (report.items.length > 0) {
+          const sheetsTotal = report.items.reduce((s, i) => s + i.sheetsNeeded, 0)
+          toast.success(`📦 ${sheetsTotal} tablero(s) descontados del stock`)
+        }
+        if (report.purchaseItemsCreated > 0) {
+          toast(`🛒 ${report.purchaseItemsCreated} material(es) añadidos a la lista de compra (stock mínimo)`, { icon: '⚠️' })
+        }
 
-      // Refresh catalog materials in case stock changed
-      MaterialCatalogService.invalidateCache()
-      MaterialCatalogService.getAll().then(setCatalogMaterials).catch(() => {})
+        // Refresh catalog materials in case stock changed
+        MaterialCatalogService.invalidateCache()
+        MaterialCatalogService.getAll().then(setCatalogMaterials).catch(() => {})
+      }
     } catch (err: any) {
       toast.error('Error guardando: ' + (err.message ?? err))
     } finally {

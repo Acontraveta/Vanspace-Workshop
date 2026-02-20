@@ -254,6 +254,7 @@ export default function FurnitureWorkOrderPage() {
           itemSku={activeItem.quoteItemSku}
           savedDesign={savedDesignForItem}
           projectInfo={`${wo.quote_number} · ${wo.client_name}`}
+          isProduction
           onSave={handleSaveDesign}
           onClose={() => { setPageView('list'); setActiveItem(null) }}
         />
