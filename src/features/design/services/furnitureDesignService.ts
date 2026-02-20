@@ -111,11 +111,25 @@ export class FurnitureWorkOrderService {
     const anyStarted = items.some(i => i.designStatus !== 'pending')
     const status     = allDone ? 'completed' : anyStarted ? 'in_progress' : 'pending'
 
-    const { error } = await supabase
-      .from(WO_TABLE)
-      .update({ items, status, updated_at: new Date().toISOString() })
-      .eq('id', id)
-    if (error) throw error
+    try {
+      const { error } = await supabase
+        .from(WO_TABLE)
+        .update({ items, status, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        // Fallback: update in localStorage
+        const all = FurnitureWorkOrderService._lsGetAll()
+        const idx = all.findIndex(w => w.id === id)
+        if (idx >= 0) {
+          all[idx] = { ...all[idx], items, status, updated_at: new Date().toISOString() }
+          localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
+        }
+        return
+      }
+      throw err
+    }
   }
 
   /** List all work orders, newest first */
