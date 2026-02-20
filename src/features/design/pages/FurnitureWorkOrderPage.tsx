@@ -286,6 +286,7 @@ export default function FurnitureWorkOrderPage() {
           pieces={allCuts}
           moduleName={wo.quote_number}
           projectInfo={`${wo.quote_number} · ${wo.client_name}`}
+          defaultMaterial={catalogMaterials[0]?.name}
         />
       </div>
     )

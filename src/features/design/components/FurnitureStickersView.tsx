@@ -3,10 +3,11 @@ import { Piece, PlacedPiece } from '../types/furniture.types'
 interface FurnitureStickersViewProps {
   pieces: Piece[] | PlacedPiece[]
   moduleName: string
-  projectInfo?: string   // e.g. "PRJ-001 · Mario García"
+  projectInfo?: string        // e.g. "PRJ-001 · Mario García"
+  defaultMaterial?: string    // fallback material name when piece has none
 }
 
-export function FurnitureStickersView({ pieces, moduleName, projectInfo }: FurnitureStickersViewProps) {
+export function FurnitureStickersView({ pieces, moduleName, projectInfo, defaultMaterial }: FurnitureStickersViewProps) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
       {/* Toolbar – hidden when printing */}
@@ -45,14 +46,14 @@ export function FurnitureStickersView({ pieces, moduleName, projectInfo }: Furni
                 <div className="text-xs font-black text-slate-900 leading-tight uppercase border-b border-slate-100 pb-0.5 mt-0.5">
                   {p.ref}
                 </div>
-                <div className="flex items-center gap-1 mt-0.5">
+                <div className="flex items-center gap-1.5 mt-1">
                   {boardNum != null && (
-                    <span className="text-[7px] font-black text-amber-600 bg-amber-50 px-1 rounded">
+                    <span className="text-[7px] font-black text-amber-600 bg-amber-50 px-1 py-px rounded shrink-0">
                       TAB {boardNum}
                     </span>
                   )}
-                  <span className="text-[7px] font-bold text-slate-500 truncate">
-                    {matName || moduleName}
+                  <span className="text-[7px] font-bold text-emerald-700 bg-emerald-50 px-1 py-px rounded truncate">
+                    {matName || defaultMaterial || 'Sin material'}
                   </span>
                 </div>
               </div>

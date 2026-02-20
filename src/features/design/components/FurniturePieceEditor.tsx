@@ -945,6 +945,10 @@ export function FurniturePieceEditor({
               pieces={optimized}
               moduleName={module.name}
               projectInfo={projectInfo}
+              defaultMaterial={
+                getMaterial(module.catalogMaterialId)?.name
+                ?? MATERIALS.find(m => m.price === module.materialPrice)?.name
+              }
             />
           </div>
         )}
