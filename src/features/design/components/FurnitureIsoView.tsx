@@ -173,10 +173,9 @@ function SceneContent({
       const target = new THREE.Vector3()
       if (raycaster.ray.intersectPlane(dr.plane, target)) {
         const delta = target.clone().sub(dr.startPoint)
+        // Only allow vertical (Y-axis) movement in 3D — X/Z from 2D view
         onUpdatePiece(dr.id, {
-          x: Math.round(dr.startPos.x + delta.x),
           y: Math.round(dr.startPos.y + delta.y),
-          z: Math.round(dr.startPos.z + delta.z),
         })
       }
     }
@@ -260,7 +259,7 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, on
       {/* Header controls */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-gray-50">
         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-          Vista 3D · Selecciona y arrastra
+          Vista 3D · Arrastra arriba/abajo
         </span>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1.5 cursor-pointer">
@@ -295,7 +294,7 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, on
       {/* Footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-slate-200 bg-gray-50">
         <span className="text-[10px] font-medium text-slate-500">{pieces.length} piezas</span>
-        <span className="text-[10px] text-slate-400">1er clic selecciona · 2do clic + arrastrar mueve</span>
+        <span className="text-[10px] text-slate-400">1er clic selecciona · 2do clic + arrastrar sube/baja</span>
       </div>
     </div>
   )

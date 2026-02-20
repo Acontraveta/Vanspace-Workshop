@@ -118,14 +118,15 @@ export function FurniturePieceEditor({
   const [tab, setTab]               = useState<Tab>('diseno')
   const [saving, setSaving]         = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [setupDone, setSetupDone]   = useState(!!savedDesign)
 
   const [module, setModule] = useState<ModuleDimensions>(() =>
     savedDesign?.module ?? {
       name:           itemName,
       type:           'armario' as ModuleType,
-      width:          800,
-      height:         700,
-      depth:          450,
+      width:          MODULE_TYPES[0].width,
+      height:         MODULE_TYPES[0].height,
+      depth:          MODULE_TYPES[0].depth,
       thickness:      DEFAULT_THICKNESS,
       materialPrice:  MATERIALS[0].price,
     }
@@ -185,14 +186,26 @@ export function FurniturePieceEditor({
 
   const handleModuleChange = useCallback(
     (field: keyof ModuleDimensions, value: string | number) => {
-      setModule(prev => ({ ...prev, [field]: typeof value === 'string' ? value : Number(value) }))
+      setModule(prev => {
+        const updated = { ...prev, [field]: typeof value === 'string' ? value : Number(value) }
+        // When type changes, auto-fill dimensions from preset
+        if (field === 'type') {
+          const preset = MODULE_TYPES.find(t => t.value === value)
+          if (preset && value !== 'personalizado') {
+            updated.width  = preset.width
+            updated.height = preset.height
+            updated.depth  = preset.depth
+          }
+        }
+        return updated
+      })
     }, []
   )
 
-  const resetModule = useCallback(() => {
+  const handleSetupConfirm = useCallback(() => {
     setPieces(buildInitialPieces(module))
-    setSelectedId(null)
-    toast.success('Estructura reiniciada')
+    setSetupDone(true)
+    toast.success('Mueble generado — edita los tableros')
   }, [module])
 
   // ─── Piece operations ───────────────────────────────────────────────────────
@@ -303,6 +316,103 @@ export function FurniturePieceEditor({
 
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /* ── SETUP WIZARD (before first generation) ────────────────────────────── */
+  if (!setupDone) {
+    return (
+      <div className="flex flex-col h-full bg-gray-50">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-200 bg-white shadow-sm">
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-sm font-bold hover:bg-slate-200 transition-all flex items-center justify-center">
+            ←
+          </button>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Nuevo mueble</h2>
+            <span className="text-[10px] text-slate-400">{itemName} {projectInfo && `· ${projectInfo}`}</span>
+          </div>
+        </div>
+
+        {/* Wizard body */}
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-slate-200 p-8 space-y-6">
+            <div className="text-center">
+              <span className="text-3xl">🪵</span>
+              <h3 className="text-lg font-bold text-gray-900 mt-2">Configurar mueble</h3>
+              <p className="text-xs text-slate-500 mt-1">Define el tipo y las dimensiones antes de diseñar</p>
+            </div>
+
+            {/* Nombre */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase">Nombre</label>
+              <input className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                value={module.name} onChange={e => handleModuleChange('name', e.target.value)} />
+            </div>
+
+            {/* Tipo */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase">Tipo de mueble</label>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                {MODULE_TYPES.map(t => (
+                  <button key={t.value} onClick={() => handleModuleChange('type', t.value)}
+                    className={`py-3 rounded-xl text-center text-xs font-bold border-2 transition-all ${
+                      module.type === t.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}>
+                    <span className="text-lg block">{t.label.split(' ')[0]}</span>
+                    <span className="mt-0.5 block">{t.label.split(' ').slice(1).join(' ')}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Material */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase">Material base</label>
+              <select className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                value={module.materialPrice} onChange={e => handleModuleChange('materialPrice', e.target.value)}>
+                {MATERIALS.map(m => <option key={m.name} value={m.price}>{m.name}</option>)}
+              </select>
+            </div>
+
+            {/* Dimensiones */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase">Dimensiones (mm)</label>
+              <div className="grid grid-cols-3 gap-3 mt-1">
+                {[
+                  { label: 'Ancho', key: 'width' },
+                  { label: 'Alto',  key: 'height' },
+                  { label: 'Fondo', key: 'depth' },
+                ].map(({ label, key }) => (
+                  <div key={key}>
+                    <label className="text-[9px] font-bold text-slate-400 uppercase block">{label}</label>
+                    <input type="number" min={50}
+                      className="w-full mt-0.5 px-3 py-2 border border-slate-200 rounded-xl text-sm font-mono text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                      value={(module as any)[key]}
+                      onChange={e => handleModuleChange(key as keyof ModuleDimensions, e.target.value)} />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2">
+                <label className="text-[9px] font-bold text-slate-400 uppercase block">Grosor tablero</label>
+                <input type="number" min={4}
+                  className="w-24 mt-0.5 px-3 py-2 border border-slate-200 rounded-xl text-sm font-mono text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={module.thickness}
+                  onChange={e => handleModuleChange('thickness', e.target.value)} />
+              </div>
+            </div>
+
+            {/* Confirm */}
+            <button onClick={handleSetupConfirm}
+              className="w-full py-3 bg-blue-600 text-white text-sm font-bold uppercase rounded-xl shadow hover:bg-blue-700 transition-all">
+              🚀 Generar mueble
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* ── Header ─────────────────────────────────────────────────── */}
@@ -359,55 +469,19 @@ export function FurniturePieceEditor({
             {/* ── LEFT SIDEBAR ──────────────────────────────────── */}
             <aside className="w-72 min-w-[280px] bg-white border-r border-slate-200 overflow-y-auto flex-shrink-0">
 
-              {/* Module panel */}
+              {/* Module panel — compact info after setup */}
               <div className="p-4 border-b border-slate-100">
-              <h3 className="text-[11px] font-bold uppercase text-slate-500 tracking-wide mb-3">📐 Módulo</h3>
-
-                <div className="space-y-2">
+                <h3 className="text-[11px] font-bold uppercase text-slate-500 tracking-wide mb-2">📐 Módulo</h3>
+                <div className="flex items-center justify-between">
                   <div>
-                    <label className="text-[9px] font-bold text-slate-400 uppercase">Nombre</label>
-                    <input className="w-full mt-0.5 px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      value={module.name} onChange={e => handleModuleChange('name', e.target.value)} />
+                    <span className="text-sm font-bold text-gray-800">{module.name}</span>
+                    <span className="ml-2 text-[10px] text-slate-400">
+                      {MODULE_TYPES.find(t => t.value === module.type)?.label}
+                    </span>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[9px] font-bold text-slate-400 uppercase">Tipo</label>
-                      <select className="w-full mt-0.5 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={module.type} onChange={e => handleModuleChange('type', e.target.value)}>
-                        {MODULE_TYPES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[9px] font-bold text-slate-400 uppercase">Material</label>
-                      <select className="w-full mt-0.5 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={module.materialPrice} onChange={e => handleModuleChange('materialPrice', e.target.value)}>
-                        {MATERIALS.map(m => <option key={m.name} value={m.price}>{m.name}</option>)}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {[
-                      { label: 'Ancho', key: 'width' },
-                      { label: 'Alto',  key: 'height' },
-                      { label: 'Fondo', key: 'depth' },
-                      { label: 'Grosor', key: 'thickness' },
-                    ].map(({ label, key }) => (
-                      <div key={key}>
-                        <label className="text-[8px] font-bold text-slate-400 uppercase block">{label}</label>
-                        <input type="number" min={10}
-                          className="w-full mt-0.5 px-1.5 py-1 border border-slate-200 rounded-md text-xs font-mono text-center focus:ring-2 focus:ring-blue-500 outline-none"
-                          value={(module as any)[key]}
-                          onChange={e => handleModuleChange(key as keyof ModuleDimensions, e.target.value)} />
-                      </div>
-                    ))}
-                  </div>
-
-                  <button onClick={resetModule}
-                    className="w-full py-1.5 bg-slate-50 border border-slate-200 text-slate-500 text-[9px] font-black uppercase rounded-lg hover:bg-slate-100 transition-all">
-                    ↺ Reiniciar módulo
-                  </button>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {module.width}×{module.height}×{module.depth}
+                  </span>
                 </div>
               </div>
 
