@@ -15,6 +15,7 @@ const ConfigurationPanel = lazy(() => import('@/features/config/components/Confi
 const TimeclockPage = lazy(() => import('@/features/timeclock/components/TimeclockPage'))
 const CRMDashboard = lazy(() => import('@/features/crm/components/CRMDashboard'))
 const FurnitureWorkOrderPage = lazy(() => import('@/features/design/pages/FurnitureWorkOrderPage'))
+const FurnitureDesignList = lazy(() => import('@/features/design/pages/FurnitureDesignList'))
 
 // Dashboards
 const AdminDashboard = lazy(() => import('@/features/dashboards/AdminDashboard'))
@@ -191,6 +192,14 @@ export const router = createBrowserRouter([
             <PermissionGuard permission="admin.full">
               <TimeclockPage />
             </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'furniture-design',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <FurnitureDesignList />
           </Suspense>
         )
       },

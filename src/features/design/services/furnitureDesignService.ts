@@ -78,6 +78,16 @@ export class FurnitureWorkOrderService {
     if (error) throw error
   }
 
+  /** List all work orders, newest first */
+  static async getAll(): Promise<FurnitureWorkOrder[]> {
+    const { data, error } = await supabase
+      .from(WO_TABLE)
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []) as FurnitureWorkOrder[]
+  }
+
   /** Link the task id after the production task has been created */
   static async linkTask(id: string, taskId: string): Promise<void> {
     const { error } = await supabase
