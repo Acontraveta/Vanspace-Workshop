@@ -97,20 +97,6 @@ export default function FurnitureWorkOrderPage() {
     return optimizeCutList(allPieces)
   }, [designs, catalogMaterials])
 
-  const allStickerPieces = useMemo((): Piece[] =>
-    designs.flatMap(d =>
-      (d.pieces as InteractivePiece[])
-        .filter(p => p.type !== 'trasera')
-        .map(p => ({
-          ref:  `${d.quote_item_name} · ${p.name}`,
-          w:    p.type === 'estructura' && p.w < p.d ? p.d : p.w,
-          h:    p.h,
-          type: p.type,
-          id:   p.id,
-        }))
-    ),
-  [designs])
-
   const allDesigned = wo?.items.every(i => i.designStatus !== 'pending') ?? false
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
@@ -295,7 +281,7 @@ export default function FurnitureWorkOrderPage() {
           <h2 className="text-lg font-black text-slate-900">Etiquetas — {wo.quote_number}</h2>
         </div>
         <FurnitureStickersView
-          pieces={allStickerPieces}
+          pieces={allCuts}
           moduleName={wo.quote_number}
           projectInfo={`${wo.quote_number} · ${wo.client_name}`}
         />

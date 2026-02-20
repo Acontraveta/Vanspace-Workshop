@@ -940,7 +940,7 @@ export function FurniturePieceEditor({
         {tab === 'pegatinas' && (
           <div className="p-6 max-w-5xl mx-auto">
             <FurnitureStickersView
-              pieces={cutListPieces}
+              pieces={optimized}
               moduleName={module.name}
               projectInfo={projectInfo}
             />

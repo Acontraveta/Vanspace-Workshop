@@ -1,7 +1,7 @@
-import { Piece } from '../types/furniture.types'
+import { Piece, PlacedPiece } from '../types/furniture.types'
 
 interface FurnitureStickersViewProps {
-  pieces: Piece[]
+  pieces: Piece[] | PlacedPiece[]
   moduleName: string
   projectInfo?: string   // e.g. "PRJ-001 · Mario García"
 }
@@ -26,32 +26,52 @@ export function FurnitureStickersView({ pieces, moduleName, projectInfo }: Furni
       </div>
 
       <div className="grid grid-cols-3 gap-2 print-grid">
-        {pieces.map((p, i) => (
-          <div
-            key={i}
-            className="border-2 border-slate-900 p-3 flex flex-col justify-between bg-white overflow-hidden"
-            style={{ height: '42.4mm' }}
-          >
-            <div>
-              <div className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none">
-                {projectInfo ?? moduleName}
-              </div>
-              <div className="text-xs font-black text-slate-900 leading-tight uppercase border-b border-slate-100 pb-0.5 mt-0.5">
-                {p.ref}
-              </div>
-              <div className="text-[7px] text-slate-400 mt-0.5">{moduleName}</div>
-            </div>
-            <div className="flex justify-between items-end">
+        {pieces.map((p, i) => {
+          const placed = 'board' in p ? (p as PlacedPiece) : null
+          const boardNum = placed?.board != null ? placed.board + 1 : null
+          const matName  = p.materialName
+          const rotated  = placed?.rotated
+
+          return (
+            <div
+              key={i}
+              className="border-2 border-slate-900 p-3 flex flex-col justify-between bg-white overflow-hidden"
+              style={{ height: '42.4mm' }}
+            >
               <div>
-                <span className="text-[6px] font-black text-slate-400 uppercase block">Medidas</span>
-                <div className="text-lg font-black text-blue-600 font-mono leading-none">
-                  {p.w}<span className="text-[9px] text-slate-300 mx-0.5">×</span>{p.h}mm
+                <div className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none">
+                  {projectInfo ?? moduleName}
+                </div>
+                <div className="text-xs font-black text-slate-900 leading-tight uppercase border-b border-slate-100 pb-0.5 mt-0.5">
+                  {p.ref}
+                </div>
+                <div className="flex items-center gap-1 mt-0.5">
+                  {boardNum != null && (
+                    <span className="text-[7px] font-black text-amber-600 bg-amber-50 px-1 rounded">
+                      TAB {boardNum}
+                    </span>
+                  )}
+                  {matName && (
+                    <span className="text-[7px] font-bold text-slate-500 truncate">{matName}</span>
+                  )}
+                  {!boardNum && !matName && (
+                    <span className="text-[7px] text-slate-400">{moduleName}</span>
+                  )}
                 </div>
               </div>
-              <div className="text-[8px] font-bold text-slate-300">#{i + 1}</div>
+              <div className="flex justify-between items-end">
+                <div>
+                  <span className="text-[6px] font-black text-slate-400 uppercase block">Medidas</span>
+                  <div className="text-lg font-black text-blue-600 font-mono leading-none">
+                    {p.w}<span className="text-[9px] text-slate-300 mx-0.5">×</span>{p.h}mm
+                    {rotated && <span className="text-[9px] text-violet-500 ml-1">↻</span>}
+                  </div>
+                </div>
+                <div className="text-[8px] font-bold text-slate-300">#{i + 1}</div>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <style>{`
