@@ -197,11 +197,17 @@ export class QuoteAutomation {
         console.log(`✅ ${tasks.length} tareas añadidas al proyecto del calendario`)
 
         // ── Furniture work order ─────────────────────────────────────────────
-        const furnitureItems = quote.items.filter((item: QuoteItem) =>
-          (item.catalogData?.FAMILIA ?? '').toLowerCase().includes('mueble') ||
-          (item.catalogSKU ?? '').toLowerCase().startsWith('mue') ||
-          (item.productName ?? '').toLowerCase().includes('mueble')
-        )
+        const FURNITURE_WORDS = ['mueble', 'cocina', 'armario', 'cajonera', 'arcón', 'arcon', 'altillo', 'estantería', 'estanteria', 'aparador', 'alacena']
+        const isFurnitureItem = (item: QuoteItem) => {
+          const familia = (item.catalogData?.FAMILIA ?? '').toLowerCase()
+          const sku     = (item.catalogSKU ?? '').toLowerCase()
+          const name    = (item.productName ?? '').toLowerCase()
+          const reqDis  = item.catalogData?.REQUIERE_DISEÑO === 'SÍ'
+          return FURNITURE_WORDS.some(w => familia.includes(w) || name.includes(w)) ||
+                 sku.startsWith('mue') ||
+                 (reqDis && (item.catalogData?.TIPO_DISEÑO ?? '').toLowerCase().includes('mueble'))
+        }
+        const furnitureItems = quote.items.filter(isFurnitureItem)
         if (furnitureItems.length > 0) {
           try {
             const { FurnitureWorkOrderService } = await import(
@@ -427,7 +433,11 @@ export class QuoteAutomation {
     quote.items.forEach((item: QuoteItem) => {
       const isMueble = item.catalogData?.FAMILIA?.toLowerCase().includes('mueble') ||
                        item.catalogSKU?.toLowerCase().startsWith('mue') ||
-                       item.productName?.toLowerCase().includes('mueble')
+                       item.productName?.toLowerCase().includes('mueble') ||
+                       ['cocina', 'armario', 'cajonera', 'arcón', 'arcon', 'altillo', 'estantería', 'estanteria', 'aparador', 'alacena'].some(w =>
+                         (item.catalogData?.FAMILIA ?? '').toLowerCase().includes(w) ||
+                         (item.productName ?? '').toLowerCase().includes(w)
+                       )
 
       // Extraer materiales y consumibles del producto
       const materialsList: any[] = [];

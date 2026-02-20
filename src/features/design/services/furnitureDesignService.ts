@@ -13,26 +13,51 @@ const DES_TABLE = 'furniture_designs'
 
 // ─── Work Orders ─────────────────────────────────────────────────────────────
 
+const LS_WO_KEY = 'vanspace_furniture_work_orders'
+
 export class FurnitureWorkOrderService {
 
   static async create(
     payload: Omit<FurnitureWorkOrder, 'id' | 'created_at' | 'updated_at'>
   ): Promise<FurnitureWorkOrder> {
-    const { data, error } = await supabase
-      .from(WO_TABLE)
-      .insert({
-        project_id:      payload.project_id,
-        project_task_id: payload.project_task_id,
-        lead_id:         payload.lead_id,
-        quote_number:    payload.quote_number,
-        client_name:     payload.client_name,
-        items:           payload.items,
-        status:          payload.status,
-      })
-      .select()
-      .single()
-    if (error) throw error
-    return data as FurnitureWorkOrder
+    try {
+      const { data, error } = await supabase
+        .from(WO_TABLE)
+        .insert({
+          project_id:      payload.project_id,
+          project_task_id: payload.project_task_id,
+          lead_id:         payload.lead_id,
+          quote_number:    payload.quote_number,
+          client_name:     payload.client_name,
+          items:           payload.items,
+          status:          payload.status,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      return data as FurnitureWorkOrder
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        // Fallback: save to localStorage
+        const wo: FurnitureWorkOrder = {
+          id: `local-wo-${Date.now()}`,
+          project_id:      payload.project_id,
+          project_task_id: payload.project_task_id ?? '',
+          lead_id:         payload.lead_id,
+          quote_number:    payload.quote_number,
+          client_name:     payload.client_name,
+          items:           payload.items as FurnitureWorkOrderItem[],
+          status:          payload.status,
+          created_at:      new Date().toISOString(),
+          updated_at:      new Date().toISOString(),
+        }
+        const all = FurnitureWorkOrderService._lsGetAll()
+        all.unshift(wo)
+        localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
+        return wo
+      }
+      throw err
+    }
   }
 
   static async getByProject(projectId: string): Promise<FurnitureWorkOrder | null> {
@@ -45,7 +70,7 @@ export class FurnitureWorkOrderService {
       if (error) throw error
       return data as FurnitureWorkOrder | null
     } catch (err: any) {
-      if (isTableMissing(err)) return null
+      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll().find(w => w.project_id === projectId) ?? null
       throw err
     }
   }
@@ -60,7 +85,7 @@ export class FurnitureWorkOrderService {
       if (error) throw error
       return data as FurnitureWorkOrder | null
     } catch (err: any) {
-      if (isTableMissing(err)) return null
+      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll().find(w => w.project_task_id === taskId) ?? null
       throw err
     }
   }
@@ -75,7 +100,7 @@ export class FurnitureWorkOrderService {
       if (error) throw error
       return data as FurnitureWorkOrder | null
     } catch (err: any) {
-      if (isTableMissing(err)) return null
+      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll().find(w => w.id === id) ?? null
       throw err
     }
   }
@@ -103,7 +128,7 @@ export class FurnitureWorkOrderService {
       if (error) throw error
       return (data ?? []) as FurnitureWorkOrder[]
     } catch (err: any) {
-      if (isTableMissing(err)) return []
+      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll()
       throw err
     }
   }
@@ -120,6 +145,11 @@ export class FurnitureWorkOrderService {
       if (isTableMissing(err)) return
       throw err
     }
+  }
+
+  /** localStorage helpers */
+  static _lsGetAll(): FurnitureWorkOrder[] {
+    try { return JSON.parse(localStorage.getItem(LS_WO_KEY) || '[]') } catch { return [] }
   }
 }
 
