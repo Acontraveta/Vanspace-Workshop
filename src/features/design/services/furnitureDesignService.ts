@@ -392,6 +392,44 @@ export class FurnitureDesignService {
     }
   }
 
+  /** Store generated blueprint SVG on a design (called on approval) */
+  static async updateBlueprint(designId: string, blueprintSvg: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from(DES_TABLE)
+        .update({ blueprint_svg: blueprintSvg, updated_at: new Date().toISOString() })
+        .eq('id', designId)
+      if (error) throw error
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        const all = lsGetAll()
+        const idx = all.findIndex(d => d.id === designId)
+        if (idx >= 0) {
+          all[idx] = { ...all[idx], blueprint_svg: blueprintSvg, updated_at: new Date().toISOString() }
+          lsSave(all)
+        }
+        return
+      }
+      throw err
+    }
+  }
+
+  /** Get all designs linked to a production task (by project_task_id) */
+  static async getByProjectTaskId(projectTaskId: string): Promise<FurnitureDesign[]> {
+    try {
+      const { data, error } = await supabase
+        .from(DES_TABLE)
+        .select('*')
+        .eq('project_task_id', projectTaskId)
+        .order('updated_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as FurnitureDesign[]
+    } catch (err: any) {
+      if (isTableMissing(err)) return lsGetAll().filter(d => d.project_task_id === projectTaskId)
+      throw err
+    }
+  }
+
   /** Private: save/update a design in localStorage when Supabase table is missing */
   static _saveToLocalStorage(design: FurnitureDesign): FurnitureDesign {
     const all = lsGetAll()

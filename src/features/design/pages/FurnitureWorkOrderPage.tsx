@@ -19,9 +19,10 @@ import { FurnitureOptimizerView } from '../components/FurnitureOptimizerView'
 import { FurnitureStickersView } from '../components/FurnitureStickersView'
 import { MaterialCatalogService } from '../services/materialCatalogService'
 import { optimizeCutList } from '../utils/geometry'
+import { generateBlueprintSVG } from '../utils/blueprintGenerator'
 import toast from 'react-hot-toast'
 
-type PageView = 'list' | 'editor' | 'cutlist' | 'stickers' | 'pick-source'
+type PageView = 'list' | 'editor' | 'cutlist' | 'stickers' | 'pick-source' | 'blueprint'
 
 export default function FurnitureWorkOrderPage() {
   const { workOrderId } = useParams<{ workOrderId: string }>()
@@ -36,7 +37,7 @@ export default function FurnitureWorkOrderPage() {
   const [activeItem, setActiveItem] = useState<FurnitureWorkOrderItem | null>(null)
   const [savedDesignForItem, setSavedDesignForItem] = useState<FurnitureDesign | null>(null)
   const [catalogMaterials, setCatalogMaterials] = useState<CatalogMaterial[]>([])
-
+  const [blueprintItem, setBlueprintItem] = useState<string | null>(null)
   // ─── Load ────────────────────────────────────────────────────────────────────
 
   const refresh = async () => {
@@ -168,12 +169,29 @@ export default function FurnitureWorkOrderPage() {
 
   const approveItem = async (itemName: string) => {
     if (!wo) return
-    const newItems = wo.items.map(i =>
-      i.quoteItemName === itemName ? { ...i, designStatus: 'approved' as const } : i
-    )
-    await FurnitureWorkOrderService.updateItems(wo.id, newItems)
-    toast.success('Diseño aprobado')
-    await refresh()
+    try {
+      // Generate and store the blueprint SVG for this design
+      const design = designByItem[itemName]
+      if (design) {
+        const blueprintSvg = generateBlueprintSVG({
+          pieces: design.pieces as InteractivePiece[],
+          module: design.module,
+          itemName,
+          projectInfo: `${wo.quote_number} · ${wo.client_name}`,
+          catalogMaterials,
+        })
+        await FurnitureDesignService.updateBlueprint(design.id, blueprintSvg)
+      }
+
+      const newItems = wo.items.map(i =>
+        i.quoteItemName === itemName ? { ...i, designStatus: 'approved' as const } : i
+      )
+      await FurnitureWorkOrderService.updateItems(wo.id, newItems)
+      toast.success('Diseño aprobado · Plano técnico generado')
+      await refresh()
+    } catch (err: any) {
+      toast.error('Error aprobando diseño: ' + err.message)
+    }
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -259,6 +277,44 @@ export default function FurnitureWorkOrderPage() {
           onSave={handleSaveDesign}
           onClose={() => { setPageView('list'); setActiveItem(null) }}
         />
+      </div>
+    )
+  }
+
+  if (pageView === 'blueprint' && blueprintItem) {
+    const design = designByItem[blueprintItem]
+    const svgContent = design?.blueprint_svg || generateBlueprintSVG({
+      pieces: (design?.pieces ?? []) as InteractivePiece[],
+      module: design?.module ?? {} as ModuleDimensions,
+      itemName: blueprintItem,
+      projectInfo: `${wo.quote_number} · ${wo.client_name}`,
+      catalogMaterials,
+    })
+    return (
+      <div className="p-6 max-w-4xl mx-auto space-y-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <button onClick={() => { setPageView('list'); setBlueprintItem(null) }} className="text-sm text-blue-600 underline">← Volver</button>
+            <h2 className="text-lg font-black text-slate-900">Plano técnico — {blueprintItem}</h2>
+          </div>
+          <button
+            onClick={() => {
+              const blob = new Blob([svgContent], { type: 'image/svg+xml' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `plano-${blueprintItem.replace(/\s+/g, '-')}.svg`
+              a.click()
+              URL.revokeObjectURL(url)
+            }}
+            className="px-3 py-1.5 bg-slate-700 text-white text-xs font-bold rounded-lg hover:bg-slate-800 transition-all"
+          >
+            📥 Descargar SVG
+          </button>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm overflow-auto">
+          <div dangerouslySetInnerHTML={{ __html: svgContent }} />
+        </div>
       </div>
     )
   }
@@ -375,6 +431,15 @@ export default function FurnitureWorkOrderPage() {
                     className="px-3 py-1.5 bg-green-600 text-white text-xs font-black uppercase rounded-lg hover:bg-green-700 transition-all"
                   >
                     ✓ Aprobar
+                  </button>
+                )}
+
+                {item.designStatus === 'approved' && design?.blueprint_svg && (
+                  <button
+                    onClick={() => { setBlueprintItem(item.quoteItemName); setPageView('blueprint') }}
+                    className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-black uppercase rounded-lg hover:bg-emerald-700 transition-all"
+                  >
+                    📐 Plano
                   </button>
                 )}
               </div>

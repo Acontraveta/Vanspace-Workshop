@@ -82,6 +82,7 @@ export interface FurnitureDesign {
   module: ModuleDimensions
   pieces: InteractivePiece[]
   optimized_cuts: PlacedPiece[]
+  blueprint_svg?: string     // technical drawing SVG stored on approval
   created_at: string
   updated_at: string
 }

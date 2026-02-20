@@ -5,6 +5,11 @@ import { ProductionTask } from '@/features/calendar/types/production.types'
 import { useEffect, useState } from 'react'
 import { DesignFilesService, DesignFile } from '../services/designFilesService'
 
+interface BlueprintInfo {
+  itemName: string
+  svg: string
+}
+
 interface TaskInstructionsModalProps {
   task: ProductionTask
   onConfirm: () => void
@@ -20,14 +25,37 @@ export default function TaskInstructionsModal({
   const tipoDiseno = (task as any).tipo_diseno || ''
   const hasInstructions = instructions.length > 0
   const [designFiles, setDesignFiles] = useState<DesignFile[]>([])
+  const [blueprints, setBlueprints] = useState<BlueprintInfo[]>([])
+  const [expandedBlueprint, setExpandedBlueprint] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState(true)
+
   useEffect(() => {
     const loadFiles = async () => {
+      // Load attached design files
       const blockId = (task as any).task_block_id || task.product_name
       if (blockId) {
         const files = await DesignFilesService.getBlockFiles(blockId)
         setDesignFiles(files)
       }
+
+      // Load furniture blueprints if task requires design
+      if (task.requires_design && task.project_id) {
+        try {
+          const { FurnitureWorkOrderService, FurnitureDesignService } =
+            await import('@/features/design/services/furnitureDesignService')
+          const wo = await FurnitureWorkOrderService.getByProject(task.project_id)
+          if (wo) {
+            const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
+            const bps: BlueprintInfo[] = designs
+              .filter(d => d.blueprint_svg)
+              .map(d => ({ itemName: d.quote_item_name, svg: d.blueprint_svg! }))
+            setBlueprints(bps)
+          }
+        } catch {
+          // non-critical — blueprints just won't show
+        }
+      }
+
       setLoadingFiles(false)
     }
     loadFiles()
@@ -82,6 +110,58 @@ export default function TaskInstructionsModal({
             </div>
           )}
 
+          {/* Planos técnicos de muebles */}
+          {blueprints.length > 0 && (
+            <div className="mb-6">
+              <p className="text-sm font-semibold text-green-700 mb-3">
+                📐 Planos técnicos de muebles
+              </p>
+              <div className="space-y-3">
+                {blueprints.map(bp => {
+                  const isExpanded = expandedBlueprint === bp.itemName
+                  return (
+                    <div key={bp.itemName} className="border-2 border-green-200 rounded-xl overflow-hidden bg-white">
+                      <button
+                        onClick={() => setExpandedBlueprint(isExpanded ? null : bp.itemName)}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-green-50 hover:bg-green-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🪑</span>
+                          <span className="font-bold text-sm text-green-800">{bp.itemName}</span>
+                        </div>
+                        <span className="text-xs text-green-600 font-medium">
+                          {isExpanded ? '▲ Ocultar' : '▼ Ver plano'}
+                        </span>
+                      </button>
+                      {isExpanded && (
+                        <div className="p-3 border-t border-green-200 bg-gray-50">
+                          <div
+                            className="w-full overflow-auto"
+                            dangerouslySetInnerHTML={{ __html: bp.svg }}
+                          />
+                          <button
+                            onClick={() => {
+                              const blob = new Blob([bp.svg], { type: 'image/svg+xml' })
+                              const url = URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = `plano-${bp.itemName.replace(/\s+/g, '-')}.svg`
+                              a.click()
+                              URL.revokeObjectURL(url)
+                            }}
+                            className="mt-2 text-xs text-blue-600 underline hover:text-blue-800"
+                          >
+                            📥 Descargar plano SVG
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Tiempo estimado */}
           <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-6">
             <div className="flex items-center justify-between">
@@ -100,40 +180,6 @@ export default function TaskInstructionsModal({
                   📐 Tipo: {tipoDiseno}
                 </div>
               )}
-                      {/* Archivos de diseño adjuntos */}
-                      {designFiles.length > 0 && (
-                        <div className="mb-6">
-                          <p className="text-sm font-semibold text-purple-700 mb-3">
-                            📎 Archivos de diseño adjuntos
-                          </p>
-                          <div className="space-y-2">
-                            {designFiles.map(file => (
-                              <div key={file.id} 
-                                className="flex items-center justify-between p-3 bg-white border rounded-lg hover:shadow-md transition">
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  <span className="text-2xl">
-                                    {file.file_type?.includes('pdf') ? '📄' : 
-                                     file.file_type?.includes('image') ? '🖼️' : '📐'}
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-sm truncate">{file.file_name}</p>
-                                    <p className="text-xs text-gray-500">
-                                      {(file.file_size / 1024).toFixed(0)} KB
-                                    </p>
-                                  </div>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  onClick={() => DesignFilesService.downloadFile(file.file_path, file.file_name)}
-                                  className="bg-blue-600 hover:bg-blue-700"
-                                >
-                                  📥 Descargar
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
 
               <div className="bg-amber-50 border-l-4 border-amber-500 p-5 rounded-r-lg">
                 <p className="text-xs font-bold uppercase tracking-wide text-amber-700 mb-3">
