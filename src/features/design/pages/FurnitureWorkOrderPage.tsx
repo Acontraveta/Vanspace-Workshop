@@ -83,10 +83,12 @@ export default function FurnitureWorkOrderPage() {
         .filter(p => p.type !== 'trasera')
         .map(p => {
           const matId = p.materialId ?? d.module.catalogMaterialId
+          // Cut face = two largest dims (the third is board thickness)
+          const [d1, d2] = [p.w, p.h, p.d].sort((a, b) => b - a)
           return {
             ref:  `${d.quote_item_name} · ${p.name}`,
-            w:    p.type === 'estructura' && p.w < p.d ? p.d : p.w,
-            h:    p.h,
+            w:    d1,
+            h:    d2,
             type: p.type,
             id:   p.id,
             materialId:   matId,
