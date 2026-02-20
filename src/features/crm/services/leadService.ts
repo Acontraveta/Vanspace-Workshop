@@ -75,6 +75,12 @@ export async function createLead(formData: LeadFormData): Promise<Lead> {
     .single()
 
   if (error) throw error
+
+  // Re-exportar CRM Excel en Storage (no-blocking)
+  import('./excelExporter')
+    .then(({ exportCRMToExcel }) => exportCRMToExcel())
+    .catch(e => console.warn('⚠️ No se pudo actualizar CRM.xlsx:', e))
+
   return data as Lead
 }
 
@@ -90,6 +96,12 @@ export async function updateLead(id: string, changes: Partial<LeadFormData>): Pr
     .single()
 
   if (error) throw error
+
+  // Re-exportar CRM Excel en Storage (no-blocking)
+  import('./excelExporter')
+    .then(({ exportCRMToExcel }) => exportCRMToExcel())
+    .catch(e => console.warn('⚠️ No se pudo actualizar CRM.xlsx:', e))
+
   return data as Lead
 }
 
@@ -100,6 +112,11 @@ export async function deleteLead(id: string): Promise<void> {
     .eq('id', id)
 
   if (error) throw error
+
+  // Re-exportar CRM Excel en Storage (no-blocking)
+  import('./excelExporter')
+    .then(({ exportCRMToExcel }) => exportCRMToExcel())
+    .catch(e => console.warn('⚠️ No se pudo actualizar CRM.xlsx:', e))
 }
 
 // ============================================================

@@ -161,6 +161,11 @@ export class PurchaseService {
         .update({ status: 'RECEIVED', received_at: new Date().toISOString() })
         .eq('id', itemId)
 
+      // 4. Re-exportar stock.xlsx en Storage (no-blocking)
+      import('@/lib/excelSync')
+        .then(({ exportStockToExcel }) => exportStockToExcel())
+        .catch(e => console.warn('⚠️ No se pudo actualizar stock.xlsx tras recepción:', e))
+
       return qrDataURL
     } catch (error) {
       console.error('Error en markAsReceived:', error)

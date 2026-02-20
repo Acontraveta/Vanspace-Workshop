@@ -129,12 +129,32 @@ export class StockService {
   static updateStock(referencia: string, newQuantity: number): void {
     const items = this.getStock()
     const item = items.find(i => i.REFERENCIA === referencia)
-    
     if (item) {
       item.CANTIDAD = newQuantity
       localStorage.setItem('stock_items', JSON.stringify(items))
       this.stock = items
     }
+  }
+
+  /**
+   * Actualiza la cantidad en Supabase y re-exporta el Excel en Storage.
+   * Úsalo para ediciones manuales desde la UI.
+   */
+  static async updateQuantity(referencia: string, newQuantity: number): Promise<void> {
+    // 1. Supabase
+    const { error } = await supabase
+      .from('stock_items')
+      .update({ cantidad: newQuantity })
+      .eq('referencia', referencia)
+    if (error) throw error
+
+    // 2. Memoria + localStorage
+    this.updateStock(referencia, newQuantity)
+
+    // 3. Excel en Storage (no-blocking – fallo aquí no es crítico)
+    import('@/lib/excelSync')
+      .then(({ exportStockToExcel }) => exportStockToExcel())
+      .catch(e => console.warn('⚠️ No se pudo actualizar stock.xlsx:', e))
   }
 
   /**
@@ -178,5 +198,10 @@ export class StockService {
       localStorage.setItem('stock_items', JSON.stringify(items))
       this.stock = items
     }
+
+    // Re-exportar stock.xlsx en Storage (no-blocking)
+    import('@/lib/excelSync')
+      .then(({ exportStockToExcel }) => exportStockToExcel())
+      .catch(e => console.warn('⚠️ No se pudo actualizar stock.xlsx tras ubicación:', e))
   }
 }

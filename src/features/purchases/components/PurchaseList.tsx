@@ -29,6 +29,7 @@ export default function PurchaseList() {
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [selectedItem, setSelectedItem] = useState<StockItem | null>(null)
   const [newLocation, setNewLocation] = useState('')
+  const [editingQty, setEditingQty] = useState<{ ref: string; value: string } | null>(null)
   const [warehouseShelves, setWarehouseShelves] = useState<{code: string, niveles: number, huecos: number}[]>([])
   const [showNewPurchaseModal, setShowNewPurchaseModal] = useState(false)
   const [newPurchaseForm, setNewPurchaseForm] = useState({
@@ -146,6 +147,19 @@ export default function PurchaseList() {
       refreshData()
     } catch (error: any) {
       toast.error('Error asignando ubicación: ' + error.message)
+    }
+  }
+
+  // Función para editar cantidad manualmente
+  const handleUpdateQty = async (referencia: string, newQty: number) => {
+    if (newQty < 0) return
+    try {
+      await StockService.updateQuantity(referencia, newQty)
+      toast.success('Cantidad actualizada ✅')
+      setEditingQty(null)
+      refreshData()
+    } catch (err: any) {
+      toast.error('Error actualizando cantidad: ' + err.message)
     }
   }
 
@@ -833,7 +847,7 @@ export default function PurchaseList() {
                               Referencia
                             </th>
                             <th className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                              Cantidad
+                              Cantidad ✏️
                             </th>
                             <th className="w-[17%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                               📍 Ubicación
@@ -858,13 +872,47 @@ export default function PurchaseList() {
                                   <span className="truncate block" title={item.REFERENCIA}>{item.REFERENCIA}</span>
                                 </td>
                                 <td className="px-4 py-4 whitespace-nowrap">
-                                  <div className={`text-sm font-bold ${isLowStock ? 'text-orange-600' : 'text-gray-900'}`}>
-                                    {item.CANTIDAD} {item.UNIDAD}
-                                  </div>
-                                  {item.STOCK_MINIMO && (
-                                    <div className="text-xs text-gray-500">
-                                      Min: {item.STOCK_MINIMO}
+                                  {editingQty?.ref === item.REFERENCIA ? (
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        autoFocus
+                                        className="w-20 border border-blue-400 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        value={editingQty.value}
+                                        onChange={e => setEditingQty({ ref: item.REFERENCIA, value: e.target.value })}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') handleUpdateQty(item.REFERENCIA, parseFloat(editingQty.value) || 0)
+                                          if (e.key === 'Escape') setEditingQty(null)
+                                        }}
+                                      />
+                                      <span className="text-xs text-gray-500">{item.UNIDAD}</span>
+                                      <button
+                                        onClick={() => handleUpdateQty(item.REFERENCIA, parseFloat(editingQty.value) || 0)}
+                                        className="text-green-600 hover:text-green-800 text-base leading-none"
+                                        title="Guardar"
+                                      >✓</button>
+                                      <button
+                                        onClick={() => setEditingQty(null)}
+                                        className="text-gray-400 hover:text-gray-600 text-base leading-none"
+                                        title="Cancelar"
+                                      >✕</button>
                                     </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => setEditingQty({ ref: item.REFERENCIA, value: String(item.CANTIDAD) })}
+                                      className={`group flex items-center gap-1 text-sm font-bold hover:underline ${
+                                        isLowStock ? 'text-orange-600' : 'text-gray-900'
+                                      }`}
+                                      title="Clic para editar cantidad"
+                                    >
+                                      {item.CANTIDAD} {item.UNIDAD}
+                                      <span className="opacity-0 group-hover:opacity-60 text-xs">✏️</span>
+                                    </button>
+                                  )}
+                                  {item.STOCK_MINIMO && (
+                                    <div className="text-xs text-gray-500">Min: {item.STOCK_MINIMO}</div>
                                   )}
                                 </td>
                                 <td className="px-4 py-4 whitespace-nowrap">

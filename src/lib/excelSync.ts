@@ -259,9 +259,9 @@ async function exportCatalogToExcel() {
 }
 
 // ============================================
-// EXPORTAR STOCK
+// EXPORTAR STOCK (exported so callers can trigger directly)
 // ============================================
-async function exportStockToExcel() {
+export async function exportStockToExcel() {
   const { data: stock } = await supabase
     .from('stock_items')
     .select('*')
@@ -300,7 +300,7 @@ async function exportStockToExcel() {
 // ============================================
 // EXPORTAR PRESUPUESTOS
 // ============================================
-async function exportQuotesToExcel() {
+export async function exportQuotesToExcel() {
   const { data: quotes } = await supabase
     .from('quotes')
     .select('*')
