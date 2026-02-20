@@ -25,7 +25,10 @@ export function FurnitureFrontView({
   const [pan, setPan]           = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
   const panRef = useRef({ mx: 0, my: 0, ox: 0, oy: 0 })
-  const dragRef = useRef<{ id: string; initial: InteractivePiece; mx: number; my: number } | null>(null)
+  const dragRef = useRef<{
+    id: string; initial: InteractivePiece
+    svgX0: number; svgY0: number; frozenScale: number
+  } | null>(null)
 
   /** Project a 3D piece to 2D based on the active view */
   const get2D = useCallback((p: InteractivePiece) => {
@@ -36,7 +39,11 @@ export function FurnitureFrontView({
     }
   }, [view])
 
-  const workspace = useMemo(() => {
+  // Workspace auto-fit — frozen during drag via ref
+  const isDragging = handle !== null && dragRef.current !== null
+  const frozenWS = useRef<{ w: number; h: number } | null>(null)
+
+  const liveWorkspace = useMemo(() => {
     const all = pieces.map(get2D)
     return {
       w: Math.max(...all.map(p => p.x + p.w), 600) + 100,
@@ -44,9 +51,27 @@ export function FurnitureFrontView({
     }
   }, [pieces, get2D])
 
+  // Freeze workspace at drag start, unfreeze when drag ends
+  if (isDragging && !frozenWS.current) frozenWS.current = { ...liveWorkspace }
+  if (!isDragging && frozenWS.current) frozenWS.current = null
+
+  const workspace = frozenWS.current ?? liveWorkspace
+
   const baseScale = Math.min(560 / workspace.w, 520 / workspace.h)
   const scale = baseScale * zoom
   const HANDLE_R = 5 / scale
+
+  /** Convert client (mouse) coords to SVG user-space coords */
+  const clientToSvg = useCallback((clientX: number, clientY: number) => {
+    const svg = svgRef.current
+    if (!svg) return { x: 0, y: 0 }
+    const ctm = svg.getScreenCTM()
+    if (!ctm) return { x: 0, y: 0 }
+    return {
+      x: (clientX - ctm.e) / ctm.a,
+      y: (clientY - ctm.f) / ctm.d,
+    }
+  }, [])
 
   /** Snap value to nearby edges */
   const snap = (val: number, targets: number[]) => {
@@ -61,7 +86,8 @@ export function FurnitureFrontView({
     e.preventDefault()
     const p = pieces.find(x => x.id === id)
     if (!p) return
-    dragRef.current = { id, initial: { ...p }, mx: e.clientX, my: e.clientY }
+    const svg0 = clientToSvg(e.clientX, e.clientY)
+    dragRef.current = { id, initial: { ...p }, svgX0: svg0.x, svgY0: svg0.y, frozenScale: scale }
     setHandle(h)
     onSelect(id)
   }
@@ -69,16 +95,18 @@ export function FurnitureFrontView({
   const handleMouseMove = (e: React.MouseEvent) => {
     // Pan mode
     if (isPanning) {
-      const dx = e.clientX - panRef.current.mx
-      const dy = e.clientY - panRef.current.my
-      setPan({ x: panRef.current.ox + dx, y: panRef.current.oy + dy })
+      const dxPx = e.clientX - panRef.current.mx
+      const dyPx = e.clientY - panRef.current.my
+      setPan({ x: panRef.current.ox + dxPx, y: panRef.current.oy + dyPx })
       return
     }
 
     if (!dragRef.current || !handle) return
-    const dx = (e.clientX - dragRef.current.mx) / scale
-    const dy = (e.clientY - dragRef.current.my) / scale
-    const ry = -dy  // piece-Y delta: positive = upward
+    const svgNow = clientToSvg(e.clientX, e.clientY)
+    const s = dragRef.current.frozenScale
+    // Delta in piece-space millimetres
+    const dx = (svgNow.x - dragRef.current.svgX0) / s   // rightward = positive X
+    const dy = -(svgNow.y - dragRef.current.svgY0) / s   // upward = positive (invert SVG Y)
     const others = pieces.filter(p => p.id !== dragRef.current?.id).map(get2D)
     const snapX  = others.flatMap(o => [o.x, o.x + o.w])
     const snapY  = others.flatMap(o => [o.y, o.y + o.h])
@@ -88,15 +116,14 @@ export function FurnitureFrontView({
       const init = dragRef.current!.initial
       let { x, y, z, w, h, d } = init
 
-      // dx = rightward in screen & piece-X.  ry = upward in piece-Y (inverted from screen-Y).
-      // For each handle we compute which edges move & keep the opposite edges fixed.
+      // dx = rightward in piece-space mm.  dy = upward in piece-space mm (SVG Y already inverted above).
 
       if (view === 'frontal') {
-        // Projected: px=x, py=y, pw=w, ph=h
+        // Projected: px=x, py=y, pw=w, ph=h.  Screen-right→+X, screen-up→+Y.
         const edgeL = () => snap(init.x + dx, snapX)
         const edgeR = () => snap(init.x + init.w + dx, snapX)
-        const edgeT = () => snap(init.y + init.h + ry, snapY) // top = y+h
-        const edgeB = () => snap(init.y + ry, snapY)          // bottom = y
+        const edgeT = () => snap(init.y + init.h + dy, snapY)  // top edge = y+h
+        const edgeB = () => snap(init.y + dy, snapY)            // bottom edge = y
 
         switch (handle) {
           case 'move':   x = edgeL(); y = edgeB(); break
@@ -110,11 +137,11 @@ export function FurnitureFrontView({
           case 'right':  { const nr = edgeR(); w = Math.max(20, nr - init.x); break }
         }
       } else if (view === 'lateral') {
-        // Projected: px=z, py=y, pw=d, ph=h
+        // Projected: px=z, py=y, pw=d, ph=h.  Screen-right→+Z, screen-up→+Y.
         const edgeL = () => snap(init.z + dx, snapX)
         const edgeR = () => snap(init.z + init.d + dx, snapX)
-        const edgeT = () => snap(init.y + init.h + ry, snapY)
-        const edgeB = () => snap(init.y + ry, snapY)
+        const edgeT = () => snap(init.y + init.h + dy, snapY)
+        const edgeB = () => snap(init.y + dy, snapY)
 
         switch (handle) {
           case 'move':   z = edgeL(); y = edgeB(); break
@@ -128,23 +155,22 @@ export function FurnitureFrontView({
           case 'right':  { const nr = edgeR(); d = Math.max(10, nr - init.z); break }
         }
       } else {
-        // planta: Projected: px=x, py=z, pw=w, ph=d
+        // planta: Projected: px=x, py=z, pw=w, ph=d.
+        // SVG top → large z (z+d), SVG bottom → small z (z).
+        // Screen-right→+X.  Screen-up→+Z (SVG Y inverted, dy already positive-up).
         const edgeL = () => snap(init.x + dx, snapX)
         const edgeR = () => snap(init.x + init.w + dx, snapX)
-        // Note: in planta view, screen-Y maps to Z-axis (not real Y). ry=-dy gives the
-        // screen-up delta, but screen-up in planta means Z decreases (towards viewer).
-        // So Z delta = -ry = dy
-        const edgeT = () => snap(init.z - dy, snapY)          // top of planta = z
-        const edgeB = () => snap(init.z + init.d - dy, snapY) // bottom of planta = z+d
+        const edgeT = () => snap(init.z + init.d + dy, snapY)   // visual top = z+d
+        const edgeB = () => snap(init.z + dy, snapY)             // visual bottom = z
 
         switch (handle) {
-          case 'move':   x = edgeL(); z = edgeT(); break
-          case 'tl':     { const nx = edgeL(); const nt = edgeT(); w = Math.max(20, init.w + (init.x - nx)); d = Math.max(10, (init.z + init.d) - nt); x = nx; z = nt; break }
-          case 'tr':     { const nr = edgeR(); const nt = edgeT(); w = Math.max(20, nr - init.x); d = Math.max(10, (init.z + init.d) - nt); z = nt; break }
-          case 'bl':     { const nx = edgeL(); const nb = edgeB(); w = Math.max(20, init.w + (init.x - nx)); d = Math.max(10, nb - init.z); x = nx; break }
-          case 'br':     { const nr = edgeR(); const nb = edgeB(); w = Math.max(20, nr - init.x); d = Math.max(10, nb - init.z); break }
-          case 'top':    { const nt = edgeT(); d = Math.max(10, (init.z + init.d) - nt); z = nt; break }
-          case 'bottom': { const nb = edgeB(); d = Math.max(10, nb - init.z); break }
+          case 'move':   x = edgeL(); z = edgeB(); break
+          case 'tl':     { const nx = edgeL(); const nt = edgeT(); w = Math.max(20, init.w + (init.x - nx)); d = Math.max(10, nt - init.z); x = nx; break }
+          case 'tr':     { const nr = edgeR(); const nt = edgeT(); w = Math.max(20, nr - init.x); d = Math.max(10, nt - init.z); break }
+          case 'bl':     { const nx = edgeL(); const nb = edgeB(); w = Math.max(20, init.w + (init.x - nx)); d = Math.max(10, (init.z + init.d) - nb); x = nx; z = nb; break }
+          case 'br':     { const nr = edgeR(); const nb = edgeB(); w = Math.max(20, nr - init.x); d = Math.max(10, (init.z + init.d) - nb); z = nb; break }
+          case 'top':    { const nt = edgeT(); d = Math.max(10, nt - init.z); break }
+          case 'bottom': { const nb = edgeB(); d = Math.max(10, (init.z + init.d) - nb); z = nb; break }
           case 'left':   { const nx = edgeL(); w = Math.max(20, init.w + (init.x - nx)); x = nx; break }
           case 'right':  { const nr = edgeR(); w = Math.max(20, nr - init.x); break }
         }
