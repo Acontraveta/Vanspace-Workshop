@@ -240,18 +240,18 @@ export function FurnitureFrontView({
   const originY = -workspace.h * scale - 40 + pan.y
 
   return (
-    <div className="flex flex-col bg-slate-950 rounded-2xl border border-slate-800/60 overflow-hidden select-none relative"
+    <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden select-none relative"
       style={{ minHeight: 560 }}>
 
-      <div className="absolute inset-0 opacity-[0.04] bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
+      <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
 
       {/* View selector + zoom */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800/60">
-        <div className="flex gap-1 bg-slate-900/80 p-0.5 rounded-lg">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-gray-50">
+        <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg">
           {(['frontal', 'lateral', 'planta'] as ViewType[]).map(v => (
             <button key={v} onClick={() => { setView(v); onSelect(null) }}
-              className={`px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${
-                view === v ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-500 hover:text-slate-300'
+              className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all ${
+                view === v ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-700'
               }`}>
               {VIEW_LABELS[v]}
             </button>
@@ -259,12 +259,12 @@ export function FurnitureFrontView({
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setZoom(z => Math.min(4, z + 0.2))}
-            className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold hover:bg-slate-700 hover:text-white transition-all">+</button>
-          <span className="text-[9px] font-mono text-slate-500 w-10 text-center">{Math.round(zoom * 100)}%</span>
+            className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-200 hover:text-slate-700 transition-all">+</button>
+          <span className="text-[10px] font-mono text-slate-500 w-10 text-center">{Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(z => Math.max(0.3, z - 0.2))}
-            className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold hover:bg-slate-700 hover:text-white transition-all">−</button>
+            className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-200 hover:text-slate-700 transition-all">−</button>
           <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }}
-            className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 text-[9px] font-bold hover:bg-slate-700 hover:text-white transition-all" title="Resetear">⟲</button>
+            className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-[9px] font-bold hover:bg-slate-200 hover:text-slate-700 transition-all" title="Resetear">⟲</button>
         </div>
       </div>
 
@@ -282,12 +282,12 @@ export function FurnitureFrontView({
       >
         <defs>
           <pattern id="grid-2d" width={50 * scale} height={50 * scale} patternUnits="userSpaceOnUse">
-            <path d={`M ${50 * scale} 0 L 0 0 0 ${50 * scale}`} fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
+            <path d={`M ${50 * scale} 0 L 0 0 0 ${50 * scale}`} fill="none" stroke="rgba(148,163,184,0.12)" strokeWidth="0.5" />
           </pattern>
         </defs>
         <rect x={originX} y={originY} width={vbW} height={vbH} fill="url(#grid-2d)" />
-        <line x1="0" y1="0" x2={workspace.w * scale} y2="0" stroke="#334155" strokeWidth="1" />
-        <line x1="0" y1="0" x2="0" y2={-workspace.h * scale} stroke="#334155" strokeWidth="1" />
+        <line x1="0" y1="0" x2={workspace.w * scale} y2="0" stroke="#cbd5e1" strokeWidth="1" />
+        <line x1="0" y1="0" x2="0" y2={-workspace.h * scale} stroke="#cbd5e1" strokeWidth="1" />
 
         {sortedPieces.map(p => {
           const isSelected = selectedId === p.id
@@ -303,7 +303,7 @@ export function FurnitureFrontView({
           return (
             <g key={p.id}>
               <rect x={px} y={py} width={pw} height={ph} rx={1}
-                fill={isSelected ? 'rgba(59,130,246,.2)' : mat ? `${fillColor}30` : p.type === 'frontal' ? 'rgba(59,130,246,.12)' : 'rgba(255,255,255,.04)'}
+                fill={isSelected ? 'rgba(59,130,246,.15)' : mat ? `${fillColor}20` : p.type === 'frontal' ? 'rgba(59,130,246,.08)' : 'rgba(148,163,184,.06)'}
                 stroke={isSelected ? colors.selected : mat ? fillColor : colors.stroke}
                 strokeWidth={isSelected ? 2 : 0.8}
                 strokeDasharray={p.type === 'trasera' ? '4 2' : undefined}
@@ -357,12 +357,12 @@ export function FurnitureFrontView({
                   ))}
 
                   <text x={px + pw / 2} y={py - 8}
-                    textAnchor="middle" style={{ fontSize: 9, fill: '#60a5fa', fontFamily: 'monospace', fontWeight: 700, pointerEvents: 'none' }}>
+                    textAnchor="middle" style={{ fontSize: 9, fill: '#2563eb', fontFamily: 'monospace', fontWeight: 700, pointerEvents: 'none' }}>
                     {Math.round(c.w)} mm
                   </text>
                   <text x={px + pw + 8} y={py + ph / 2}
                     textAnchor="start" dominantBaseline="middle"
-                    style={{ fontSize: 9, fill: '#60a5fa', fontFamily: 'monospace', fontWeight: 700, pointerEvents: 'none' }}>
+                    style={{ fontSize: 9, fill: '#2563eb', fontFamily: 'monospace', fontWeight: 700, pointerEvents: 'none' }}>
                     {Math.round(c.h)} mm
                   </text>
                 </g>
@@ -373,15 +373,15 @@ export function FurnitureFrontView({
       </svg>
 
       {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-slate-800/60 bg-slate-900/50">
+      <div className="flex items-center justify-between px-4 py-2 border-t border-slate-200 bg-gray-50">
         <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 uppercase">
+          <span className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
             Snap {SNAP_DISTANCE}mm
           </span>
-          <span className="text-[9px] font-bold text-slate-600 uppercase">{pieces.length} piezas</span>
+          <span className="text-[10px] font-medium text-slate-500">{pieces.length} piezas</span>
         </div>
-        <span className="text-[9px] text-slate-600">Arrastra · Esquinas para redimensionar · Alt+drag para mover</span>
+        <span className="text-[10px] text-slate-400">Arrastra · Esquinas para redimensionar</span>
       </div>
     </div>
   )

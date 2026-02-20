@@ -261,33 +261,33 @@ export function FurniturePieceEditor({
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div className="flex flex-col h-full bg-gray-50">
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white shadow-sm z-10">
         <div className="flex items-center gap-3">
           <button onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 text-sm font-bold hover:bg-slate-200 transition-all flex items-center justify-center">
+            className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-sm font-bold hover:bg-slate-200 transition-all flex items-center justify-center">
             ←
           </button>
           <div>
-            <h2 className="text-sm font-black uppercase tracking-tight text-slate-900">{itemName}</h2>
+            <h2 className="text-base font-bold text-gray-900">{itemName}</h2>
             <div className="flex items-center gap-2 mt-0.5">
-              {itemSku && <span className="text-[9px] font-mono text-slate-400">{itemSku}</span>}
-              {projectInfo && <span className="text-[9px] text-slate-400">· {projectInfo}</span>}
+              {itemSku && <span className="text-[10px] font-mono text-slate-400">{itemSku}</span>}
+              {projectInfo && <span className="text-[10px] text-slate-400">· {projectInfo}</span>}
             </div>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg">
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
           {([
             { key: 'diseno' as Tab, label: '✏️ Diseño' },
             { key: 'optimizado' as Tab, label: '📋 Despiece' },
             { key: 'pegatinas' as Tab, label: '🏷️ Etiquetas' },
           ]).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wide transition-all ${
-                tab === t.key ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                tab === t.key ? 'bg-white shadow text-gray-900' : 'text-slate-500 hover:text-slate-700'
               }`}>
               {t.label}
             </button>
@@ -295,7 +295,7 @@ export function FurniturePieceEditor({
         </div>
 
         <button onClick={handleSave} disabled={saving}
-          className="px-5 py-2 bg-blue-600 text-white text-xs font-black uppercase rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition-all">
+          className="px-5 py-2.5 bg-blue-600 text-white text-xs font-bold uppercase rounded-xl shadow hover:bg-blue-700 disabled:opacity-50 transition-all">
           {saving ? 'Guardando…' : '💾 Guardar'}
         </button>
       </div>
@@ -312,7 +312,7 @@ export function FurniturePieceEditor({
 
               {/* Module panel */}
               <div className="p-4 border-b border-slate-100">
-                <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">📐 Módulo</h3>
+              <h3 className="text-[11px] font-bold uppercase text-slate-500 tracking-wide mb-3">📐 Módulo</h3>
 
                 <div className="space-y-2">
                   <div>
@@ -364,7 +364,7 @@ export function FurniturePieceEditor({
 
               {/* Quick-add presets */}
               <div className="p-4 border-b border-slate-100">
-                <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">⚡ Añadir rápido</h3>
+                <h3 className="text-[11px] font-bold uppercase text-slate-500 tracking-wide mb-3">⚡ Añadir rápido</h3>
                 <div className="grid grid-cols-2 gap-1.5">
                   {PRESETS.map(p => (
                     <button key={p.label} onClick={() => applyPreset(p)}
@@ -386,7 +386,7 @@ export function FurniturePieceEditor({
               {/* Selected piece editor */}
               {selectedPiece && (
                 <div className="p-4 border-b border-slate-100 bg-blue-50/50">
-                  <h3 className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-3">
+                  <h3 className="text-[11px] font-bold uppercase text-blue-600 tracking-wide mb-3">
                     ✏️ {selectedPiece.name}
                   </h3>
                   <div className="space-y-2">
@@ -459,7 +459,7 @@ export function FurniturePieceEditor({
 
               {/* Pieces list */}
               <div className="p-4">
-                <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">
+                <h3 className="text-[11px] font-bold uppercase text-slate-500 tracking-wide mb-2">
                   🧩 Piezas ({pieces.length})
                 </h3>
                 <div className="space-y-1 max-h-60 overflow-y-auto">

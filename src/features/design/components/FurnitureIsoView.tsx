@@ -47,16 +47,14 @@ function PieceBox({
       ref={meshRef}
       position={[px, py, pz]}
       onPointerDown={onPointerDown}
-      castShadow
-      receiveShadow
     >
       <boxGeometry args={[sx, sy, sz]} />
       <meshStandardMaterial
         color={hexToThreeColor(baseColor)}
         transparent={isFrontal}
-        opacity={isFrontal ? 0.6 : 0.95}
-        roughness={0.55}
-        metalness={0.05}
+        opacity={isFrontal ? 0.55 : 0.92}
+        roughness={0.65}
+        metalness={0.02}
       />
       {isSelected && (
         <lineSegments>
@@ -73,12 +71,12 @@ function PieceBox({
 function GroundPlane({ width, depth }: { width: number; depth: number }) {
   return (
     <group position={[width / 2, -0.5, depth / 2]}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width + 200, depth + 200]} />
-        <meshStandardMaterial color="#1a1c2e" transparent opacity={0.6} />
+        <meshStandardMaterial color="#e2e8f0" transparent opacity={0.5} />
       </mesh>
       <gridHelper
-        args={[Math.max(width, depth) + 200, Math.ceil(Math.max(width, depth) / 50) + 4, '#334155', '#1e293b']}
+        args={[Math.max(width, depth) + 200, Math.ceil(Math.max(width, depth) / 50) + 4, '#cbd5e1', '#e2e8f0']}
         position={[0, 0.5, 0]}
         rotation={[0, 0, 0]}
       />
@@ -93,19 +91,19 @@ function DimensionLabels({ module: m }: { module: ModuleDimensions }) {
     <>
       <Html position={[m.width / 2, -20, -20]} center
         style={{ pointerEvents: 'none' }}>
-        <span className="text-[9px] font-mono font-bold text-blue-400 bg-slate-900/80 px-1.5 py-0.5 rounded whitespace-nowrap">
+        <span className="text-[9px] font-mono font-bold text-blue-600 bg-white/90 shadow-sm px-1.5 py-0.5 rounded whitespace-nowrap">
           {m.width} mm
         </span>
       </Html>
       <Html position={[-20, m.height / 2, -20]} center
         style={{ pointerEvents: 'none' }}>
-        <span className="text-[9px] font-mono font-bold text-blue-400 bg-slate-900/80 px-1.5 py-0.5 rounded whitespace-nowrap">
+        <span className="text-[9px] font-mono font-bold text-blue-600 bg-white/90 shadow-sm px-1.5 py-0.5 rounded whitespace-nowrap">
           {m.height} mm
         </span>
       </Html>
       <Html position={[m.width + 20, -20, m.depth / 2]} center
         style={{ pointerEvents: 'none' }}>
-        <span className="text-[9px] font-mono font-bold text-blue-400 bg-slate-900/80 px-1.5 py-0.5 rounded whitespace-nowrap">
+        <span className="text-[9px] font-mono font-bold text-blue-600 bg-white/90 shadow-sm px-1.5 py-0.5 rounded whitespace-nowrap">
           {m.depth} mm
         </span>
       </Html>
@@ -120,7 +118,7 @@ function ModuleOutline({ module: m }: { module: ModuleDimensions }) {
   return (
     <lineSegments position={[m.width / 2, m.height / 2, m.depth / 2]}>
       <edgesGeometry args={[geo]} />
-      <lineBasicMaterial color="#334155" transparent opacity={0.3} />
+      <lineBasicMaterial color="#94a3b8" transparent opacity={0.4} />
     </lineSegments>
   )
 }
@@ -155,24 +153,24 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, ca
   const handleBgClick = useCallback(() => onSelect(null), [onSelect])
 
   return (
-    <div className="flex flex-col bg-slate-950 rounded-2xl border border-slate-800/60 overflow-hidden select-none relative"
+    <div className="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden select-none relative"
       style={{ minHeight: 560 }}>
 
       {/* Header controls */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800/60">
-        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-gray-50">
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
           Vista 3D · Orbitar
         </span>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" checked={showFrontals} onChange={e => setShowFrontals(e.target.checked)}
-              className="w-3 h-3 rounded border-slate-600 accent-blue-500" />
-            <span className="text-[9px] font-bold text-slate-500 uppercase">Frontales</span>
+              className="w-3 h-3 rounded border-slate-300 accent-blue-600" />
+            <span className="text-[10px] font-medium text-slate-500">Frontales</span>
           </label>
           <label className="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" checked={wireframe} onChange={e => setWireframe(e.target.checked)}
-              className="w-3 h-3 rounded border-slate-600 accent-blue-500" />
-            <span className="text-[9px] font-bold text-slate-500 uppercase">Contorno</span>
+              className="w-3 h-3 rounded border-slate-300 accent-blue-600" />
+            <span className="text-[10px] font-medium text-slate-500">Contorno</span>
           </label>
         </div>
       </div>
@@ -180,10 +178,9 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, ca
       {/* Three.js Canvas */}
       <div className="flex-1 relative" style={{ minHeight: 500 }}>
         <Canvas
-          shadows
           gl={{ antialias: true, alpha: false }}
           onPointerMissed={handleBgClick}
-          style={{ background: '#0a0c1a' }}
+          style={{ background: '#f8fafc' }}
         >
           <CameraSetup module={mod} />
           <OrbitControls
@@ -194,18 +191,20 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, ca
             maxDistance={Math.max(mod.width, mod.height, mod.depth) * 5}
           />
 
-          {/* Lighting */}
-          <ambientLight intensity={0.4} />
+          {/* Lighting — no shadows to avoid dark cutting artifacts */}
+          <ambientLight intensity={0.55} />
+          <hemisphereLight args={['#dbeafe', '#e2e8f0', 0.4]} />
           <directionalLight
             position={[mod.width * 2, mod.height * 3, mod.depth * 2]}
-            intensity={0.8}
-            castShadow
-            shadow-mapSize-width={1024}
-            shadow-mapSize-height={1024}
+            intensity={0.6}
           />
           <directionalLight
-            position={[-mod.width, mod.height, -mod.depth]}
-            intensity={0.25}
+            position={[-mod.width, mod.height * 1.5, -mod.depth]}
+            intensity={0.3}
+          />
+          <directionalLight
+            position={[mod.width * 0.5, -mod.height, mod.depth * 1.5]}
+            intensity={0.15}
           />
 
           {/* Ground */}
@@ -234,9 +233,9 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, ca
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-slate-800/60 bg-slate-900/50">
-        <span className="text-[9px] font-bold text-slate-600 uppercase">{pieces.length} piezas</span>
-        <span className="text-[9px] text-slate-600">Clic + arrastrar para orbitar · Scroll para zoom · Clic derecho para pan</span>
+      <div className="flex items-center justify-between px-4 py-2 border-t border-slate-200 bg-gray-50">
+        <span className="text-[10px] font-medium text-slate-500">{pieces.length} piezas</span>
+        <span className="text-[10px] text-slate-400">Clic + arrastrar para orbitar · Scroll para zoom</span>
       </div>
     </div>
   )
