@@ -17,14 +17,13 @@ export const MATERIALS = [
 
 export const MODULE_TYPES = [
   { value: 'armario',       label: '🚪 Armario',        width: 800,  height: 2100, depth: 550 },
-  { value: 'cajonera',      label: '🗂️ Cajonera',       width: 500,  height: 700,  depth: 450 },
-  { value: 'cocina',        label: '🍳 Módulo cocina',   width: 600,  height: 700,  depth: 580 },
-  { value: 'arcon',         label: '📦 Arcón',           width: 800,  height: 450,  depth: 450 },
-  { value: 'altillo',       label: '🛏️ Altillo',        width: 1000, height: 350,  depth: 350 },
+  { value: 'cajonera',      label: '🗂️ Cajonera',       width: 600,  height: 750,  depth: 450 },
+  { value: 'cocina',        label: '🍳 Módulo cocina',   width: 600,  height: 720,  depth: 580 },
+  { value: 'arcon',         label: '📦 Arcón',           width: 1000, height: 500,  depth: 450 },
+  { value: 'altillo',       label: '🛏️ Altillo',        width: 1000, height: 400,  depth: 350 },
   { value: 'personalizado', label: '✏️ Personalizado',   width: 800,  height: 700,  depth: 450 },
 ] as const
 
-/** Colour palette for piece types (used when no material is assigned) */
 /** Colour palette for piece types — high contrast for the 2D front view */
 export const PIECE_COLORS = {
   estructura: { fill: '#64748b', stroke: '#475569', selected: '#3b82f6', label: 'Estructura' },

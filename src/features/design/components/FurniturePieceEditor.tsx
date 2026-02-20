@@ -22,25 +22,196 @@ interface FurniturePieceEditorProps {
   onClose: () => void
 }
 
-// ─── Default module: 5 structural panels + 2 doors ──────────────────────────
+// ─── Type-specific piece builders ───────────────────────────────────────────
 
-function buildInitialPieces(m: ModuleDimensions): InteractivePiece[] {
+/** Generic shell: laterals + top + bottom + back */
+function shellPieces(w: number, h: number, d: number, t: number): InteractivePiece[] {
+  const innerW = w - t * 2
+  const innerH = h - t * 2
+  return [
+    { id: 'shell-left',   name: 'Lateral Izq',   type: 'estructura', x: 0,     y: 0,     z: 0, w: t,      h,    d },
+    { id: 'shell-right',  name: 'Lateral Der',   type: 'estructura', x: w - t, y: 0,     z: 0, w: t,      h,    d },
+    { id: 'shell-top',    name: 'Tapa Superior',  type: 'estructura', x: t,     y: h - t, z: 0, w: innerW, h: t, d },
+    { id: 'shell-bottom', name: 'Base Inferior',  type: 'estructura', x: t,     y: 0,     z: 0, w: innerW, h: t, d },
+    { id: 'shell-back',   name: 'Trasera',        type: 'trasera',    x: t,     y: t,     z: -BACK_THICKNESS, w: innerW, h: innerH, d: BACK_THICKNESS },
+  ]
+}
+
+/**
+ * Armario (800×2100×550): wardrobe with shelf + hanging space + 2 doors
+ * — Laterals full height, top + bottom, back
+ * — 1 balda at ~60% height separating hanging zone / upper storage
+ * — 2 equal doors
+ */
+function buildArmario(m: ModuleDimensions): InteractivePiece[] {
+  const { width: w, height: h, depth: d, thickness: t } = m
+  const innerW = w - t * 2
+  const innerH = h - t * 2
+  const halfW  = Math.floor(innerW / 2)
+  const shelfY = Math.round(h * 0.6) // shelf at 60% height
+
+  return [
+    ...shellPieces(w, h, d, t),
+    // Balda intermedia (divides hanging zone below / storage above)
+    { id: 'shelf-1', name: 'Balda intermedia', type: 'estructura',
+      x: t, y: shelfY, z: 0, w: innerW, h: t, d },
+    // 2 doors
+    { id: 'door-left',  name: 'Puerta Izq',  type: 'frontal',
+      x: t, y: t, z: d, w: halfW, h: innerH, d: 16 },
+    { id: 'door-right', name: 'Puerta Der',  type: 'frontal',
+      x: t + halfW, y: t, z: d, w: innerW - halfW, h: innerH, d: 16 },
+  ]
+}
+
+/**
+ * Cajonera (600×750×450): drawer unit with 4 drawer fronts + bottoms
+ * — Laterals, top, bottom, back
+ * — 3 horizontal rails between drawers
+ * — 4 drawer fronts with matching drawer bottoms
+ */
+function buildCajonera(m: ModuleDimensions): InteractivePiece[] {
+  const { width: w, height: h, depth: d, thickness: t } = m
+  const innerW = w - t * 2
+  const innerH = h - t * 2
+  const numDrawers = 4
+  const gap = 3 // mm gap between drawers
+  const drawerH = Math.floor((innerH - gap * (numDrawers - 1)) / numDrawers)
+  const drawerInnerW = innerW - 32 // 16mm side clearance each side for guides
+  const drawerDepthInner = d - 32  // 16mm front + 16mm back clearance
+
+  const pieces: InteractivePiece[] = [...shellPieces(w, h, d, t)]
+
+  for (let i = 0; i < numDrawers; i++) {
+    const y = t + i * (drawerH + gap)
+    pieces.push(
+      // Drawer front
+      { id: `drawer-front-${i}`, name: `Frente Cajón ${i + 1}`, type: 'frontal',
+        x: t, y, z: d, w: innerW, h: drawerH, d: 16 },
+      // Drawer bottom
+      { id: `drawer-bottom-${i}`, name: `Fondo Cajón ${i + 1}`, type: 'estructura',
+        x: t + 16, y, z: 16, w: drawerInnerW, h: t, d: drawerDepthInner },
+    )
+  }
+
+  return pieces
+}
+
+/**
+ * Módulo cocina (600×720×580): kitchen base unit
+ * — Laterals full height, bottom panel, back panel (top uncovered for worktop)
+ * — Zócalo (kickboard) cutback: bottom raised 100mm, no top panel
+ * — 1 internal shelf at ~45% height
+ * — 1 door (full width)
+ */
+function buildCocina(m: ModuleDimensions): InteractivePiece[] {
+  const { width: w, height: h, depth: d, thickness: t } = m
+  const innerW = w - t * 2
+  const kickH = 100 // kickboard height
+  const innerH = h - t - kickH // no top panel, bottom at kickH
+
+  return [
+    // Laterals (full height)
+    { id: 'shell-left',   name: 'Lateral Izq',   type: 'estructura', x: 0,     y: 0, z: 0, w: t, h, d },
+    { id: 'shell-right',  name: 'Lateral Der',   type: 'estructura', x: w - t, y: 0, z: 0, w: t, h, d },
+    // Bottom raised for kickboard
+    { id: 'shell-bottom', name: 'Base (sobre zócalo)', type: 'estructura',
+      x: t, y: kickH, z: 0, w: innerW, h: t, d },
+    // Back panel (from bottom to top)
+    { id: 'shell-back',   name: 'Trasera', type: 'trasera',
+      x: t, y: kickH + t, z: -BACK_THICKNESS, w: innerW, h: innerH, d: BACK_THICKNESS },
+    // Kickboard (zócalo) — narrow front strip
+    { id: 'kickboard', name: 'Zócalo frontal', type: 'estructura',
+      x: t + 30, y: 0, z: d - t, w: innerW - 60, h: kickH, d: t },
+    // Internal shelf at ~45% usable height
+    { id: 'shelf-1', name: 'Balda interna', type: 'estructura',
+      x: t, y: kickH + Math.round(innerH * 0.45), z: 0, w: innerW, h: t, d: d - 20 },
+    // Single door
+    { id: 'door-1', name: 'Puerta', type: 'frontal',
+      x: t, y: kickH + t, z: d, w: innerW, h: innerH, d: 16 },
+  ]
+}
+
+/**
+ * Arcón (1000×500×450): storage chest / bench with lift-up lid
+ * — 4 structural panels (front, back, 2 laterals) + bottom
+ * — Tapa (lid) as frontal type (opens upward)
+ * — Internal divider in the middle
+ */
+function buildArcon(m: ModuleDimensions): InteractivePiece[] {
+  const { width: w, height: h, depth: d, thickness: t } = m
+  const innerW = w - t * 2
+  const innerD = d - t * 2
+  const innerH = h - t * 2
+
+  return [
+    // 2 laterals
+    { id: 'shell-left',   name: 'Lateral Izq',   type: 'estructura', x: 0,     y: 0, z: 0, w: t, h, d },
+    { id: 'shell-right',  name: 'Lateral Der',   type: 'estructura', x: w - t, y: 0, z: 0, w: t, h, d },
+    // Front & back panels (between laterals)
+    { id: 'shell-front',  name: 'Frontal',        type: 'estructura',
+      x: t, y: 0, z: d - t, w: innerW, h, d: t },
+    { id: 'shell-back',   name: 'Trasero',        type: 'estructura',
+      x: t, y: 0, z: 0, w: innerW, h, d: t },
+    // Bottom
+    { id: 'shell-bottom', name: 'Base Inferior',  type: 'estructura',
+      x: t, y: 0, z: t, w: innerW, h: t, d: innerD },
+    // Lid (frontal — opens upward)
+    { id: 'lid', name: 'Tapa / Asiento', type: 'frontal',
+      x: 0, y: h, z: 0, w, h: t, d },
+    // Central divider
+    { id: 'divider-1', name: 'Divisor central', type: 'estructura',
+      x: Math.round(w / 2) - Math.round(t / 2), y: t, z: t, w: t, h: innerH, d: innerD },
+  ]
+}
+
+/**
+ * Altillo (1000×400×350): overhead cabinet
+ * — Laterals, top, bottom, back
+ * — 1 lift-up door (full width frontal)
+ * — Narrower depth (350mm), compact height
+ */
+function buildAltillo(m: ModuleDimensions): InteractivePiece[] {
+  const { width: w, height: h, depth: d, thickness: t } = m
+  const innerW = w - t * 2
+  const innerH = h - t * 2
+
+  return [
+    ...shellPieces(w, h, d, t),
+    // Single lift-up door (full width)
+    { id: 'door-1', name: 'Puerta abatible', type: 'frontal',
+      x: t, y: t, z: d, w: innerW, h: innerH, d: 16 },
+  ]
+}
+
+/**
+ * Personalizado: generic box with laterals, top, bottom, back + 2 doors
+ */
+function buildPersonalizado(m: ModuleDimensions): InteractivePiece[] {
   const { width: w, height: h, depth: d, thickness: t } = m
   const innerW = w - t * 2
   const innerH = h - t * 2
   const halfW  = Math.floor(innerW / 2)
 
   return [
-    // 5 structural panels
-    { id: 'shell-left',   name: 'Lateral Izq',  type: 'estructura', x: 0,     y: 0, z: 0, w: t,     h, d },
-    { id: 'shell-right',  name: 'Lateral Der',  type: 'estructura', x: w - t, y: 0, z: 0, w: t,     h, d },
-    { id: 'shell-top',    name: 'Tapa Superior', type: 'estructura', x: t,     y: h - t, z: 0, w: innerW, h: t, d },
-    { id: 'shell-bottom', name: 'Base Inferior', type: 'estructura', x: t,     y: 0, z: 0, w: innerW, h: t, d },
-    { id: 'shell-back',   name: 'Trasera',       type: 'trasera',    x: t,     y: t, z: -BACK_THICKNESS, w: innerW, h: innerH, d: BACK_THICKNESS },
-    // 2 doors (split in half)
-    { id: 'door-left',  name: 'Puerta Izq',  type: 'frontal', x: t,          y: t, z: d, w: halfW, h: innerH, d: 16 },
-    { id: 'door-right', name: 'Puerta Der',  type: 'frontal', x: t + halfW,  y: t, z: d, w: innerW - halfW, h: innerH, d: 16 },
+    ...shellPieces(w, h, d, t),
+    { id: 'door-left',  name: 'Puerta Izq', type: 'frontal',
+      x: t, y: t, z: d, w: halfW, h: innerH, d: 16 },
+    { id: 'door-right', name: 'Puerta Der', type: 'frontal',
+      x: t + halfW, y: t, z: d, w: innerW - halfW, h: innerH, d: 16 },
   ]
+}
+
+/** Dispatch to the correct builder based on module type */
+function buildInitialPieces(m: ModuleDimensions): InteractivePiece[] {
+  switch (m.type) {
+    case 'armario':       return buildArmario(m)
+    case 'cajonera':      return buildCajonera(m)
+    case 'cocina':        return buildCocina(m)
+    case 'arcon':         return buildArcon(m)
+    case 'altillo':       return buildAltillo(m)
+    case 'personalizado': return buildPersonalizado(m)
+    default:              return buildPersonalizado(m)
+  }
 }
 
 // ─── Presets ─────────────────────────────────────────────────────────────────
