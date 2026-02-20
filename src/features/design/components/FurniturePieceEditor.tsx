@@ -841,8 +841,8 @@ export function FurniturePieceEditor({
                 <div className="space-y-1 max-h-60 overflow-y-auto">
                   {pieces.map(p => {
                     const typeColors = PIECE_COLORS[p.type]
-                    const mat = getMaterial(p.materialId)
-                    const dotColor = mat ? mat.color_hex : (selectedId === p.id ? typeColors.selected : typeColors.fill)
+                    const dotColor = selectedId === p.id ? typeColors.selected : typeColors.fill
+                    const pMat = getMaterial(p.materialId)
                     return (
                       <button key={p.id}
                         onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
@@ -855,7 +855,7 @@ export function FurniturePieceEditor({
                           style={{ backgroundColor: dotColor }} />
                         <div className="flex-1 min-w-0">
                           <span className="text-[10px] font-bold text-slate-700 truncate block">{p.name}</span>
-                          {mat && <span className="text-[8px] text-slate-400 truncate block">{mat.texture_label}</span>}
+                          {pMat && <span className="text-[8px] text-slate-400 truncate block">{pMat.texture_label}</span>}
                         </div>
                         <span className="text-[8px] font-mono text-slate-400 flex-shrink-0">{p.w}×{p.h}</span>
                       </button>

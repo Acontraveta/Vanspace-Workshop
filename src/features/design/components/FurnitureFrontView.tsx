@@ -293,8 +293,6 @@ export function FurnitureFrontView({
           const isSelected = selectedId === p.id
           const c = get2D(p)
           const colors = PIECE_COLORS[p.type]
-          const mat = catalogMaterials.find(m => m.id === p.materialId)
-          const fillColor = mat ? mat.color_hex : colors.fill
           const px = c.x * scale
           const py = -c.y * scale - c.h * scale
           const pw = c.w * scale
@@ -303,8 +301,8 @@ export function FurnitureFrontView({
           return (
             <g key={p.id}>
               <rect x={px} y={py} width={pw} height={ph} rx={1}
-                fill={isSelected ? 'rgba(59,130,246,.15)' : mat ? `${fillColor}20` : p.type === 'frontal' ? 'rgba(59,130,246,.08)' : 'rgba(148,163,184,.06)'}
-                stroke={isSelected ? colors.selected : mat ? fillColor : colors.stroke}
+                fill={isSelected ? 'rgba(59,130,246,.15)' : p.type === 'frontal' ? 'rgba(59,130,246,.08)' : 'rgba(148,163,184,.06)'}
+                stroke={isSelected ? colors.selected : colors.stroke}
                 strokeWidth={isSelected ? 2 : 0.8}
                 strokeDasharray={p.type === 'trasera' ? '4 2' : undefined}
                 onMouseDown={e => handleMouseDown(e, p.id, 'move')}
