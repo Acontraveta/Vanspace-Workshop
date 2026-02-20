@@ -47,14 +47,22 @@ export const getExcelUrl = (path: string) => {
 
 export const downloadExcel = async (path: string): Promise<Blob> => {
   console.log(`📥 Storage: descargando ${path}...`)
-  const { data, error } = await supabase.storage
+  // Use public URL with cache-busting timestamp to bypass CDN cache
+  const { data: urlData } = supabase.storage
     .from('excel-files')
-    .download(path)
+    .getPublicUrl(path)
   
-  if (error) {
-    console.error('❌ Error descargando:', error)
-    throw error
+  const cacheBuster = `t=${Date.now()}`
+  const separator = urlData.publicUrl.includes('?') ? '&' : '?'
+  const freshUrl = `${urlData.publicUrl}${separator}${cacheBuster}`
+  
+  const response = await fetch(freshUrl, { cache: 'no-store' })
+  if (!response.ok) {
+    const errMsg = `Error descargando ${path}: ${response.status}`
+    console.error('❌', errMsg)
+    throw new Error(errMsg)
   }
+  const data = await response.blob()
   console.log(`📥 Storage: descargado ${path}: ${data.size} bytes`)
   return data
 }
