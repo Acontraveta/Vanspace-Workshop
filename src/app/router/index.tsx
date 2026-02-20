@@ -6,24 +6,41 @@ import { ProtectedRoute } from './ProtectedRoute'
 import { PermissionGuard } from '@/shared/components/auth/PermissionGuard'
 import { useAuth } from '@/app/providers/AuthProvider'
 
+// Lazy load with auto-reload on stale chunk (new deploy invalidates old hashes)
+function lazyRetry(factory: () => Promise<any>) {
+  return lazy(() =>
+    factory().catch((err: any) => {
+      // Only reload once to avoid infinite loops
+      const key = 'chunk_reload'
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1')
+        window.location.reload()
+        return { default: () => null } as any
+      }
+      sessionStorage.removeItem(key)
+      throw err
+    })
+  )
+}
+
 // Lazy load pages
-const Quotes = lazy(() => import('@/features/quotes/components/Quotes'))
-const ProductionDashboard = lazy(() => import('@/features/production/components/ProductionDashboard'))
-const PurchaseList = lazy(() => import('@/features/purchases/components/PurchaseList'))
-const ProductionCalendar = lazy(() => import('@/features/calendar/components/ProductionCalendar'))
-const ConfigurationPanel = lazy(() => import('@/features/config/components/ConfigurationPanel'))
-const TimeclockPage = lazy(() => import('@/features/timeclock/components/TimeclockPage'))
-const CRMDashboard = lazy(() => import('@/features/crm/components/CRMDashboard'))
-const FurnitureWorkOrderPage = lazy(() => import('@/features/design/pages/FurnitureWorkOrderPage'))
-const FurnitureDesignList = lazy(() => import('@/features/design/pages/FurnitureDesignList'))
-const FurnitureStandaloneEditor = lazy(() => import('@/features/design/pages/FurnitureStandaloneEditor'))
+const Quotes = lazyRetry(() => import('@/features/quotes/components/Quotes'))
+const ProductionDashboard = lazyRetry(() => import('@/features/production/components/ProductionDashboard'))
+const PurchaseList = lazyRetry(() => import('@/features/purchases/components/PurchaseList'))
+const ProductionCalendar = lazyRetry(() => import('@/features/calendar/components/ProductionCalendar'))
+const ConfigurationPanel = lazyRetry(() => import('@/features/config/components/ConfigurationPanel'))
+const TimeclockPage = lazyRetry(() => import('@/features/timeclock/components/TimeclockPage'))
+const CRMDashboard = lazyRetry(() => import('@/features/crm/components/CRMDashboard'))
+const FurnitureWorkOrderPage = lazyRetry(() => import('@/features/design/pages/FurnitureWorkOrderPage'))
+const FurnitureDesignList = lazyRetry(() => import('@/features/design/pages/FurnitureDesignList'))
+const FurnitureStandaloneEditor = lazyRetry(() => import('@/features/design/pages/FurnitureStandaloneEditor'))
 
 // Dashboards
-const AdminDashboard = lazy(() => import('@/features/dashboards/AdminDashboard'))
-const EncargadoDashboard = lazy(() => import('@/features/dashboards/EncargadoDashboard'))
-const EncargadoTallerDashboard = lazy(() => import('@/features/dashboards/EncargadoTallerDashboard'))
-const ComprasDashboard = lazy(() => import('@/features/dashboards/ComprasDashboard'))
-const OperarioDashboard = lazy(() => import('@/features/dashboards/OperarioDashboard'))
+const AdminDashboard = lazyRetry(() => import('@/features/dashboards/AdminDashboard'))
+const EncargadoDashboard = lazyRetry(() => import('@/features/dashboards/EncargadoDashboard'))
+const EncargadoTallerDashboard = lazyRetry(() => import('@/features/dashboards/EncargadoTallerDashboard'))
+const ComprasDashboard = lazyRetry(() => import('@/features/dashboards/ComprasDashboard'))
+const OperarioDashboard = lazyRetry(() => import('@/features/dashboards/OperarioDashboard'))
 
 // Loading component
 function PageLoading() {
