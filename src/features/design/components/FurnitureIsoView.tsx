@@ -23,17 +23,20 @@ function hexToThreeColor(hex: string): THREE.Color {
 // ─── Single piece box ─────────────────────────────────────────────────────────
 
 function PieceBox({
-  piece, isSelected, onPointerDown, materialColor,
+  piece, isSelected, onPointerDown, materialColor, transparent,
 }: {
   piece: InteractivePiece
   isSelected: boolean
   onPointerDown: (e: ThreeEvent<PointerEvent>) => void
   materialColor?: string
+  transparent?: boolean
 }) {
   const meshRef = useRef<THREE.Mesh>(null!)
   const colors = PIECE_COLORS[piece.type]
   const baseColor = isSelected ? colors.selected : (materialColor ?? colors.fill)
   const isFrontal = piece.type === 'frontal'
+  const useTransparency = transparent || isFrontal
+  const opacityVal = transparent ? 0.35 : (isFrontal ? 0.55 : 0.92)
 
   // mm → scene units (1 unit = 1 mm, we scale the whole scene)
   const sx = piece.w
@@ -52,8 +55,8 @@ function PieceBox({
       <boxGeometry args={[sx, sy, sz]} />
       <meshStandardMaterial
         color={hexToThreeColor(baseColor)}
-        transparent={isFrontal}
-        opacity={isFrontal ? 0.55 : 0.92}
+        transparent={useTransparency}
+        opacity={opacityVal}
         roughness={0.65}
         metalness={0.02}
       />
@@ -143,7 +146,7 @@ function CameraSetup({ module: m }: { module: ModuleDimensions }) {
 // ─── Scene content — Three.js objects + drag controller ──────────────────────
 
 function SceneContent({
-  mod, visiblePieces, selectedId, onSelect, onUpdatePiece, wireframe, catalogMaterials,
+  mod, visiblePieces, selectedId, onSelect, onUpdatePiece, wireframe, catalogMaterials, transparent,
 }: {
   mod: ModuleDimensions
   visiblePieces: InteractivePiece[]
@@ -152,6 +155,7 @@ function SceneContent({
   onUpdatePiece?: (id: string, updates: Partial<InteractivePiece>) => void
   wireframe: boolean
   catalogMaterials: CatalogMaterial[]
+  transparent: boolean
 }) {
   const { camera, gl, raycaster } = useThree()
   const controlsRef = useRef<any>(null)
@@ -231,7 +235,8 @@ function SceneContent({
         return (
           <PieceBox key={p.id} piece={p} isSelected={p.id === selectedId}
             onPointerDown={e => handlePieceDown(e, p)}
-            materialColor={mat?.color_hex} />
+            materialColor={mat?.color_hex}
+            transparent={transparent} />
         )
       })}
       <DimensionLabels module={mod} />
@@ -244,6 +249,7 @@ function SceneContent({
 export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, onUpdatePiece, catalogMaterials = [] }: FurnitureIsoViewProps) {
   const [showFrontals, setShowFrontals] = useState(true)
   const [wireframe, setWireframe]       = useState(false)
+  const [transparent, setTransparent]   = useState(false)
 
   const visiblePieces = useMemo(
     () => pieces.filter(p => showFrontals || p.type !== 'frontal'),
@@ -272,6 +278,11 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, on
               className="w-3 h-3 rounded border-slate-300 accent-blue-600" />
             <span className="text-[10px] font-medium text-slate-500">Contorno</span>
           </label>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={transparent} onChange={e => setTransparent(e.target.checked)}
+              className="w-3 h-3 rounded border-slate-300 accent-blue-600" />
+            <span className="text-[10px] font-medium text-slate-500">Transparente</span>
+          </label>
         </div>
       </div>
 
@@ -287,6 +298,7 @@ export function FurnitureIsoView({ module: mod, pieces, selectedId, onSelect, on
             mod={mod} visiblePieces={visiblePieces} selectedId={selectedId}
             onSelect={onSelect} onUpdatePiece={onUpdatePiece}
             wireframe={wireframe} catalogMaterials={catalogMaterials}
+            transparent={transparent}
           />
         </Canvas>
       </div>

@@ -25,10 +25,11 @@ export const MODULE_TYPES = [
 ] as const
 
 /** Colour palette for piece types (used when no material is assigned) */
+/** Default colours for piece types — warm wood palette when no material is assigned */
 export const PIECE_COLORS = {
-  estructura: { fill: '#64748b', stroke: '#475569', selected: '#3b82f6', label: 'Estructura' },
-  frontal:    { fill: '#3b82f6', stroke: '#2563eb', selected: '#f59e0b', label: 'Frontal' },
-  trasera:    { fill: '#334155', stroke: '#1e293b', selected: '#3b82f6', label: 'Trasera' },
+  estructura: { fill: '#c4a882', stroke: '#a08060', selected: '#3b82f6', label: 'Estructura' },
+  frontal:    { fill: '#b89b72', stroke: '#8b7355', selected: '#f59e0b', label: 'Frontal' },
+  trasera:    { fill: '#a08060', stroke: '#7a6040', selected: '#3b82f6', label: 'Trasera' },
 } as const
 
 /** Material categories for catalog UI */

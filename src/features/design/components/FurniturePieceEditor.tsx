@@ -362,8 +362,8 @@ export function FurniturePieceEditor({
         </div>
 
         {/* Wizard body */}
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-slate-200 p-8 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 flex justify-center">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-slate-200 p-8 space-y-6 my-auto" style={{ maxHeight: 'fit-content' }}>
             <div className="text-center">
               <span className="text-3xl">🪵</span>
               <h3 className="text-lg font-bold text-gray-900 mt-2">Configurar mueble</h3>
