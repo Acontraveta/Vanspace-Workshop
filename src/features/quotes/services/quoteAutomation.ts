@@ -382,13 +382,20 @@ export class QuoteAutomation {
   }
   
   private static generateProductionTasks(quote: Quote): any[] {
-    const tasks: any[] = []
+    const regularTasks: any[] = []
+    // Furniture tasks are collected here and merged by task name at the end
+    // key = normalised task name, value = accumulator task
+    const furnitureTaskMap: Map<string, any> = new Map()
     const projectId = quote.id.slice(-5)
     
     quote.items.forEach((item: QuoteItem) => {
+      const isMueble = item.catalogData?.FAMILIA?.toLowerCase().includes('mueble') ||
+                       item.catalogSKU?.toLowerCase().startsWith('mue') ||
+                       item.productName?.toLowerCase().includes('mueble')
+
       // Extraer materiales y consumibles del producto
-      const materialsList = [];
-      const consumablesList = [];
+      const materialsList: any[] = [];
+      const consumablesList: any[] = [];
       for (let m = 1; m <= 10; m++) {
         const matKey = `MATERIAL_${m}`;
         const cantKey = `MATERIAL_${m}_CANT`;
@@ -411,9 +418,52 @@ export class QuoteAutomation {
           });
         }
       }
-      // Si no hay catalogData ni tareas definidas, generar una tarea genérica por defecto
+
+      // ─── Helper: adds a task either to the furniture group-map or to regulars ───
+      const addTask = (task: any) => {
+        if (!isMueble) {
+          regularTasks.push(task)
+          return
+        }
+        // All furniture tasks are merged by task-name so that board cutting
+        // (and any other shared step) is done once for the whole batch.
+        const key = (task.taskName as string).toLowerCase().trim()
+        if (furnitureTaskMap.has(key)) {
+          const existing = furnitureTaskMap.get(key)!
+          existing.duration += task.duration                  // sum hours
+          existing.productName += `, ${task.productName}`     // list all pieces
+          // Merge materials (accumulate quantities for same-name materials)
+          for (const mat of task.materialsList as any[]) {
+            const found = existing.materialsList.find(
+              (m: any) => m.name?.toLowerCase() === mat.name?.toLowerCase()
+            )
+            if (found) found.quantity += mat.quantity
+            else existing.materialsList.push({ ...mat })
+          }
+          // Merge consumables
+          for (const con of task.consumablesList as any[]) {
+            const found = existing.consumablesList.find(
+              (c: any) => c.name?.toLowerCase() === con.name?.toLowerCase()
+            )
+            if (found) found.quantity += con.quantity
+            else existing.consumablesList.push({ ...con })
+          }
+          if (task.requiresMaterial) existing.requiresMaterial = true
+          if (task.requiresDesign) existing.requiresDesign = true
+        } else {
+          // First furniture item with this task name – clone and register
+          furnitureTaskMap.set(key, {
+            ...task,
+            productSKU: 'MUEBLES_GROUP',
+            materialsList: [...task.materialsList],
+            consumablesList: [...task.consumablesList],
+          })
+        }
+      }
+
+      // ─── No catalogData → generic task ───────────────────────────────────────
       if (!item.catalogData) {
-        const genericTask = {
+        addTask({
           id: crypto.randomUUID(),
           projectId,
           projectNumber: quote.quoteNumber,
@@ -430,12 +480,11 @@ export class QuoteAutomation {
           materialsList: [],
           consumablesList: [],
           instructions: '',
-        };
-        tasks.push(genericTask);
+        });
         return;
       }
 
-      // Extraer tareas del producto
+      // ─── Extract explicit tasks from catalog ──────────────────────────────────
       let hasExplicitTasks = false;
       for (let i = 1; i <= 12; i++) {
         const tareaKey = `TAREA_${i}_NOMBRE` as keyof typeof item.catalogData;
@@ -448,7 +497,7 @@ export class QuoteAutomation {
         const requiereDiseño = String(item.catalogData[requiereDiseñoKey]) === 'SÍ';
         if (tareaNombre && duracion > 0) {
           hasExplicitTasks = true;
-          const task = {
+          addTask({
             id: crypto.randomUUID(),
             projectId,
             projectNumber: quote.quoteNumber,
@@ -458,22 +507,21 @@ export class QuoteAutomation {
             duration: duracion,
             requiresMaterial: requiereMaterial,
             requiresDesign: requiereDiseño,
-            blocked: requiereMaterial, // Solo se bloquea si falta material
+            blocked: requiereMaterial,
             status: requiereMaterial ? 'BLOCKED' : 'READY',
             assignedTo: null,
             createdAt: new Date(),
             materialsList,
             consumablesList,
-            instructions: item.catalogData && item.catalogData.INSTRUCCIONES_DISEÑO ? item.catalogData.INSTRUCCIONES_DISEÑO : '',
-          };
-          tasks.push(task);
+            instructions: item.catalogData.INSTRUCCIONES_DISEÑO ?? '',
+          });
         }
       }
 
-      // Si no se encontraron tareas explícitas, crear una tarea genérica
+      // ─── Fallback generic task ────────────────────────────────────────────────
       if (!hasExplicitTasks) {
         const hasMaterials = materialsList.length + consumablesList.length > 0;
-        const genericTask = {
+        addTask({
           id: crypto.randomUUID(),
           projectId,
           projectNumber: quote.quoteNumber,
@@ -490,12 +538,17 @@ export class QuoteAutomation {
           materialsList,
           consumablesList,
           instructions: item.catalogData.INSTRUCCIONES_DISEÑO || '',
-        };
-        tasks.push(genericTask);
+        });
       }
     });
-    
-    return tasks
+
+    // Promote merged furniture tasks: assign fresh IDs and mark them clearly
+    const furnitureTasks = Array.from(furnitureTaskMap.values()).map(t => ({
+      ...t,
+      id: crypto.randomUUID(),
+    }))
+
+    return [...regularTasks, ...furnitureTasks]
   }
   
   private static generateDesignInstructions(quote: Quote): any[] {
