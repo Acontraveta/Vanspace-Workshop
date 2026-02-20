@@ -1,12 +1,13 @@
-import { useState, useMemo, useCallback } from 'react'
-import { InteractivePiece, ModuleDimensions, Piece, PlacedPiece, ModuleType } from '../types/furniture.types'
-import { DEFAULT_THICKNESS, BACK_THICKNESS, MATERIALS, MODULE_TYPES, PIECE_COLORS } from '../constants/furniture.constants'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { InteractivePiece, ModuleDimensions, Piece, PlacedPiece, ModuleType, CatalogMaterial } from '../types/furniture.types'
+import { DEFAULT_THICKNESS, BACK_THICKNESS, MATERIALS, MODULE_TYPES, PIECE_COLORS, DEFAULT_CATALOG_MATERIALS } from '../constants/furniture.constants'
 import { optimizeCutList } from '../utils/geometry'
 import { FurnitureFrontView } from './FurnitureFrontView'
 import { FurnitureIsoView } from './FurnitureIsoView'
 import { FurnitureOptimizerView } from './FurnitureOptimizerView'
 import { FurnitureStickersView } from './FurnitureStickersView'
 import { FurnitureDesign } from '../types/furniture.types'
+import { MaterialCatalogService } from '../services/materialCatalogService'
 import toast from 'react-hot-toast'
 
 type Tab = 'diseno' | 'optimizado' | 'pegatinas'
@@ -134,6 +135,19 @@ export function FurniturePieceEditor({
     savedDesign?.pieces ?? buildInitialPieces(module)
   )
 
+  // ─── Material catalog ───────────────────────────────────────────────────────
+
+  const [catalogMaterials, setCatalogMaterials] = useState<CatalogMaterial[]>(DEFAULT_CATALOG_MATERIALS)
+
+  useEffect(() => {
+    MaterialCatalogService.getAll().then(setCatalogMaterials).catch(() => {})
+  }, [])
+
+  const getMaterial = useCallback(
+    (id?: string) => catalogMaterials.find(m => m.id === id) ?? null,
+    [catalogMaterials]
+  )
+
   // ─── Module dimension change ────────────────────────────────────────────────
 
   const handleModuleChange = useCallback(
@@ -233,13 +247,16 @@ export function FurniturePieceEditor({
   const stats = useMemo(() => {
     const structural = pieces.filter(p => p.type === 'estructura').length
     const frontal    = pieces.filter(p => p.type === 'frontal').length
-    const totalArea  = pieces.reduce((sum, p) => {
+    let totalArea = 0
+    let cost = 0
+    for (const p of pieces) {
       const area = (p.w / 1000) * (p.h / 1000) // m²
-      return sum + area
-    }, 0)
-    const cost = totalArea * module.materialPrice
+      totalArea += area
+      const mat = getMaterial(p.materialId)
+      cost += area * (mat ? mat.price_per_m2 : module.materialPrice)
+    }
     return { structural, frontal, totalArea: totalArea.toFixed(2), cost: cost.toFixed(2) }
-  }, [pieces, module.materialPrice])
+  }, [pieces, module.materialPrice, getMaterial])
 
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -395,6 +412,33 @@ export function FurniturePieceEditor({
                       ))}
                     </div>
 
+                    {/* Material assignment */}
+                    <div>
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Material</label>
+                      <select
+                        className="w-full mt-0.5 px-2 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        value={selectedPiece.materialId ?? ''}
+                        onChange={e => updatePiece(selectedPiece.id, { materialId: e.target.value || undefined })}
+                      >
+                        <option value="">— Sin asignar —</option>
+                        {catalogMaterials.filter(m => m.in_stock).map(m => (
+                          <option key={m.id} value={m.id}>{m.name} ({m.price_per_m2}€/m²)</option>
+                        ))}
+                      </select>
+                      {selectedPiece.materialId && (() => {
+                        const mat = getMaterial(selectedPiece.materialId)
+                        if (!mat) return null
+                        return (
+                          <div className="flex items-center gap-2 mt-1.5 px-2 py-1.5 bg-white/80 rounded-lg border border-blue-100">
+                            <div className="w-5 h-5 rounded border border-slate-200" style={{ backgroundColor: mat.color_hex }} />
+                            <span className="text-[9px] font-bold text-slate-600">{mat.texture_label}</span>
+                            <span className="text-[8px] text-slate-400">{mat.thickness}mm</span>
+                            <span className="text-[8px] font-bold text-amber-600 ml-auto">{mat.price_per_m2}€/m²</span>
+                          </div>
+                        )
+                      })()}
+                    </div>
+
                     <div className="flex gap-1.5">
                       <button onClick={duplicatePiece}
                         className="flex-1 py-1.5 bg-white border border-slate-200 text-slate-600 text-[9px] font-bold rounded-lg hover:bg-blue-50 transition-all">
@@ -421,6 +465,8 @@ export function FurniturePieceEditor({
                 <div className="space-y-1 max-h-60 overflow-y-auto">
                   {pieces.map(p => {
                     const typeColors = PIECE_COLORS[p.type]
+                    const mat = getMaterial(p.materialId)
+                    const dotColor = mat ? mat.color_hex : (selectedId === p.id ? typeColors.selected : typeColors.fill)
                     return (
                       <button key={p.id}
                         onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
@@ -429,10 +475,13 @@ export function FurniturePieceEditor({
                             ? 'bg-blue-100 border border-blue-300'
                             : 'hover:bg-slate-50 border border-transparent'
                         }`}>
-                        <span className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: selectedId === p.id ? typeColors.selected : typeColors.fill }} />
-                        <span className="text-[10px] font-bold text-slate-700 truncate flex-1">{p.name}</span>
-                        <span className="text-[8px] font-mono text-slate-400">{p.w}×{p.h}</span>
+                        <span className="w-3 h-3 rounded flex-shrink-0 border border-slate-200"
+                          style={{ backgroundColor: dotColor }} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[10px] font-bold text-slate-700 truncate block">{p.name}</span>
+                          {mat && <span className="text-[8px] text-slate-400 truncate block">{mat.texture_label}</span>}
+                        </div>
+                        <span className="text-[8px] font-mono text-slate-400 flex-shrink-0">{p.w}×{p.h}</span>
                       </button>
                     )
                   })}
@@ -470,12 +519,14 @@ export function FurniturePieceEditor({
                   onUpdatePieces={setPieces}
                   selectedId={selectedId}
                   onSelect={setSelectedId}
+                  catalogMaterials={catalogMaterials}
                 />
                 <FurnitureIsoView
                   module={module}
                   pieces={pieces}
                   selectedId={selectedId}
                   onSelect={setSelectedId}
+                  catalogMaterials={catalogMaterials}
                 />
               </div>
             </div>

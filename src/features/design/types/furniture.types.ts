@@ -8,6 +8,20 @@ export type ModuleType =
   | 'altillo'
   | 'personalizado'
 
+// ─── Material catalog ─────────────────────────────────────────────────────────
+
+export interface CatalogMaterial {
+  id: string
+  name: string
+  thickness: number          // mm
+  price_per_m2: number       // €/m²
+  color_hex: string          // display colour in 2D/3D
+  texture_label: string      // e.g. "Roble", "Blanco", "Nogal"
+  category: 'madera' | 'melamina' | 'contrachapado' | 'dm' | 'hpl' | 'otro'
+  in_stock: boolean
+  created_at?: string
+}
+
 export interface InteractivePiece {
   id: string
   name: string
@@ -18,6 +32,7 @@ export interface InteractivePiece {
   w: number // Ancho (eje X)
   h: number // Alto  (eje Y)
   d: number // Fondo (eje Z)
+  materialId?: string       // links to CatalogMaterial.id
 }
 
 export interface ModuleDimensions {

@@ -17,6 +17,7 @@ const CRMDashboard = lazy(() => import('@/features/crm/components/CRMDashboard')
 const FurnitureWorkOrderPage = lazy(() => import('@/features/design/pages/FurnitureWorkOrderPage'))
 const FurnitureDesignList = lazy(() => import('@/features/design/pages/FurnitureDesignList'))
 const FurnitureStandaloneEditor = lazy(() => import('@/features/design/pages/FurnitureStandaloneEditor'))
+const MaterialCatalogPage = lazy(() => import('@/features/design/pages/MaterialCatalogPage'))
 
 // Dashboards
 const AdminDashboard = lazy(() => import('@/features/dashboards/AdminDashboard'))

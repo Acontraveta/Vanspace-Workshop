@@ -33,6 +33,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     { icon: '📅', label: 'Calendario', path: '/calendar', show: canAccessModule('calendar') },
     { icon: '👥', label: 'CRM', path: '/crm', show: canAccessModule('quotes') },
     { icon: '🪑', label: 'Diseño Muebles', path: '/furniture-design', show: canAccessModule('production') || canAccessModule('quotes') },
+    { icon: '🪵', label: 'Materiales', path: '/material-catalog', show: canAccessModule('production') || canAccessModule('quotes') },
     { icon: '⏰', label: 'Fichajes', path: '/timeclock', show: hasPermission('admin.full') },
     { icon: '⚙️', label: 'Configuración', path: '/config', show: hasPermission('config.view') },
   ]

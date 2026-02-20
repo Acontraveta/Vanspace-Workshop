@@ -1,5 +1,5 @@
 import { useRef, useState, useMemo, useCallback } from 'react'
-import { InteractivePiece } from '../types/furniture.types'
+import { InteractivePiece, CatalogMaterial } from '../types/furniture.types'
 import { SNAP_DISTANCE, PIECE_COLORS } from '../constants/furniture.constants'
 
 interface FurnitureFrontViewProps {
@@ -7,6 +7,7 @@ interface FurnitureFrontViewProps {
   onUpdatePieces: (pieces: InteractivePiece[]) => void
   selectedId: string | null
   onSelect: (id: string | null) => void
+  catalogMaterials?: CatalogMaterial[]
 }
 
 type ViewType = 'frontal' | 'lateral' | 'planta'
@@ -15,7 +16,7 @@ type HandleId = 'move' | 'tl' | 'tr' | 'bl' | 'br' | 'top' | 'bottom' | 'left' |
 const VIEW_LABELS: Record<ViewType, string> = { frontal: 'Alzado', lateral: 'Perfil', planta: 'Planta' }
 
 export function FurnitureFrontView({
-  pieces, onUpdatePieces, selectedId, onSelect,
+  pieces, onUpdatePieces, selectedId, onSelect, catalogMaterials = [],
 }: FurnitureFrontViewProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [view, setView]         = useState<ViewType>('frontal')
@@ -77,6 +78,7 @@ export function FurnitureFrontView({
     if (!dragRef.current || !handle) return
     const dx = (e.clientX - dragRef.current.mx) / scale
     const dy = (e.clientY - dragRef.current.my) / scale
+    const ry = -dy  // piece-Y delta: positive = upward
     const others = pieces.filter(p => p.id !== dragRef.current?.id).map(get2D)
     const snapX  = others.flatMap(o => [o.x, o.x + o.w])
     const snapY  = others.flatMap(o => [o.y, o.y + o.h])
@@ -85,33 +87,66 @@ export function FurnitureFrontView({
       if (p.id !== dragRef.current?.id) return p
       const init = dragRef.current!.initial
       let { x, y, z, w, h, d } = init
-      const ry = -dy // SVG Y inverted
+
+      // dx = rightward in screen & piece-X.  ry = upward in piece-Y (inverted from screen-Y).
+      // For each handle we compute which edges move & keep the opposite edges fixed.
 
       if (view === 'frontal') {
+        // Projected: px=x, py=y, pw=w, ph=h
+        const edgeL = () => snap(init.x + dx, snapX)
+        const edgeR = () => snap(init.x + init.w + dx, snapX)
+        const edgeT = () => snap(init.y + init.h + ry, snapY) // top = y+h
+        const edgeB = () => snap(init.y + ry, snapY)          // bottom = y
+
         switch (handle) {
-          case 'move':   x = snap(init.x + dx, snapX); y = snap(init.y + ry, snapY); break
-          case 'br':     w = Math.max(20, snap(init.w + dx, snapX.map(s => s - x))); h = Math.max(20, snap(init.h + ry, snapY.map(s => s - y))); break
-          case 'tl':     { const nx = snap(init.x + dx, snapX); const ny = snap(init.y + ry, snapY); w = Math.max(20, init.w + (init.x - nx)); h = Math.max(20, init.h + (init.y - ny)); x = nx; y = ny; break }
-          case 'tr':     { const ny = snap(init.y + ry, snapY); w = Math.max(20, snap(init.w + dx, snapX.map(s => s - x))); h = Math.max(20, init.h + (init.y - ny)); y = ny; break }
-          case 'bl':     { const nx = snap(init.x + dx, snapX); w = Math.max(20, init.w + (init.x - nx)); h = Math.max(20, snap(init.h + ry, snapY.map(s => s - y))); x = nx; break }
-          case 'top':    { const ny = snap(init.y + ry, snapY); h = Math.max(20, init.h + (init.y - ny)); y = ny; break }
-          case 'bottom': { h = Math.max(20, snap(init.h + ry, snapY.map(s => s - y))); break }
-          case 'left':   { const nx = snap(init.x + dx, snapX); w = Math.max(20, init.w + (init.x - nx)); x = nx; break }
-          case 'right':  { w = Math.max(20, snap(init.w + dx, snapX.map(s => s - x))); break }
+          case 'move':   x = edgeL(); y = edgeB(); break
+          case 'tl':     { const nx = edgeL(); const nt = edgeT(); w = Math.max(20, init.w + (init.x - nx)); h = Math.max(20, nt - init.y); x = nx; break }
+          case 'tr':     { const nr = edgeR(); const nt = edgeT(); w = Math.max(20, nr - init.x); h = Math.max(20, nt - init.y); break }
+          case 'bl':     { const nx = edgeL(); const nb = edgeB(); w = Math.max(20, init.w + (init.x - nx)); h = Math.max(20, (init.y + init.h) - nb); x = nx; y = nb; break }
+          case 'br':     { const nr = edgeR(); const nb = edgeB(); w = Math.max(20, nr - init.x); h = Math.max(20, (init.y + init.h) - nb); y = nb; break }
+          case 'top':    { const nt = edgeT(); h = Math.max(20, nt - init.y); break }
+          case 'bottom': { const nb = edgeB(); h = Math.max(20, (init.y + init.h) - nb); y = nb; break }
+          case 'left':   { const nx = edgeL(); w = Math.max(20, init.w + (init.x - nx)); x = nx; break }
+          case 'right':  { const nr = edgeR(); w = Math.max(20, nr - init.x); break }
         }
       } else if (view === 'lateral') {
+        // Projected: px=z, py=y, pw=d, ph=h
+        const edgeL = () => snap(init.z + dx, snapX)
+        const edgeR = () => snap(init.z + init.d + dx, snapX)
+        const edgeT = () => snap(init.y + init.h + ry, snapY)
+        const edgeB = () => snap(init.y + ry, snapY)
+
         switch (handle) {
-          case 'move': z = snap(init.z + dx, snapX); y = snap(init.y + ry, snapY); break
-          case 'br':   d = Math.max(10, snap(init.d + dx, snapX.map(s => s - z))); h = Math.max(20, snap(init.h + ry, snapY.map(s => s - y))); break
-          case 'tl':   { const nz = snap(init.z + dx, snapX); const ny = snap(init.y + ry, snapY); d = Math.max(10, init.d + (init.z - nz)); h = Math.max(20, init.h + (init.y - ny)); z = nz; y = ny; break }
-          default:     break
+          case 'move':   z = edgeL(); y = edgeB(); break
+          case 'tl':     { const nz = edgeL(); const nt = edgeT(); d = Math.max(10, init.d + (init.z - nz)); h = Math.max(20, nt - init.y); z = nz; break }
+          case 'tr':     { const nr = edgeR(); const nt = edgeT(); d = Math.max(10, nr - init.z); h = Math.max(20, nt - init.y); break }
+          case 'bl':     { const nz = edgeL(); const nb = edgeB(); d = Math.max(10, init.d + (init.z - nz)); h = Math.max(20, (init.y + init.h) - nb); z = nz; y = nb; break }
+          case 'br':     { const nr = edgeR(); const nb = edgeB(); d = Math.max(10, nr - init.z); h = Math.max(20, (init.y + init.h) - nb); y = nb; break }
+          case 'top':    { const nt = edgeT(); h = Math.max(20, nt - init.y); break }
+          case 'bottom': { const nb = edgeB(); h = Math.max(20, (init.y + init.h) - nb); y = nb; break }
+          case 'left':   { const nz = edgeL(); d = Math.max(10, init.d + (init.z - nz)); z = nz; break }
+          case 'right':  { const nr = edgeR(); d = Math.max(10, nr - init.z); break }
         }
       } else {
+        // planta: Projected: px=x, py=z, pw=w, ph=d
+        const edgeL = () => snap(init.x + dx, snapX)
+        const edgeR = () => snap(init.x + init.w + dx, snapX)
+        // Note: in planta view, screen-Y maps to Z-axis (not real Y). ry=-dy gives the
+        // screen-up delta, but screen-up in planta means Z decreases (towards viewer).
+        // So Z delta = -ry = dy
+        const edgeT = () => snap(init.z - dy, snapY)          // top of planta = z
+        const edgeB = () => snap(init.z + init.d - dy, snapY) // bottom of planta = z+d
+
         switch (handle) {
-          case 'move': x = snap(init.x + dx, snapX); z = snap(init.z + ry, snapY); break
-          case 'br':   w = Math.max(20, snap(init.w + dx, snapX.map(s => s - x))); d = Math.max(10, snap(init.d + ry, snapY.map(s => s - z))); break
-          case 'tl':   { const nx = snap(init.x + dx, snapX); const nz = snap(init.z + ry, snapY); w = Math.max(20, init.w + (init.x - nx)); d = Math.max(10, init.d + (init.z - nz)); x = nx; z = nz; break }
-          default:     break
+          case 'move':   x = edgeL(); z = edgeT(); break
+          case 'tl':     { const nx = edgeL(); const nt = edgeT(); w = Math.max(20, init.w + (init.x - nx)); d = Math.max(10, (init.z + init.d) - nt); x = nx; z = nt; break }
+          case 'tr':     { const nr = edgeR(); const nt = edgeT(); w = Math.max(20, nr - init.x); d = Math.max(10, (init.z + init.d) - nt); z = nt; break }
+          case 'bl':     { const nx = edgeL(); const nb = edgeB(); w = Math.max(20, init.w + (init.x - nx)); d = Math.max(10, nb - init.z); x = nx; break }
+          case 'br':     { const nr = edgeR(); const nb = edgeB(); w = Math.max(20, nr - init.x); d = Math.max(10, nb - init.z); break }
+          case 'top':    { const nt = edgeT(); d = Math.max(10, (init.z + init.d) - nt); z = nt; break }
+          case 'bottom': { const nb = edgeB(); d = Math.max(10, nb - init.z); break }
+          case 'left':   { const nx = edgeL(); w = Math.max(20, init.w + (init.x - nx)); x = nx; break }
+          case 'right':  { const nr = edgeR(); w = Math.max(20, nr - init.x); break }
         }
       }
       return { ...p, x, y, z, w, h, d }
@@ -198,6 +233,8 @@ export function FurnitureFrontView({
           const isSelected = selectedId === p.id
           const c = get2D(p)
           const colors = PIECE_COLORS[p.type]
+          const mat = catalogMaterials.find(m => m.id === p.materialId)
+          const fillColor = mat ? mat.color_hex : colors.fill
           const px = c.x * scale
           const py = -c.y * scale - c.h * scale
           const pw = c.w * scale
@@ -206,8 +243,8 @@ export function FurnitureFrontView({
           return (
             <g key={p.id}>
               <rect x={px} y={py} width={pw} height={ph} rx={1}
-                fill={isSelected ? 'rgba(59,130,246,.2)' : p.type === 'frontal' ? 'rgba(59,130,246,.12)' : 'rgba(255,255,255,.04)'}
-                stroke={isSelected ? colors.selected : colors.stroke}
+                fill={isSelected ? 'rgba(59,130,246,.2)' : mat ? `${fillColor}30` : p.type === 'frontal' ? 'rgba(59,130,246,.12)' : 'rgba(255,255,255,.04)'}
+                stroke={isSelected ? colors.selected : mat ? fillColor : colors.stroke}
                 strokeWidth={isSelected ? 2 : 0.8}
                 strokeDasharray={p.type === 'trasera' ? '4 2' : undefined}
                 onMouseDown={e => handleMouseDown(e, p.id, 'move')}
