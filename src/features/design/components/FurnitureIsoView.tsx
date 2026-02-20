@@ -3,7 +3,7 @@ import { Canvas, useThree, ThreeEvent } from '@react-three/fiber'
 import { OrbitControls, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { InteractivePiece, ModuleDimensions, CatalogMaterial } from '../types/furniture.types'
-import { PIECE_COLORS } from '../constants/furniture.constants'
+import { PIECE_COLORS, PIECE_COLORS_3D } from '../constants/furniture.constants'
 
 interface FurnitureIsoViewProps {
   module: ModuleDimensions
@@ -33,7 +33,8 @@ function PieceBox({
 }) {
   const meshRef = useRef<THREE.Mesh>(null!)
   const colors = PIECE_COLORS[piece.type]
-  const baseColor = isSelected ? colors.selected : (materialColor ?? colors.fill)
+  const woodFallback = PIECE_COLORS_3D[piece.type]
+  const baseColor = isSelected ? colors.selected : (materialColor ?? woodFallback)
   const isFrontal = piece.type === 'frontal'
   const useTransparency = transparent || isFrontal
   const opacityVal = transparent ? 0.35 : (isFrontal ? 0.55 : 0.92)
