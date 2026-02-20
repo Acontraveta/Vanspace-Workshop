@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FurnitureWorkOrderService, FurnitureDesignService } from '../services/furnitureDesignService'
 import { FurnitureWorkOrder, FurnitureDesign } from '../types/furniture.types'
+import { MaterialCatalogManager } from '../components/MaterialCatalogManager'
 import toast from 'react-hot-toast'
 
-type ActiveTab = 'orders' | 'library'
+type ActiveTab = 'orders' | 'library' | 'materials'
 
 const STATUS = {
   pending:     { label: 'Pendiente',   color: 'bg-yellow-100 text-yellow-700', icon: '⏳' },
@@ -81,6 +82,7 @@ export default function FurnitureDesignList() {
         {([
           { key: 'orders' as ActiveTab, label: '📋 Órdenes', count: orders.length },
           { key: 'library' as ActiveTab, label: '📚 Biblioteca', count: designs.length },
+          { key: 'materials' as ActiveTab, label: '🪵 Materiales' },
         ]).map(t => (
           <button
             key={t.key}
@@ -91,7 +93,7 @@ export default function FurnitureDesignList() {
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            {t.label} ({t.count})
+            {t.label} {'count' in t ? `(${t.count})` : ''}
           </button>
         ))}
       </div>
@@ -222,6 +224,9 @@ export default function FurnitureDesignList() {
           </div>
         )
       )}
+
+      {/* ── MATERIALS TAB ───────────────────────────────────────────────────────── */}
+      {tab === 'materials' && <MaterialCatalogManager />}
     </div>
   )
 }
