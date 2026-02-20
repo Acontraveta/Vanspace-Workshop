@@ -51,12 +51,9 @@ export function FurnitureStickersView({ pieces, moduleName, projectInfo }: Furni
                       TAB {boardNum}
                     </span>
                   )}
-                  {matName && (
-                    <span className="text-[7px] font-bold text-slate-500 truncate">{matName}</span>
-                  )}
-                  {!boardNum && !matName && (
-                    <span className="text-[7px] text-slate-400">{moduleName}</span>
-                  )}
+                  <span className="text-[7px] font-bold text-slate-500 truncate">
+                    {matName || moduleName}
+                  </span>
                 </div>
               </div>
               <div className="flex justify-between items-end">
