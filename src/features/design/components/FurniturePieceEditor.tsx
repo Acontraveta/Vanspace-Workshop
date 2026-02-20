@@ -8,6 +8,7 @@ import { FurnitureOptimizerView } from './FurnitureOptimizerView'
 import { FurnitureStickersView } from './FurnitureStickersView'
 import { FurnitureDesign } from '../types/furniture.types'
 import { MaterialCatalogService } from '../services/materialCatalogService'
+import { processStockConsumption } from '@/features/production/services/stockConsumption'
 import toast from 'react-hot-toast'
 
 type Tab = 'diseno' | 'optimizado' | 'pegatinas'
@@ -119,6 +120,7 @@ export function FurniturePieceEditor({
   const [saving, setSaving]         = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [setupDone, setSetupDone]   = useState(!!savedDesign)
+  const [wizardMaterialId, setWizardMaterialId] = useState<string | null>(null)
 
   const [module, setModule] = useState<ModuleDimensions>(() =>
     savedDesign?.module ?? {
@@ -203,10 +205,23 @@ export function FurniturePieceEditor({
   )
 
   const handleSetupConfirm = useCallback(() => {
-    setPieces(buildInitialPieces(module))
+    const newPieces = buildInitialPieces(module)
+    // Apply the wizard-selected catalog material to all pieces
+    if (wizardMaterialId) {
+      const mat = catalogMaterials.find(m => m.id === wizardMaterialId)
+      for (const p of newPieces) p.materialId = wizardMaterialId
+      if (mat) {
+        setModule(prev => ({
+          ...prev,
+          materialPrice: mat.price_per_m2,
+          catalogMaterialId: mat.id,
+        }))
+      }
+    }
+    setPieces(newPieces)
     setSetupDone(true)
     toast.success('Mueble generado — edita los tableros')
-  }, [module])
+  }, [module, wizardMaterialId, catalogMaterials])
 
   // ─── Piece operations ───────────────────────────────────────────────────────
 
@@ -291,6 +306,20 @@ export function FurniturePieceEditor({
     setSaving(true)
     try {
       await onSave(module, pieces, optimized)
+
+      // Process stock consumption: deduct boards + auto-purchase if below min
+      const report = await processStockConsumption(pieces, module, catalogMaterials, projectInfo)
+      if (report.items.length > 0) {
+        const sheetsTotal = report.items.reduce((s, i) => s + i.sheetsNeeded, 0)
+        toast.success(`📦 ${sheetsTotal} tablero(s) descontados del stock`)
+      }
+      if (report.purchaseItemsCreated > 0) {
+        toast(`🛒 ${report.purchaseItemsCreated} material(es) añadidos a la lista de compra (stock mínimo)`, { icon: '⚠️' })
+      }
+
+      // Refresh catalog materials in case stock changed
+      MaterialCatalogService.invalidateCache()
+      MaterialCatalogService.getAll().then(setCatalogMaterials).catch(() => {})
     } catch (err: any) {
       toast.error('Error guardando: ' + (err.message ?? err))
     } finally {
@@ -366,13 +395,41 @@ export function FurniturePieceEditor({
               </div>
             </div>
 
-            {/* Material */}
+            {/* Material base (from catalog, only in-stock) */}
             <div>
               <label className="text-[10px] font-bold text-slate-500 uppercase">Material base</label>
-              <select className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                value={module.materialPrice} onChange={e => handleModuleChange('materialPrice', e.target.value)}>
-                {MATERIALS.map(m => <option key={m.name} value={m.price}>{m.name}</option>)}
-              </select>
+              {catalogMaterials.filter(m => m.in_stock).length === 0 ? (
+                <p className="text-xs text-slate-400 mt-1 italic">Sin materiales disponibles en catálogo</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 mt-1 max-h-48 overflow-y-auto">
+                  {catalogMaterials.filter(m => m.in_stock).map(m => (
+                    <button key={m.id} onClick={() => {
+                      setWizardMaterialId(m.id)
+                      handleModuleChange('materialPrice', m.price_per_m2)
+                      if (m.thickness) handleModuleChange('thickness', m.thickness)
+                    }}
+                      className={`flex items-center gap-2 p-2 rounded-xl text-left border-2 transition-all ${
+                        wizardMaterialId === m.id
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}>
+                      <div className="w-7 h-7 rounded-lg border border-slate-200 flex-shrink-0"
+                        style={{ backgroundColor: m.color_hex }} />
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold text-slate-700 block truncate">{m.name}</span>
+                        <span className="text-[8px] text-slate-400">{m.thickness}mm · {m.price_per_m2}€/m²</span>
+                        {m.stock_quantity != null && (
+                          <span className={`text-[8px] font-bold ml-1 ${
+                            (m.stock_min && m.stock_quantity <= m.stock_min) ? 'text-red-500' : 'text-green-600'
+                          }`}>
+                            · {m.stock_quantity} uds
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Dimensiones */}

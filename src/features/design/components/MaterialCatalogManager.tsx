@@ -62,6 +62,11 @@ export function MaterialCatalogManager() {
       texture_label: '',
       category: 'melamina',
       in_stock: true,
+      stock_quantity: 0,
+      stock_min: 0,
+      supplier: '',
+      board_width: 2440,
+      board_height: 1220,
     })
     setShowForm(true)
   }
@@ -132,6 +137,13 @@ export function MaterialCatalogManager() {
                           {m.in_stock ? 'En stock' : 'Agotado'}
                         </span>
                         <span className="text-[8px] text-slate-400 uppercase">{m.texture_label}</span>
+                        {(m.stock_quantity != null && m.stock_quantity > 0) && (
+                          <span className={`text-[8px] font-bold ${
+                            (m.stock_min && m.stock_quantity <= m.stock_min) ? 'text-red-500' : 'text-slate-500'
+                          }`}>
+                            📦 {m.stock_quantity} uds
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -243,6 +255,45 @@ function MaterialForm({
               className="w-4 h-4 rounded border-slate-300 accent-blue-500" />
             <span className="text-xs font-bold text-slate-600">En stock</span>
           </label>
+
+          {/* Stock tracking */}
+          <div className="p-3 bg-slate-50 rounded-xl space-y-2">
+            <h4 className="text-[9px] font-bold text-slate-500 uppercase">📦 Control de Stock</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Cantidad (tableros)</label>
+                <input type="number" min={0}
+                  className="w-full mt-0.5 px-2 py-2 border border-slate-200 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={form.stock_quantity ?? 0} onChange={e => update('stock_quantity', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Stock mínimo</label>
+                <input type="number" min={0}
+                  className="w-full mt-0.5 px-2 py-2 border border-slate-200 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={form.stock_min ?? 0} onChange={e => update('stock_min', Number(e.target.value))} />
+              </div>
+            </div>
+            <div>
+              <label className="text-[9px] font-bold text-slate-400 uppercase">Proveedor</label>
+              <input className="w-full mt-0.5 px-2 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                value={form.supplier ?? ''} onChange={e => update('supplier', e.target.value)}
+                placeholder="Nombre del proveedor habitual" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Ancho tablero (mm)</label>
+                <input type="number" min={100}
+                  className="w-full mt-0.5 px-2 py-2 border border-slate-200 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={form.board_width ?? 2440} onChange={e => update('board_width', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Alto tablero (mm)</label>
+                <input type="number" min={100}
+                  className="w-full mt-0.5 px-2 py-2 border border-slate-200 rounded-lg text-xs font-mono text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={form.board_height ?? 1220} onChange={e => update('board_height', Number(e.target.value))} />
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="flex gap-2 mt-5">

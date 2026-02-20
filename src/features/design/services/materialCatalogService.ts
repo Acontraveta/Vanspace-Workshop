@@ -49,14 +49,19 @@ export class MaterialCatalogService {
     const { data, error } = await supabase
       .from(TABLE)
       .upsert({
-        id:            material.id,
-        name:          material.name,
-        thickness:     material.thickness,
-        price_per_m2:  material.price_per_m2,
-        color_hex:     material.color_hex,
-        texture_label: material.texture_label,
-        category:      material.category,
-        in_stock:      material.in_stock,
+        id:              material.id,
+        name:            material.name,
+        thickness:       material.thickness,
+        price_per_m2:    material.price_per_m2,
+        color_hex:       material.color_hex,
+        texture_label:   material.texture_label,
+        category:        material.category,
+        in_stock:        material.in_stock,
+        stock_quantity:  material.stock_quantity ?? 0,
+        stock_min:       material.stock_min ?? 0,
+        supplier:        material.supplier ?? null,
+        board_width:     material.board_width ?? 2440,
+        board_height:    material.board_height ?? 1220,
       })
       .select()
       .single()

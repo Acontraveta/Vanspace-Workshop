@@ -19,6 +19,12 @@ export interface CatalogMaterial {
   texture_label: string      // e.g. "Roble", "Blanco", "Nogal"
   category: 'madera' | 'melamina' | 'contrachapado' | 'dm' | 'hpl' | 'otro'
   in_stock: boolean
+  // ── Stock tracking ──
+  stock_quantity?: number    // sheets/boards in stock
+  stock_min?: number         // minimum stock threshold
+  supplier?: string          // preferred supplier name
+  board_width?: number       // sheet width mm (default 2440)
+  board_height?: number      // sheet height mm (default 1220)
   created_at?: string
 }
 
@@ -43,6 +49,7 @@ export interface ModuleDimensions {
   depth: number
   thickness: number
   materialPrice: number
+  catalogMaterialId?: string  // links to CatalogMaterial.id chosen in wizard
 }
 
 export interface Piece {
