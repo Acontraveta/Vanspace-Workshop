@@ -59,6 +59,8 @@ export interface Piece {
   h: number
   type: 'estructura' | 'frontal' | 'trasera'
   id?: string
+  materialId?: string        // links to CatalogMaterial.id for grouping
+  materialName?: string      // display name – "Melamina Blanco Brillo 16mm"
 }
 
 export interface PlacedPiece extends Piece {

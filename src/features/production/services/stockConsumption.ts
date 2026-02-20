@@ -3,13 +3,14 @@
  *
  * When a furniture design is finalized (work order generated / saved),
  * this service:
- *  1. Calculates board/sheet consumption per material
+ *  1. Uses the Guillotine optimizer result (board count per material) for accurate deduction
  *  2. Deducts from the material_catalog stock_quantity
  *  3. Checks against stock_min thresholds
  *  4. Auto-creates purchase_items for materials below minimum stock
  */
 
-import { InteractivePiece, CatalogMaterial, ModuleDimensions } from '@/features/design/types/furniture.types'
+import { InteractivePiece, PlacedPiece, CatalogMaterial, ModuleDimensions } from '@/features/design/types/furniture.types'
+import { boardCountByMaterial } from '@/features/design/utils/geometry'
 import { MaterialCatalogService } from '@/features/design/services/materialCatalogService'
 import { PurchaseService } from '@/features/purchases/services/purchaseService'
 import { supabase } from '@/lib/supabase'
@@ -21,7 +22,7 @@ export interface MaterialConsumption {
   materialId: string
   material: CatalogMaterial
   totalAreaM2: number        // total area used by all pieces with this material
-  sheetsNeeded: number       // number of standard sheets consumed
+  sheetsNeeded: number       // number of standard sheets consumed (from optimizer)
   sheetAreaM2: number        // area of one standard sheet
   previousStock: number      // stock before deduction
   newStock: number           // stock after deduction
@@ -42,14 +43,21 @@ const DEFAULT_BOARD_H = 1220  // mm
 
 /**
  * Calculate how many sheets of each material a set of pieces will consume.
- * Groups pieces by materialId, computes total area, and translates to sheets.
+ * Uses the optimizer result (PlacedPiece[]) to count actual boards per material.
+ * Falls back to area-based calculation when optimizer data is unavailable.
  */
 export function calculateConsumption(
   pieces: InteractivePiece[],
   module: ModuleDimensions,
   catalogMaterials: CatalogMaterial[],
+  optimizedPlacements?: PlacedPiece[],
 ): MaterialConsumption[] {
-  // Group pieces by material
+  // If we have optimizer results, use exact board count per material
+  const optimizerBoardCounts = optimizedPlacements?.length
+    ? boardCountByMaterial(optimizedPlacements)
+    : null
+
+  // Group pieces by material (for area stats display)
   const grouped = new Map<string, InteractivePiece[]>()
 
   for (const p of pieces) {
@@ -66,10 +74,9 @@ export function calculateConsumption(
     const mat = catalogMaterials.find(m => m.id === matId)
     if (!mat) continue
 
-    // Total area of all pieces (m²)
+    // Total area of all pieces (m²) – for display purposes
     let totalAreaM2 = 0
     for (const p of pcs) {
-      // Use the largest two dimensions (the cut face on the sheet)
       const dims = [p.w, p.h, p.d].sort((a, b) => b - a)
       totalAreaM2 += (dims[0] / 1000) * (dims[1] / 1000)
     }
@@ -79,8 +86,9 @@ export function calculateConsumption(
     const bh = mat.board_height ?? DEFAULT_BOARD_H
     const sheetAreaM2 = (bw / 1000) * (bh / 1000)
 
-    // Sheets needed (ceil — partial sheet = full sheet)
-    const sheetsNeeded = Math.ceil(totalAreaM2 / sheetAreaM2)
+    // Sheets needed: use optimizer board count if available, else area fallback
+    const sheetsNeeded = optimizerBoardCounts?.get(matId)
+      ?? Math.ceil(totalAreaM2 / sheetAreaM2)
 
     const previousStock = mat.stock_quantity ?? 0
     const newStock = Math.max(0, previousStock - sheetsNeeded)
@@ -105,16 +113,18 @@ export function calculateConsumption(
 
 /**
  * Process stock deduction for a furniture design.
- * Deducts sheets from material_catalog.stock_quantity and
- * auto-creates purchase_items for any material that falls below stock_min.
+ * Uses the optimizer result to determine exact board count per material,
+ * deducts from material_catalog.stock_quantity, and auto-creates purchase
+ * items when stock falls below minimum.
  */
 export async function processStockConsumption(
   pieces: InteractivePiece[],
   module: ModuleDimensions,
   catalogMaterials: CatalogMaterial[],
   projectInfo?: string,
+  optimizedPlacements?: PlacedPiece[],
 ): Promise<ConsumptionReport> {
-  const items = calculateConsumption(pieces, module, catalogMaterials)
+  const items = calculateConsumption(pieces, module, catalogMaterials, optimizedPlacements)
   let purchaseItemsCreated = 0
 
   for (const item of items) {

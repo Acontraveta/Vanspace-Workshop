@@ -157,25 +157,49 @@ class GuillotineBin {
  * Guillotine bin-packing with Best Short Side Fit + Shorter Axis Split.
  * Supports piece rotation, 4 mm kerf, and multiple boards.
  *
- * Runs the packing in both board orientations (W×H and H×W) and returns
- * the result with fewer boards / higher utilisation.
+ * Groups pieces by materialId first – each material gets its own boards.
+ * Within each material group, runs packing in both board orientations
+ * (W×H and H×W) and keeps the better result.
  */
 export function optimizeCutList(pieces: Piece[]): PlacedPiece[] {
   if (!pieces.length) return []
 
-  // First Fit Decreasing – sort by area descending (critical for good packing)
-  const sorted = [...pieces].sort((a, b) => (b.w * b.h) - (a.w * a.h))
+  // ── Group pieces by material ──────────────────────────────────────────────
+  const NO_MAT = '__default__'
+  const groups = new Map<string, Piece[]>()
 
-  const resultA = packAll(sorted, BOARD_WIDTH, BOARD_HEIGHT)
-  const resultB = packAll(sorted, BOARD_HEIGHT, BOARD_WIDTH)
+  for (const p of pieces) {
+    const key = p.materialId || NO_MAT
+    const arr = groups.get(key) ?? []
+    arr.push(p)
+    groups.set(key, arr)
+  }
 
-  const best = resultB.boards < resultA.boards
-    ? resultB
-    : resultA.boards < resultB.boards
-      ? resultA
-      : resultA.waste <= resultB.waste ? resultA : resultB
+  // ── Optimise each material group independently ────────────────────────────
+  const allPlacements: PlacedPiece[] = []
+  let globalBoardOffset = 0
 
-  return best.placements
+  for (const [, groupPieces] of groups) {
+    // First Fit Decreasing – sort by area descending (critical for good packing)
+    const sorted = [...groupPieces].sort((a, b) => (b.w * b.h) - (a.w * a.h))
+
+    const resultA = packAll(sorted, BOARD_WIDTH, BOARD_HEIGHT)
+    const resultB = packAll(sorted, BOARD_HEIGHT, BOARD_WIDTH)
+
+    const best = resultB.boards < resultA.boards
+      ? resultB
+      : resultA.boards < resultB.boards
+        ? resultA
+        : resultA.waste <= resultB.waste ? resultA : resultB
+
+    // Offset board indices so each material group has unique board numbers
+    for (const p of best.placements) {
+      allPlacements.push({ ...p, board: (p.board ?? 0) + globalBoardOffset })
+    }
+    globalBoardOffset += best.boards
+  }
+
+  return allPlacements
 }
 
 function packAll(
@@ -233,6 +257,8 @@ function packAll(
         y: p.y,
         board: boardIndex,
         rotated: p.rotated,
+        materialId: p.materialId,
+        materialName: p.materialName,
       })
     }
   })
@@ -277,4 +303,18 @@ export function boardWaste(
   const used = boardPieces.reduce((s, p) => s + p.w * p.h, 0)
   const total = boardW * boardH
   return Math.round((1 - used / total) * 100)
+}
+
+/** Board count grouped by materialId – used for stock deduction */
+export function boardCountByMaterial(placements: PlacedPiece[]): Map<string, number> {
+  const map = new Map<string, Set<number>>()
+  for (const p of placements) {
+    const key = p.materialId || '__default__'
+    const boards = map.get(key) ?? new Set<number>()
+    boards.add(p.board ?? 0)
+    map.set(key, boards)
+  }
+  const result = new Map<string, number>()
+  for (const [k, v] of map) result.set(k, v.size)
+  return result
 }

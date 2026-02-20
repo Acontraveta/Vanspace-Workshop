@@ -461,14 +461,19 @@ export function FurniturePieceEditor({
   const cutListPieces = useMemo((): Piece[] =>
     pieces
       .filter(p => p.type !== 'trasera')
-      .map(p => ({
-        ref:  p.name,
-        w:    p.type === 'estructura' && p.w < p.d ? p.d : p.w,
-        h:    p.h,
-        type: p.type,
-        id:   p.id,
-      })),
-    [pieces]
+      .map(p => {
+        const mat = getMaterial(p.materialId) ?? getMaterial(module.catalogMaterialId)
+        return {
+          ref:  p.name,
+          w:    p.type === 'estructura' && p.w < p.d ? p.d : p.w,
+          h:    p.h,
+          type: p.type,
+          id:   p.id,
+          materialId:   p.materialId ?? module.catalogMaterialId,
+          materialName: mat?.name,
+        }
+      }),
+    [pieces, getMaterial, module.catalogMaterialId]
   )
 
   const optimized = useMemo(() => optimizeCutList(cutListPieces), [cutListPieces])
@@ -481,7 +486,7 @@ export function FurniturePieceEditor({
 
       // Only deduct stock when saving production pieces (work orders), not library designs
       if (isProduction) {
-        const report = await processStockConsumption(pieces, module, catalogMaterials, projectInfo)
+        const report = await processStockConsumption(pieces, module, catalogMaterials, projectInfo, optimized)
         if (report.items.length > 0) {
           const sheetsTotal = report.items.reduce((s, i) => s + i.sheetsNeeded, 0)
           toast.success(`📦 ${sheetsTotal} tablero(s) descontados del stock`)

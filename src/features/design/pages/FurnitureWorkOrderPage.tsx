@@ -13,9 +13,11 @@ import {
   PlacedPiece,
   Piece,
 } from '../types/furniture.types'
+import type { CatalogMaterial } from '../types/furniture.types'
 import { FurniturePieceEditor } from '../components/FurniturePieceEditor'
 import { FurnitureOptimizerView } from '../components/FurnitureOptimizerView'
 import { FurnitureStickersView } from '../components/FurnitureStickersView'
+import { MaterialCatalogService } from '../services/materialCatalogService'
 import { optimizeCutList } from '../utils/geometry'
 import toast from 'react-hot-toast'
 
@@ -33,6 +35,7 @@ export default function FurnitureWorkOrderPage() {
   const [pageView, setPageView]   = useState<PageView>('list')
   const [activeItem, setActiveItem] = useState<FurnitureWorkOrderItem | null>(null)
   const [savedDesignForItem, setSavedDesignForItem] = useState<FurnitureDesign | null>(null)
+  const [catalogMaterials, setCatalogMaterials] = useState<CatalogMaterial[]>([])
 
   // ─── Load ────────────────────────────────────────────────────────────────────
 
@@ -46,10 +49,14 @@ export default function FurnitureWorkOrderPage() {
       ])
       setWo(woData)
       setDesigns(designsData)
-      // Load library for the source picker
+      // Load library + material catalog
       try {
-        const lib = await FurnitureDesignService.getAllStandalone()
+        const [lib, mats] = await Promise.all([
+          FurnitureDesignService.getAllStandalone(),
+          MaterialCatalogService.getAll(),
+        ])
         setLibrary(lib)
+        setCatalogMaterials(mats)
       } catch { /* non-critical */ }
     } catch (err: any) {
       toast.error('Error cargando orden de trabajo: ' + err.message)
@@ -70,19 +77,25 @@ export default function FurnitureWorkOrderPage() {
 
   /** All optimised cuts merged from all designed pieces (for combined cut list) */
   const allCuts = useMemo((): PlacedPiece[] => {
+    const matNameMap = new Map(catalogMaterials.map(m => [m.id, m.name]))
     const allPieces: Piece[] = designs.flatMap(d =>
       (d.pieces as InteractivePiece[])
         .filter(p => p.type !== 'trasera')
-        .map(p => ({
-          ref:  `${d.quote_item_name} · ${p.name}`,
-          w:    p.type === 'estructura' && p.w < p.d ? p.d : p.w,
-          h:    p.h,
-          type: p.type,
-          id:   p.id,
-        }))
+        .map(p => {
+          const matId = p.materialId ?? d.module.catalogMaterialId
+          return {
+            ref:  `${d.quote_item_name} · ${p.name}`,
+            w:    p.type === 'estructura' && p.w < p.d ? p.d : p.w,
+            h:    p.h,
+            type: p.type,
+            id:   p.id,
+            materialId:   matId,
+            materialName: matId ? matNameMap.get(matId) : undefined,
+          }
+        })
     )
     return optimizeCutList(allPieces)
-  }, [designs])
+  }, [designs, catalogMaterials])
 
   const allStickerPieces = useMemo((): Piece[] =>
     designs.flatMap(d =>
