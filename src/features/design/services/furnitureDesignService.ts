@@ -161,6 +161,109 @@ export class FurnitureWorkOrderService {
     }
   }
 
+  /** Store the combined cut-list SVG on the work order */
+  static async updateCutlistSvg(id: string, cutlistSvg: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from(WO_TABLE)
+        .update({ cutlist_svg: cutlistSvg, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        const all = FurnitureWorkOrderService._lsGetAll()
+        const idx = all.findIndex(w => w.id === id)
+        if (idx >= 0) {
+          all[idx] = { ...all[idx], cutlist_svg: cutlistSvg, updated_at: new Date().toISOString() }
+          localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
+        }
+        return
+      }
+      throw err
+    }
+  }
+
+  /**
+   * Replace MUEBLES_GROUP tasks with the final operator task list:
+   *   1. "Cortar despiece total" (single cutting task)
+   *   2. "Ensamblar: <itemName>" (one per furniture item)
+   */
+  static async rebuildFurnitureTasks(
+    projectId: string,
+    items: { quoteItemName: string; estimatedHours: number }[],
+    totalCuttingHours: number,
+  ): Promise<void> {
+    try {
+      // Delete old MUEBLES_GROUP tasks for this project
+      const { error: delErr } = await supabase
+        .from('production_tasks')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('task_block_id', 'MUEBLES_GROUP')
+      if (delErr) throw delErr
+
+      // Create cutting task
+      const now = new Date().toISOString()
+      const cuttingTask = {
+        project_id: projectId,
+        task_name: 'Cortar despiece total',
+        product_name: `Despiece (${items.length} mueble${items.length !== 1 ? 's' : ''})`,
+        estimated_hours: totalCuttingHours,
+        status: 'PENDING',
+        requires_material: null,
+        material_ready: true,
+        requires_design: true,
+        design_ready: true,
+        order_index: 0,
+        task_block_id: 'MUEBLES_GROUP',
+        block_order: 0,
+        is_block_first: true,
+        materials_collected: false,
+        catalog_sku: 'MUEBLES_GROUP',
+        created_at: now,
+      }
+
+      const { error: cutErr } = await supabase
+        .from('production_tasks')
+        .insert(cuttingTask)
+      if (cutErr) throw cutErr
+
+      // Create one assembly task per furniture item
+      const assemblyTasks = items.map((item, idx) => ({
+        project_id: projectId,
+        task_name: `Ensamblar: ${item.quoteItemName}`,
+        product_name: item.quoteItemName,
+        estimated_hours: item.estimatedHours,
+        status: 'PENDING',
+        requires_material: null,
+        material_ready: true,
+        requires_design: true,
+        design_ready: true,
+        order_index: idx + 1,
+        task_block_id: 'MUEBLES_GROUP',
+        block_order: idx + 1,
+        is_block_first: false,
+        materials_collected: false,
+        catalog_sku: 'MUEBLES_GROUP',
+        created_at: now,
+      }))
+
+      if (assemblyTasks.length > 0) {
+        const { error: asmErr } = await supabase
+          .from('production_tasks')
+          .insert(assemblyTasks)
+        if (asmErr) throw asmErr
+      }
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        // localStorage fallback: store task list on the WO for display
+        console.warn('rebuildFurnitureTasks: Supabase not available, tasks stored locally')
+        return
+      }
+      throw err
+    }
+  }
+
   /** localStorage helpers */
   static _lsGetAll(): FurnitureWorkOrder[] {
     try { return JSON.parse(localStorage.getItem(LS_WO_KEY) || '[]') } catch { return [] }

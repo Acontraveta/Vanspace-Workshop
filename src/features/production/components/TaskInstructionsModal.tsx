@@ -8,6 +8,7 @@ import { DesignFilesService, DesignFile } from '../services/designFilesService'
 interface BlueprintInfo {
   itemName: string
   svg: string
+  type: 'cutlist' | 'assembly'  // cutlist = despiece, assembly = plano de montaje
 }
 
 interface TaskInstructionsModalProps {
@@ -29,6 +30,10 @@ export default function TaskInstructionsModal({
   const [expandedBlueprint, setExpandedBlueprint] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState(true)
 
+  const isFurnitureBlock = (task as any).task_block_id === 'MUEBLES_GROUP'
+  const isCuttingTask = isFurnitureBlock && /cort|despiece/i.test(task.task_name)
+  const isAssemblyTask = isFurnitureBlock && /ensambl/i.test(task.task_name)
+
   useEffect(() => {
     const loadFiles = async () => {
       // Load attached design files
@@ -38,8 +43,50 @@ export default function TaskInstructionsModal({
         setDesignFiles(files)
       }
 
-      // Load furniture blueprints if task requires design
-      if (task.requires_design && task.project_id) {
+      // Load furniture blueprints if this is a MUEBLES_GROUP task
+      if (isFurnitureBlock && task.project_id) {
+        try {
+          const { FurnitureWorkOrderService, FurnitureDesignService } =
+            await import('@/features/design/services/furnitureDesignService')
+          const wo = await FurnitureWorkOrderService.getByProject(task.project_id)
+          if (!wo) { setLoadingFiles(false); return }
+
+          const bps: BlueprintInfo[] = []
+
+          if (isCuttingTask) {
+            // Cutting task → show the combined cut-list SVG
+            if (wo.cutlist_svg) {
+              bps.push({ itemName: 'Despiece total', svg: wo.cutlist_svg, type: 'cutlist' })
+            }
+          } else if (isAssemblyTask && task.product_name) {
+            // Assembly task → show the specific item's blueprint
+            const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
+            const match = designs.find(d =>
+              d.quote_item_name === task.product_name ||
+              task.task_name.includes(d.quote_item_name)
+            )
+            if (match?.blueprint_svg) {
+              bps.push({ itemName: match.quote_item_name, svg: match.blueprint_svg, type: 'assembly' })
+            }
+          } else {
+            // Unknown furniture task → show all available blueprints
+            if (wo.cutlist_svg) {
+              bps.push({ itemName: 'Despiece total', svg: wo.cutlist_svg, type: 'cutlist' })
+            }
+            const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
+            for (const d of designs) {
+              if (d.blueprint_svg) {
+                bps.push({ itemName: d.quote_item_name, svg: d.blueprint_svg, type: 'assembly' })
+              }
+            }
+          }
+
+          setBlueprints(bps)
+        } catch {
+          // non-critical
+        }
+      } else if (task.requires_design && task.project_id) {
+        // Non-furniture task that requires design → load all blueprints as before
         try {
           const { FurnitureWorkOrderService, FurnitureDesignService } =
             await import('@/features/design/services/furnitureDesignService')
@@ -48,18 +95,23 @@ export default function TaskInstructionsModal({
             const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
             const bps: BlueprintInfo[] = designs
               .filter(d => d.blueprint_svg)
-              .map(d => ({ itemName: d.quote_item_name, svg: d.blueprint_svg! }))
+              .map(d => ({ itemName: d.quote_item_name, svg: d.blueprint_svg!, type: 'assembly' as const }))
             setBlueprints(bps)
           }
-        } catch {
-          // non-critical — blueprints just won't show
-        }
+        } catch { /* non-critical */ }
       }
 
       setLoadingFiles(false)
     }
     loadFiles()
-  }, [task])
+  }, [task])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-expand single blueprint
+  useEffect(() => {
+    if (blueprints.length === 1 && !expandedBlueprint) {
+      setExpandedBlueprint(blueprints[0].itemName)
+    }
+  }, [blueprints]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -114,27 +166,32 @@ export default function TaskInstructionsModal({
           {blueprints.length > 0 && (
             <div className="mb-6">
               <p className="text-sm font-semibold text-green-700 mb-3">
-                📐 Planos técnicos de muebles
+                {isCuttingTask ? '📋 Plano de despiece' : isAssemblyTask ? '📐 Plano de montaje' : '📐 Planos técnicos'}
               </p>
               <div className="space-y-3">
                 {blueprints.map(bp => {
                   const isExpanded = expandedBlueprint === bp.itemName
+                  const icon = bp.type === 'cutlist' ? '📋' : '🪑'
+                  const borderColor = bp.type === 'cutlist' ? 'border-blue-200' : 'border-green-200'
+                  const bgColor = bp.type === 'cutlist' ? 'bg-blue-50 hover:bg-blue-100' : 'bg-green-50 hover:bg-green-100'
+                  const textColor = bp.type === 'cutlist' ? 'text-blue-800' : 'text-green-800'
+                  const labelColor = bp.type === 'cutlist' ? 'text-blue-600' : 'text-green-600'
                   return (
-                    <div key={bp.itemName} className="border-2 border-green-200 rounded-xl overflow-hidden bg-white">
+                    <div key={bp.itemName} className={`border-2 ${borderColor} rounded-xl overflow-hidden bg-white`}>
                       <button
                         onClick={() => setExpandedBlueprint(isExpanded ? null : bp.itemName)}
-                        className="w-full flex items-center justify-between px-4 py-3 bg-green-50 hover:bg-green-100 transition-colors"
+                        className={`w-full flex items-center justify-between px-4 py-3 ${bgColor} transition-colors`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">🪑</span>
-                          <span className="font-bold text-sm text-green-800">{bp.itemName}</span>
+                          <span className="text-lg">{icon}</span>
+                          <span className={`font-bold text-sm ${textColor}`}>{bp.itemName}</span>
                         </div>
-                        <span className="text-xs text-green-600 font-medium">
+                        <span className={`text-xs ${labelColor} font-medium`}>
                           {isExpanded ? '▲ Ocultar' : '▼ Ver plano'}
                         </span>
                       </button>
                       {isExpanded && (
-                        <div className="p-3 border-t border-green-200 bg-gray-50">
+                        <div className={`p-3 border-t ${borderColor} bg-gray-50`}>
                           <div
                             className="w-full overflow-auto"
                             dangerouslySetInnerHTML={{ __html: bp.svg }}

@@ -18,8 +18,9 @@ import { FurniturePieceEditor } from '../components/FurniturePieceEditor'
 import { FurnitureOptimizerView } from '../components/FurnitureOptimizerView'
 import { FurnitureStickersView } from '../components/FurnitureStickersView'
 import { MaterialCatalogService } from '../services/materialCatalogService'
-import { optimizeCutList } from '../utils/geometry'
+import { optimizeCutList, boardCount } from '../utils/geometry'
 import { generateBlueprintSVG } from '../utils/blueprintGenerator'
+import { generateCutlistSVG } from '../utils/cutlistGenerator'
 import toast from 'react-hot-toast'
 
 type PageView = 'list' | 'editor' | 'cutlist' | 'stickers' | 'pick-source' | 'blueprint'
@@ -187,7 +188,66 @@ export default function FurnitureWorkOrderPage() {
         i.quoteItemName === itemName ? { ...i, designStatus: 'approved' as const } : i
       )
       await FurnitureWorkOrderService.updateItems(wo.id, newItems)
-      toast.success('Diseño aprobado · Plano técnico generado')
+
+      // ── When ALL items are approved → generate cutlist + rebuild operator tasks
+      const allNowApproved = newItems.every(i => i.designStatus === 'approved')
+      if (allNowApproved) {
+        // Fetch latest designs to compute combined cut list
+        const latestDesigns = await FurnitureDesignService.getByWorkOrder(wo.id)
+        const matNameMap = new Map(catalogMaterials.map(m => [m.id, m.name]))
+        const allPieces: Piece[] = latestDesigns.flatMap(d =>
+          (d.pieces as InteractivePiece[])
+            .filter(p => p.type !== 'trasera')
+            .map(p => {
+              const matId = p.materialId ?? d.module.catalogMaterialId
+              const [d1, d2] = [p.w, p.h, p.d].sort((a, b) => b - a)
+              return {
+                ref: `${d.quote_item_name} · ${p.name}`,
+                w: d1, h: d2, type: p.type, id: p.id,
+                materialId: matId,
+                materialName: matId ? matNameMap.get(matId) : undefined,
+              }
+            })
+        )
+        const optimized = optimizeCutList(allPieces)
+        const boards = boardCount(optimized)
+
+        // Generate and store combined cutlist SVG
+        const cutlistSvg = generateCutlistSVG(
+          optimized,
+          `${wo.quote_number} · ${wo.client_name}`
+        )
+        await FurnitureWorkOrderService.updateCutlistSvg(wo.id, cutlistSvg)
+
+        // Rebuild operator tasks: 1 cutting + N assembly
+        const totalPieces = allPieces.length
+        const cuttingHours = Math.max(0.5, Math.round(boards * 0.5 * 10) / 10)
+        const assemblyItems = latestDesigns.map(d => {
+          const pCount = (d.pieces as InteractivePiece[]).length
+          return {
+            quoteItemName: d.quote_item_name,
+            estimatedHours: Math.max(0.5, Math.round(pCount * 0.3 * 10) / 10),
+          }
+        })
+
+        try {
+          await FurnitureWorkOrderService.rebuildFurnitureTasks(
+            wo.project_id,
+            assemblyItems,
+            cuttingHours,
+          )
+        } catch (e) {
+          console.warn('rebuildFurnitureTasks failed (non-critical):', e)
+        }
+
+        toast.success(
+          `✅ Todos los diseños aprobados · ${boards} tablero${boards !== 1 ? 's' : ''} · ${totalPieces} piezas\nTareas de producción actualizadas`,
+          { duration: 5000 }
+        )
+      } else {
+        toast.success('Diseño aprobado · Plano técnico generado')
+      }
+
       await refresh()
     } catch (err: any) {
       toast.error('Error aprobando diseño: ' + err.message)
