@@ -147,6 +147,7 @@ export interface CalendarEventForm {
   vehicleModel: string
   plate: string
   projectNumber: string
+  leadId: string
   visibleRoles: string[]
 }
 
@@ -162,6 +163,7 @@ export const emptyEventForm = (): CalendarEventForm => ({
   vehicleModel: '',
   plate: '',
   projectNumber: '',
+  leadId: '',
   visibleRoles: ['admin', 'encargado', 'encargado_taller', 'compras', 'operario'],
 })
 

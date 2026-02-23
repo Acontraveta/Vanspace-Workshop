@@ -217,7 +217,9 @@ export const router = createBrowserRouter([
         path: 'furniture-design',
         element: (
           <Suspense fallback={<PageLoading />}>
-            <FurnitureDesignList />
+            <PermissionGuard module="quotes">
+              <FurnitureDesignList />
+            </PermissionGuard>
           </Suspense>
         )
       },
@@ -225,7 +227,9 @@ export const router = createBrowserRouter([
         path: 'furniture-design/new',
         element: (
           <Suspense fallback={<PageLoading />}>
-            <FurnitureStandaloneEditor />
+            <PermissionGuard module="quotes">
+              <FurnitureStandaloneEditor />
+            </PermissionGuard>
           </Suspense>
         )
       },
@@ -233,7 +237,9 @@ export const router = createBrowserRouter([
         path: 'furniture-design/edit/:designId',
         element: (
           <Suspense fallback={<PageLoading />}>
-            <FurnitureStandaloneEditor />
+            <PermissionGuard module="quotes">
+              <FurnitureStandaloneEditor />
+            </PermissionGuard>
           </Suspense>
         )
       },
@@ -241,7 +247,9 @@ export const router = createBrowserRouter([
         path: 'furniture-design/:workOrderId',
         element: (
           <Suspense fallback={<PageLoading />}>
-            <FurnitureWorkOrderPage />
+            <PermissionGuard module="quotes">
+              <FurnitureWorkOrderPage />
+            </PermissionGuard>
           </Suspense>
         )
       }

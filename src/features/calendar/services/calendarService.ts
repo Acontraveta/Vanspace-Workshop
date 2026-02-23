@@ -246,6 +246,7 @@ export class UnifiedCalendarService {
         ...(form.vehicleModel ? { vehicleModel: form.vehicleModel } : {}),
         ...(form.plate ? { plate: form.plate } : {}),
         ...(form.projectNumber ? { projectNumber: form.projectNumber } : {}),
+        ...(form.leadId ? { leadId: form.leadId } : {}),
       },
       visible_roles: form.visibleRoles,
       created_by: createdBy ?? null,

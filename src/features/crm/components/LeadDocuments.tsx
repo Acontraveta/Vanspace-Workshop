@@ -38,6 +38,7 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [furnitureDesigns, setFurnitureDesigns] = useState<FurnitureDesign[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
   const refresh = async () => {
@@ -87,6 +88,11 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
   }
 
   const handleFileInput = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) uploadFiles(e.target.files)
+    e.target.value = ''
+  }
+
+  const handleCameraInput = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) uploadFiles(e.target.files)
     e.target.value = ''
   }
@@ -189,6 +195,24 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
           className="hidden"
           onChange={handleFileInput}
         />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleCameraInput}
+        />
+
+        {/* Camera button */}
+        <button
+          type="button"
+          onClick={() => !uploading && cameraInputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center justify-center gap-2 w-full py-2.5 px-4 border border-green-300 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition text-sm font-medium disabled:opacity-50"
+        >
+          📸 Hacer foto con cámara
+        </button>
       </div>
 
       {/* ── Document list ─────────────────────────────── */}

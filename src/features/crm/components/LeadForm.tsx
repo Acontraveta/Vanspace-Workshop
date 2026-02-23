@@ -6,6 +6,7 @@ import { ALL_STATUSES } from '../utils/crmHelpers'
 import { QuoteService } from '@/features/quotes/services/quoteService'
 import { LeadProductionPanel } from './LeadProductionPanel'
 import { LeadDocuments } from './LeadDocuments'
+import ScheduleReceptionModal from './ScheduleReceptionModal'
 
 interface LeadFormProps {
   lead?: Lead | null    // If provided → edit mode; else → create mode
@@ -44,6 +45,7 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
   const [form, setForm] = useState<LeadFormData>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showReceptionModal, setShowReceptionModal] = useState(false)
 
   // Quotes linked to this lead (read-only view)
   const linkedQuotes = useMemo(
@@ -86,6 +88,7 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
   }
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
@@ -334,6 +337,15 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
             {lead && (
               <button
                 type="button"
+                onClick={() => setShowReceptionModal(true)}
+                className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium"
+              >
+                🚐 Programar recepción
+              </button>
+            )}
+            {lead && (
+              <button
+                type="button"
                 onClick={() => {
                   onClose()
                   navigate('/quotes', {
@@ -371,6 +383,15 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
         </div>
       </div>
     </div>
+
+    {/* Schedule reception modal */}
+    {showReceptionModal && lead && (
+      <ScheduleReceptionModal
+        lead={lead}
+        onClose={() => setShowReceptionModal(false)}
+      />
+    )}
+    </>
   )
 }
 

@@ -67,6 +67,7 @@ export default function EventModal({
         vehicleModel: event.metadata?.vehicleModel ?? '',
         plate: event.metadata?.plate ?? '',
         projectNumber: event.metadata?.projectNumber ?? '',
+        leadId: event.metadata?.leadId ?? '',
         visibleRoles: event.visibleRoles,
       }
     }

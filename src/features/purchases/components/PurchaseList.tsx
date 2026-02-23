@@ -43,6 +43,8 @@ export default function PurchaseList() {
     notes: '',
   })
   const [groupByProvider, setGroupByProvider] = useState(false)
+  const [expandedStockFamily, setExpandedStockFamily] = useState<string | null>(null)
+  const [expandedStockCategory, setExpandedStockCategory] = useState<string | null>(null)
 
   // Validar si una ubicación existe realmente en alguna estantería
   const isValidLocation = (ubicacion?: string) => {
@@ -383,6 +385,18 @@ export default function PurchaseList() {
     
     return matchesSearch && matchesEstanteria
   })
+
+  // Group filtered stock by FAMILIA → CATEGORIA for accordion view
+  const stockFamilies = [...new Set(filteredStock.map(s => s.FAMILIA || 'Sin familia'))].sort()
+  const stockByFamily: Record<string, Record<string, StockItem[]>> = {}
+  for (const family of stockFamilies) {
+    const familyItems = filteredStock.filter(s => (s.FAMILIA || 'Sin familia') === family)
+    const categories = [...new Set(familyItems.map(s => s.CATEGORIA || 'Sin categoría'))].sort()
+    stockByFamily[family] = {}
+    for (const cat of categories) {
+      stockByFamily[family][cat] = familyItems.filter(s => (s.CATEGORIA || 'Sin categoría') === cat)
+    }
+  }
 
   const lowStockItems = StockService.getLowStockItems()
 
@@ -824,7 +838,7 @@ export default function PurchaseList() {
         ) : selectedTab === 'scanner' ? (
           <QRScanner stock={stock} onRefresh={refreshData} />
         ) : selectedTab === 'stock' ? (
-          // Vista de inventario
+          // Vista de inventario agrupada por familias
           <div>
             {stockLoaded ? (
               filteredStock.length === 0 ? (
@@ -834,126 +848,153 @@ export default function PurchaseList() {
                   </CardContent>
                 </Card>
               ) : (
-                <Card>
-                  <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                      <table className="w-full divide-y divide-gray-200 table-fixed">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="w-[35%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                              Artículo
-                            </th>
-                            <th className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                              Referencia
-                            </th>
-                            <th className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                              Cantidad ✏️
-                            </th>
-                            <th className="w-[17%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                              📍 Ubicación
-                            </th>
-                            <th className="w-[18%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                              Coste
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredStock.map((item, index) => {
-                            const isLowStock = item.STOCK_MINIMO && item.CANTIDAD < item.STOCK_MINIMO
-                            return (
-                              <tr key={`${item.REFERENCIA}-${index}`} className={`hover:bg-gray-50 ${isLowStock ? 'bg-orange-50' : ''}`}>
-                                <td className="px-4 py-4 max-w-0 overflow-hidden">
-                                  <div className="text-sm font-medium text-gray-900 truncate" title={item.ARTICULO}>
-                                    {item.ARTICULO}
-                                  </div>
-                                  <div className="text-xs text-gray-500 truncate">{item.FAMILIA}</div>
-                                </td>
-                                <td className="px-4 py-4 max-w-0 overflow-hidden text-sm text-gray-500">
-                                  <span className="truncate block" title={item.REFERENCIA}>{item.REFERENCIA}</span>
-                                </td>
-                                <td className="px-4 py-4 whitespace-nowrap">
-                                  {editingQty?.ref === item.REFERENCIA ? (
-                                    <div className="flex items-center gap-1">
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        autoFocus
-                                        className="w-20 border border-blue-400 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                        value={editingQty.value}
-                                        onChange={e => setEditingQty({ ref: item.REFERENCIA, value: e.target.value })}
-                                        onKeyDown={e => {
-                                          if (e.key === 'Enter') handleUpdateQty(item.REFERENCIA, parseFloat(editingQty.value) || 0)
-                                          if (e.key === 'Escape') setEditingQty(null)
-                                        }}
-                                      />
-                                      <span className="text-xs text-gray-500">{item.UNIDAD}</span>
-                                      <button
-                                        onClick={() => handleUpdateQty(item.REFERENCIA, parseFloat(editingQty.value) || 0)}
-                                        className="text-green-600 hover:text-green-800 text-base leading-none"
-                                        title="Guardar"
-                                      >✓</button>
-                                      <button
-                                        onClick={() => setEditingQty(null)}
-                                        className="text-gray-400 hover:text-gray-600 text-base leading-none"
-                                        title="Cancelar"
-                                      >✕</button>
+                <div className="space-y-2">
+                  {stockFamilies.map(family => {
+                    const familyCategories = stockByFamily[family] || {}
+                    const familyItemCount = Object.values(familyCategories).reduce((s, arr) => s + arr.length, 0)
+                    const familyExpanded = expandedStockFamily === family
+                    const familyIcon =
+                      family.toLowerCase().includes('electric') ? '⚡' :
+                      family.toLowerCase().includes('fontan') ? '🚰' :
+                      family.toLowerCase().includes('mueble') ? '🪑' :
+                      family.toLowerCase().includes('ventana') ? '🪟' :
+                      family.toLowerCase().includes('tornill') || family.toLowerCase().includes('ferret') ? '🔩' :
+                      family.toLowerCase().includes('pintu') ? '🎨' :
+                      family.toLowerCase().includes('aisla') ? '🧊' : '📦'
+
+                    return (
+                      <Card key={family}>
+                        <button
+                          onClick={() => {
+                            setExpandedStockFamily(familyExpanded ? null : family)
+                            setExpandedStockCategory(null)
+                          }}
+                          className={`w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition rounded-t-lg ${
+                            familyExpanded ? 'bg-gray-50 border-b' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{familyIcon}</span>
+                            <span className="font-medium capitalize text-gray-800">{family}</span>
+                            <Badge variant="secondary" className="text-xs">{familyItemCount}</Badge>
+                          </div>
+                          <span className="text-gray-400">{familyExpanded ? '▼' : '▶'}</span>
+                        </button>
+
+                        {familyExpanded && (
+                          <CardContent className="p-2 space-y-2">
+                            {Object.entries(familyCategories).map(([categoryName, categoryItems]) => {
+                              const catExpanded = expandedStockCategory === `${family}::${categoryName}`
+                              return (
+                                <div key={categoryName} className="border rounded">
+                                  <button
+                                    onClick={() => setExpandedStockCategory(catExpanded ? null : `${family}::${categoryName}`)}
+                                    className={`w-full px-4 py-2 flex items-center justify-between hover:bg-gray-50 transition text-left ${
+                                      catExpanded ? 'bg-gray-50 border-b' : ''
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-gray-700">{categoryName}</span>
+                                      <Badge variant="outline" className="text-xs">{categoryItems.length}</Badge>
                                     </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => setEditingQty({ ref: item.REFERENCIA, value: String(item.CANTIDAD) })}
-                                      className={`group flex items-center gap-1 text-sm font-bold hover:underline ${
-                                        isLowStock ? 'text-orange-600' : 'text-gray-900'
-                                      }`}
-                                      title="Clic para editar cantidad"
-                                    >
-                                      {item.CANTIDAD} {item.UNIDAD}
-                                      <span className="opacity-0 group-hover:opacity-60 text-xs">✏️</span>
-                                    </button>
-                                  )}
-                                  {item.STOCK_MINIMO && (
-                                    <div className="text-xs text-gray-500">Min: {item.STOCK_MINIMO}</div>
-                                  )}
-                                </td>
-                                <td className="px-4 py-4 whitespace-nowrap">
-                                  {isValidLocation(item.UBICACION) ? (
-                                    <button
-                                      onClick={() => handleGoToLocation(item.UBICACION!)}
-                                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition text-sm font-medium"
-                                      title="Ir a esta ubicación en el almacén"
-                                    >
-                                      📍 {item.UBICACION}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => handleAssignLocation(item)}
-                                      className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-full hover:bg-orange-200 transition text-sm font-medium"
-                                      title="Asignar ubicación"
-                                    >
-                                      ⚠️ Sin ubicar
-                                    </button>
-                                  )}
-                                </td>
-                                <td className="px-4 py-4 whitespace-nowrap text-sm">
-                                  {item.COSTE_IVA_INCLUIDO && item.COSTE_IVA_INCLUIDO > 0 ? (
-                                    <div>
-                                      <div className="font-medium">{item.COSTE_IVA_INCLUIDO.toFixed(2)}€</div>
-                                      <div className="text-xs text-blue-600">
-                                        Total: {(item.COSTE_IVA_INCLUIDO * item.CANTIDAD).toFixed(2)}€
-                                      </div>
+                                    <span className="text-gray-400 text-sm">{catExpanded ? '▼' : '▶'}</span>
+                                  </button>
+
+                                  {catExpanded && (
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full divide-y divide-gray-200 table-fixed">
+                                        <thead className="bg-gray-50">
+                                          <tr>
+                                            <th className="w-[35%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Artículo</th>
+                                            <th className="w-[15%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Referencia</th>
+                                            <th className="w-[15%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Cantidad ✏️</th>
+                                            <th className="w-[17%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">📍 Ubicación</th>
+                                            <th className="w-[18%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Coste</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                          {categoryItems.map((item, index) => {
+                                            const isLowStock = item.STOCK_MINIMO && item.CANTIDAD < item.STOCK_MINIMO
+                                            return (
+                                              <tr key={`${item.REFERENCIA}-${index}`} className={`hover:bg-gray-50 ${isLowStock ? 'bg-orange-50' : ''}`}>
+                                                <td className="px-4 py-3 max-w-0 overflow-hidden">
+                                                  <div className="text-sm font-medium text-gray-900 truncate" title={item.ARTICULO}>{item.ARTICULO}</div>
+                                                </td>
+                                                <td className="px-4 py-3 max-w-0 overflow-hidden text-sm text-gray-500">
+                                                  <span className="truncate block" title={item.REFERENCIA}>{item.REFERENCIA}</span>
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                  {editingQty?.ref === item.REFERENCIA ? (
+                                                    <div className="flex items-center gap-1">
+                                                      <input
+                                                        type="number" min="0" step="0.01" autoFocus
+                                                        className="w-20 border border-blue-400 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                        value={editingQty.value}
+                                                        onChange={e => setEditingQty({ ref: item.REFERENCIA, value: e.target.value })}
+                                                        onKeyDown={e => {
+                                                          if (e.key === 'Enter') handleUpdateQty(item.REFERENCIA, parseFloat(editingQty.value) || 0)
+                                                          if (e.key === 'Escape') setEditingQty(null)
+                                                        }}
+                                                      />
+                                                      <span className="text-xs text-gray-500">{item.UNIDAD}</span>
+                                                      <button onClick={() => handleUpdateQty(item.REFERENCIA, parseFloat(editingQty.value) || 0)}
+                                                        className="text-green-600 hover:text-green-800 text-base leading-none" title="Guardar">✓</button>
+                                                      <button onClick={() => setEditingQty(null)}
+                                                        className="text-gray-400 hover:text-gray-600 text-base leading-none" title="Cancelar">✕</button>
+                                                    </div>
+                                                  ) : (
+                                                    <button
+                                                      onClick={() => setEditingQty({ ref: item.REFERENCIA, value: String(item.CANTIDAD) })}
+                                                      className={`group flex items-center gap-1 text-sm font-bold hover:underline ${isLowStock ? 'text-orange-600' : 'text-gray-900'}`}
+                                                      title="Clic para editar cantidad"
+                                                    >
+                                                      {item.CANTIDAD} {item.UNIDAD}
+                                                      <span className="opacity-0 group-hover:opacity-60 text-xs">✏️</span>
+                                                    </button>
+                                                  )}
+                                                  {item.STOCK_MINIMO && <div className="text-xs text-gray-500">Min: {item.STOCK_MINIMO}</div>}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                  {isValidLocation(item.UBICACION) ? (
+                                                    <button onClick={() => handleGoToLocation(item.UBICACION!)}
+                                                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition text-sm font-medium"
+                                                      title="Ir a esta ubicación en el almacén">
+                                                      📍 {item.UBICACION}
+                                                    </button>
+                                                  ) : (
+                                                    <button onClick={() => handleAssignLocation(item)}
+                                                      className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-full hover:bg-orange-200 transition text-sm font-medium"
+                                                      title="Asignar ubicación">
+                                                      ⚠️ Sin ubicar
+                                                    </button>
+                                                  )}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                                  {item.COSTE_IVA_INCLUIDO && item.COSTE_IVA_INCLUIDO > 0 ? (
+                                                    <div>
+                                                      <div className="font-medium">{item.COSTE_IVA_INCLUIDO.toFixed(2)}€</div>
+                                                      <div className="text-xs text-blue-600">Total: {(item.COSTE_IVA_INCLUIDO * item.CANTIDAD).toFixed(2)}€</div>
+                                                    </div>
+                                                  ) : (
+                                                    <span className="text-gray-400">-</span>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            )
+                                          })}
+                                        </tbody>
+                                      </table>
                                     </div>
-                                  ) : (
-                                    <span className="text-gray-400">-</span>
                                   )}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
+                                </div>
+                              )
+                            })}
+                          </CardContent>
+                        )}
+                      </Card>
+                    )
+                  })}
+                </div>
               )
             ) : (
               <Card>
