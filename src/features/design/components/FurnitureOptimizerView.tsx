@@ -127,11 +127,19 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
                       // Space reserved by dimension labels
                       const topReserve = (p.w > 60) ? dimFontSize + dimPad * 2 : 0
                       const rightReserve = (p.h > 60) ? dimFontSize * 1.4 + dimPad * 2 : 0
-                      const availW = p.w - rightReserve
-                      const availH = p.h - topReserve
-                      const maxChars = Math.max(2, Math.floor(availW / 30))
-                      const label = p.ref.length > maxChars ? p.ref.slice(0, maxChars - 1) + '…' : p.ref
-                      const refFontSize = Math.min(20, Math.max(12, availW / 14))
+                      const availW = p.w - rightReserve - 6  // 6mm inner margin
+                      const availH = p.h - topReserve - 4
+                      // Auto-size: shrink font until full name fits (char ≈ 0.6em)
+                      const maxRefFont = Math.min(22, availH * 0.6)
+                      const charW = 0.6
+                      let refFontSize = Math.min(maxRefFont, availW / (p.ref.length * charW))
+                      let label = p.ref
+                      if (refFontSize < 8) {
+                        // Too small — truncate at 8px min font
+                        refFontSize = 8
+                        const fitChars = Math.floor(availW / (refFontSize * charW))
+                        label = fitChars >= p.ref.length ? p.ref : p.ref.slice(0, Math.max(1, fitChars - 1)) + '…'
+                      }
                       return (
                       <g key={i} clipPath={`url(#clip-${bi}-${i})`}>
                         <rect x={p.x} y={p.y} width={p.w} height={p.h}
@@ -155,8 +163,8 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
                           </text>
                         )}
                         {/* Ref name (centred in available space, avoiding dims) */}
-                        {availW > 40 && availH > 20 && (
-                          <text x={p.x + availW / 2} y={p.y + topReserve + availH / 2}
+                        {availW > 20 && availH > 12 && (
+                          <text x={p.x + (p.w - rightReserve) / 2} y={p.y + topReserve + availH / 2}
                             fontSize={refFontSize} textAnchor="middle" dominantBaseline="middle"
                             style={{ fill: textFill, fontWeight: 700 }}>
                             {label}

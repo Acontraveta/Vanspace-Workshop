@@ -166,16 +166,26 @@ export function generateCutlistSVG(placements: PlacedPiece[], projectInfo?: stri
           parts.push(`<text x="${rx}" y="${ry}" text-anchor="middle" dominant-baseline="middle" font-family="${FONT}" font-size="${dimFontSize.toFixed(1)}" font-weight="600" fill="${dimColor}" transform="rotate(-90 ${rx} ${ry})">${dimH}</text>`)
         }
 
-        // ─ Ref name (centred in remaining space) ──────────────────────────
-        const availW = pw - rightReserve
-        const availH = ph - topReserve
-        if (availW > 16 && availH > 8) {
-          const maxChars = Math.max(2, Math.floor(availW / 5))
-          const label = p.ref.length > maxChars ? p.ref.slice(0, maxChars - 1) + '…' : p.ref
-          const fontSize = Math.min(7, Math.max(4, availW / 16))
+        // ─ Ref name (auto-sized to fit available space) ────────────────────
+        const availW = pw - rightReserve - 2  // 2px inner margin
+        const availH = ph - topReserve - 2
+        if (availW > 10 && availH > 6) {
           const textFill = p.rotated ? '#6d28d9' : '#1e3a8a'
-          const cx = px + availW / 2
-          const cy = py + topReserve + availH / 2
+          const cx = px + (pw - rightReserve) / 2
+          const cy = py + topReserve + availH / 2 + 1
+          // Auto-size: shrink font until text fits (char ~0.6em wide)
+          const maxFont = Math.min(8, availH * 0.7)
+          let fontSize = maxFont
+          let label = p.ref
+          const charW = 0.6
+          // Shrink font to fit full name, min 3px
+          fontSize = Math.min(maxFont, availW / (label.length * charW))
+          if (fontSize < 3) {
+            // Too small — truncate to fit at 3px
+            fontSize = 3
+            const fitChars = Math.floor(availW / (fontSize * charW))
+            label = fitChars >= label.length ? label : label.slice(0, Math.max(1, fitChars - 1)) + '…'
+          }
           parts.push(`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="${FONT}" font-size="${fontSize.toFixed(1)}" font-weight="700" fill="${textFill}">${esc(label)}</text>`)
         }
 
