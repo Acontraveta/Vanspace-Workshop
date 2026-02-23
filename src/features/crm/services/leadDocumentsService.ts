@@ -14,6 +14,8 @@ export type DocCategory =
   | 'seguro'
   | 'ficha_tecnica'
   | 'foto'
+  | 'plano'
+  | 'despiece'
   | 'otro'
 
 export const DOC_CATEGORIES: { value: DocCategory; label: string; icon: string }[] = [
@@ -25,6 +27,8 @@ export const DOC_CATEGORIES: { value: DocCategory; label: string; icon: string }
   { value: 'seguro',        label: 'Seguro',          icon: '🛡️' },
   { value: 'ficha_tecnica', label: 'Ficha técnica',   icon: '📄' },
   { value: 'foto',          label: 'Foto',            icon: '📷' },
+  { value: 'plano',         label: 'Plano técnico',   icon: '📐' },
+  { value: 'despiece',      label: 'Despiece',        icon: '🪚' },
   { value: 'otro',          label: 'Otro',            icon: '📎' },
 ]
 
@@ -140,9 +144,31 @@ export class LeadDocumentsService {
   static mimeIcon(mimeType: string): string {
     if (mimeType.startsWith('image/'))                return '🖼️'
     if (mimeType === 'application/pdf')               return '📕'
+    if (mimeType === 'image/svg+xml')                 return '📐'
     if (mimeType.includes('word'))                    return '📝'
     if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊'
     if (mimeType.includes('zip') || mimeType.includes('rar'))           return '🗜️'
     return '📎'
+  }
+
+  /**
+   * Upload an SVG string as a document file for a lead.
+   * Used to auto-save blueprints and cutlists from furniture design.
+   */
+  static async uploadSvg(
+    leadId: string,
+    svgContent: string,
+    fileName: string,
+    category: DocCategory,
+    notes: string,
+  ): Promise<LeadDocument | null> {
+    try {
+      const blob = new Blob([svgContent], { type: 'image/svg+xml' })
+      const file = new File([blob], fileName, { type: 'image/svg+xml' })
+      return await this.upload(leadId, file, category, notes, 'sistema')
+    } catch (err) {
+      console.error('Error uploading SVG to lead documents:', err)
+      return null
+    }
   }
 }

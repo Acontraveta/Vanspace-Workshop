@@ -22,6 +22,7 @@ import { optimizeCutList } from '../utils/geometry'
 import { generateBlueprintSVG } from '../utils/blueprintGenerator'
 import { generateCutlistSVG, generateBoardCutlistSVG, enumerateBoards } from '../utils/cutlistGenerator'
 import { processStockConsumption } from '@/features/production/services/stockConsumption'
+import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
 import toast from 'react-hot-toast'
 
 type PageView = 'list' | 'editor' | 'cutlist' | 'stickers' | 'pick-source' | 'blueprint'
@@ -324,6 +325,40 @@ export default function FurnitureWorkOrderPage() {
           }
         } catch (stockErr) {
           console.error('Error descontando stock:', stockErr)
+        }
+
+        // ── Save blueprints + cutlist to CRM lead documents ──────────────────
+        if (wo.lead_id) {
+          try {
+            const prefix = `${wo.quote_number}-${wo.client_name}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+
+            // Save each design's blueprint
+            for (const d of latestDesigns) {
+              if (d.blueprint_svg) {
+                await LeadDocumentsService.uploadSvg(
+                  wo.lead_id,
+                  d.blueprint_svg,
+                  `plano-${prefix}-${d.quote_item_name.replace(/\s+/g, '-')}.svg`,
+                  'plano',
+                  `Plano técnico: ${d.quote_item_name} (alzado, planta, perfil)`,
+                )
+              }
+            }
+            // Save combined cutlist SVG
+            const storedWo = await FurnitureWorkOrderService.getById(wo.id)
+            if (storedWo?.cutlist_svg) {
+              await LeadDocumentsService.uploadSvg(
+                wo.lead_id,
+                storedWo.cutlist_svg,
+                `despiece-${prefix}.svg`,
+                'despiece',
+                `Despiece completo: ${totalBoardCount} tablero(s), ${allPieces.length} piezas`,
+              )
+            }
+            console.log('📁 Planos y despieces guardados en documentos del cliente')
+          } catch (docErr) {
+            console.warn('Error guardando planos en documentos del cliente:', docErr)
+          }
         }
 
         toast.success(

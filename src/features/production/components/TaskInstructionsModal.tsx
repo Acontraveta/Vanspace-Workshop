@@ -15,12 +15,15 @@ interface TaskInstructionsModalProps {
   task: ProductionTask
   onConfirm: () => void
   onCancel: () => void
+  /** 'start' = pre-start flow (default), 'view' = view-only during work */
+  mode?: 'start' | 'view'
 }
 
 export default function TaskInstructionsModal({
   task,
   onConfirm,
-  onCancel
+  onCancel,
+  mode = 'start'
 }: TaskInstructionsModalProps) {
   const instructions = task.instructions_design || ''
   const tipoDiseno = (task as any).tipo_diseno || ''
@@ -28,6 +31,7 @@ export default function TaskInstructionsModal({
   const [designFiles, setDesignFiles] = useState<DesignFile[]>([])
   const [blueprints, setBlueprints] = useState<BlueprintInfo[]>([])
   const [expandedBlueprint, setExpandedBlueprint] = useState<string | null>(null)
+  const [fullscreenSvg, setFullscreenSvg] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState(true)
 
   const isFurnitureBlock = (task as any).task_block_id === 'MUEBLES_GROUP' ||
@@ -175,8 +179,8 @@ export default function TaskInstructionsModal({
   }, [blueprints]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="max-w-2xl w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <Card className="max-w-4xl w-full max-h-[95vh] overflow-hidden">
         <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
           <CardTitle className="flex items-center gap-3">
             <span className="text-3xl">▶</span>
@@ -187,7 +191,7 @@ export default function TaskInstructionsModal({
           </CardTitle>
         </CardHeader>
 
-        <CardContent className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+        <CardContent className="p-6 overflow-y-auto max-h-[calc(95vh-180px)]">
           {/* Archivos de diseño adjuntos */}
           {designFiles.length > 0 && (
             <div className="mb-6">
@@ -254,23 +258,35 @@ export default function TaskInstructionsModal({
                       {isExpanded && (
                         <div className={`p-3 border-t ${borderColor} bg-gray-50`}>
                           <div
-                            className="w-full overflow-auto"
-                            dangerouslySetInnerHTML={{ __html: bp.svg }}
+                            className="w-full overflow-auto blueprint-svg-container"
+                            style={{ maxHeight: '70vh' }}
+                            dangerouslySetInnerHTML={{ __html: bp.svg.replace(
+                              /^<svg ([^>]*)>/,
+                              (_, attrs) => `<svg ${attrs} style="width:100%;height:auto;max-width:100%;display:block;">`
+                            ) }}
                           />
-                          <button
-                            onClick={() => {
-                              const blob = new Blob([bp.svg], { type: 'image/svg+xml' })
-                              const url = URL.createObjectURL(blob)
-                              const a = document.createElement('a')
-                              a.href = url
-                              a.download = `plano-${bp.itemName.replace(/\s+/g, '-')}.svg`
-                              a.click()
-                              URL.revokeObjectURL(url)
-                            }}
-                            className="mt-2 text-xs text-blue-600 underline hover:text-blue-800"
-                          >
-                            📥 Descargar plano SVG
-                          </button>
+                          <div className="mt-2 flex gap-3">
+                            <button
+                              onClick={() => setFullscreenSvg(bp.svg)}
+                              className="text-xs text-green-600 underline hover:text-green-800"
+                            >
+                              🔍 Ver a pantalla completa
+                            </button>
+                            <button
+                              onClick={() => {
+                                const blob = new Blob([bp.svg], { type: 'image/svg+xml' })
+                                const url = URL.createObjectURL(blob)
+                                const a = document.createElement('a')
+                                a.href = url
+                                a.download = `plano-${bp.itemName.replace(/\s+/g, '-')}.svg`
+                                a.click()
+                                URL.revokeObjectURL(url)
+                              }}
+                              className="text-xs text-blue-600 underline hover:text-blue-800"
+                            >
+                              📥 Descargar SVG
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -347,16 +363,43 @@ export default function TaskInstructionsModal({
             variant="outline"
             className="flex-1"
           >
-            ← Volver
+            {mode === 'view' ? '← Cerrar' : '← Volver'}
           </Button>
-          <Button
-            onClick={onConfirm}
-            className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
-          >
-            ▶ Iniciar Tarea
-          </Button>
+          {mode === 'start' && (
+            <Button
+              onClick={onConfirm}
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
+            >
+              ▶ Iniciar Tarea
+            </Button>
+          )}
         </div>
       </Card>
+
+      {/* Fullscreen SVG overlay */}
+      {fullscreenSvg && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-[60] flex flex-col"
+             onClick={() => setFullscreenSvg(null)}>
+          <div className="flex justify-between items-center p-3 bg-gray-900">
+            <span className="text-white text-sm font-medium">📐 Plano técnico — toca para cerrar</span>
+            <button
+              onClick={() => setFullscreenSvg(null)}
+              className="text-white bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-sm font-bold"
+            >
+              ✕ Cerrar
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto p-2" onClick={e => e.stopPropagation()}>
+            <div
+              className="w-full h-full flex items-start justify-center"
+              dangerouslySetInnerHTML={{ __html: fullscreenSvg.replace(
+                /^<svg ([^>]*)>/,
+                (_, attrs) => `<svg ${attrs} style="width:100%;height:auto;max-width:100%;display:block;">`
+              ) }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

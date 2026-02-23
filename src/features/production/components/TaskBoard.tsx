@@ -55,6 +55,7 @@ export default function TaskBoard({
   // Modales
   const [taskToStart, setTaskToStart] = useState<ProductionTask | null>(null) // Modal materiales
   const [taskToShowInstructions, setTaskToShowInstructions] = useState<ProductionTask | null>(null) // Modal instrucciones
+  const [taskToViewPlans, setTaskToViewPlans] = useState<ProductionTask | null>(null) // Modal ver planos (durante trabajo)
   const [assignModalBlock, setAssignModalBlock] = useState<TaskBlock | null>(null) // Modal asignar
   
   // Estados
@@ -474,6 +475,7 @@ export default function TaskBoard({
                 onStart={() => handleStartBlock(block)}
                 onPause={handlePauseTask}
                 onComplete={handleCompleteTask}
+                onViewPlans={t => setTaskToViewPlans(t)}
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
                 employees={employees}
@@ -505,6 +507,7 @@ export default function TaskBoard({
                 onStart={() => handleStartBlock(block)}
                 onPause={handlePauseTask}
                 onComplete={handleCompleteTask}
+                onViewPlans={t => setTaskToViewPlans(t)}
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
                 employees={employees}
@@ -533,6 +536,7 @@ export default function TaskBoard({
                 onStart={() => handleStartBlock(block)}
                 onPause={handlePauseTask}
                 onComplete={handleCompleteTask}
+                onViewPlans={t => setTaskToViewPlans(t)}
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
                 employees={employees}
@@ -695,6 +699,16 @@ export default function TaskBoard({
         />
       )}
 
+      {/* Modal ver planos (durante trabajo — modo solo lectura) */}
+      {taskToViewPlans && (
+        <TaskInstructionsModal
+          task={taskToViewPlans}
+          mode="view"
+          onConfirm={() => setTaskToViewPlans(null)}
+          onCancel={() => setTaskToViewPlans(null)}
+        />
+      )}
+
       {/* Modal materiales (solo primera vez) */}
       {taskToStart && (
         <TaskStartModal
@@ -725,7 +739,7 @@ function KpiCard({ label, value, color }: { label: string; value: number | strin
 }
 
 function BlockCard({
-  block, expanded, onToggle, onStart, onPause, onComplete, canAssign, onAssign, employees, onFurnitureDesign
+  block, expanded, onToggle, onStart, onPause, onComplete, onViewPlans, canAssign, onAssign, employees, onFurnitureDesign
 }: {
   block: TaskBlock
   expanded: boolean
@@ -733,6 +747,7 @@ function BlockCard({
   onStart: () => void
   onPause: (task: ProductionTask) => void
   onComplete: (task: ProductionTask) => void
+  onViewPlans: (task: ProductionTask) => void
   canAssign?: boolean
   onAssign?: () => void
   employees?: ProductionEmployee[]
@@ -808,6 +823,8 @@ function BlockCard({
             )}
             {block.status === 'in_progress' && currentTask && (
               <>
+                <Button onClick={() => onViewPlans(currentTask)} variant="outline" size="sm"
+                  title="Ver planos">📐</Button>
                 <Button onClick={() => onPause(currentTask)} variant="outline" size="sm">⏸</Button>
                 <Button onClick={() => onComplete(currentTask)} size="sm"
                   className="bg-green-600 hover:bg-green-700">✅</Button>
