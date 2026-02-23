@@ -4,6 +4,7 @@ import { getStatusConfig, formatCurrency, formatDate } from '../utils/crmHelpers
 import { useCRMStore } from '../store/crmStore'
 import { useWorkshopStatus } from '../hooks/useWorkshopStatus'
 import { QuoteService } from '@/features/quotes/services/quoteService'
+import { openWhatsApp } from '../utils/whatsappHelper'
 
 interface LeadCardProps {
   lead: Lead
@@ -46,9 +47,18 @@ export function LeadCard({ lead, isDragging }: LeadCardProps) {
         <div className="text-xs text-gray-500 mt-0.5 truncate">🚐 {lead.vehiculo}{lead.talla ? ` — ${lead.talla}` : ''}</div>
       )}
 
-      {/* Phone */}
+      {/* Phone + WhatsApp */}
       {lead.telefono && (
-        <div className="text-xs text-blue-600 mt-0.5">📞 {lead.telefono}</div>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-xs text-blue-600">📞 {lead.telefono}</span>
+          <button
+            onClick={e => { e.stopPropagation(); openWhatsApp(lead.telefono!, `Hola ${lead.cliente}, le contactamos desde VanSpace Workshop.`) }}
+            className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition font-medium"
+            title="Contactar por WhatsApp"
+          >
+            💬 WA
+          </button>
+        </div>
       )}
 
       {/* Importe */}

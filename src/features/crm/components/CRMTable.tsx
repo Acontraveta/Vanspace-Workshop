@@ -4,6 +4,7 @@ import { getStatusConfig, formatCurrency, formatDate } from '../utils/crmHelpers
 import { useCRMStore } from '../store/crmStore'
 import { ALL_STATUSES } from '../utils/crmHelpers'
 import { QuoteService } from '@/features/quotes/services/quoteService'
+import { openWhatsApp } from '../utils/whatsappHelper'
 
 interface CRMTableProps {
   leads: Lead[]
@@ -203,6 +204,15 @@ export function CRMTable({ leads, isLoading }: CRMTableProps) {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-center gap-1">
+                        {lead.telefono && (
+                          <button
+                            onClick={() => openWhatsApp(lead.telefono!, `Hola ${lead.cliente}, le contactamos desde VanSpace Workshop.`)}
+                            className="p-1.5 text-green-600 hover:bg-green-100 rounded transition"
+                            title="WhatsApp"
+                          >
+                            💬
+                          </button>
+                        )}
                         <button
                           onClick={() => openForm(lead)}
                           className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition"

@@ -7,6 +7,7 @@ import { QuoteService } from '@/features/quotes/services/quoteService'
 import { LeadProductionPanel } from './LeadProductionPanel'
 import { LeadDocuments } from './LeadDocuments'
 import ScheduleReceptionModal from './ScheduleReceptionModal'
+import { openWhatsApp } from '../utils/whatsappHelper'
 
 interface LeadFormProps {
   lead?: Lead | null    // If provided → edit mode; else → create mode
@@ -116,12 +117,24 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
                   />
                 </Field>
                 <Field label="Teléfono">
-                  <input
-                    value={form.telefono ?? ''}
-                    onChange={e => set('telefono', e.target.value)}
-                    className={inputCls}
-                    placeholder="+34 600 000 000"
-                  />
+                  <div className="flex gap-1.5">
+                    <input
+                      value={form.telefono ?? ''}
+                      onChange={e => set('telefono', e.target.value)}
+                      className={inputCls}
+                      placeholder="+34 600 000 000"
+                    />
+                    {form.telefono && (
+                      <button
+                        type="button"
+                        onClick={() => openWhatsApp(form.telefono!, `Hola ${form.cliente}, le contactamos desde VanSpace Workshop.`)}
+                        className="shrink-0 px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition text-sm font-medium"
+                        title="Contactar por WhatsApp"
+                      >
+                        💬
+                      </button>
+                    )}
+                  </div>
                 </Field>
                 <Field label="Email">
                   <input
