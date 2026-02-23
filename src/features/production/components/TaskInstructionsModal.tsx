@@ -30,10 +30,13 @@ export default function TaskInstructionsModal({
   const [expandedBlueprint, setExpandedBlueprint] = useState<string | null>(null)
   const [loadingFiles, setLoadingFiles] = useState(true)
 
-  const isFurnitureBlock = (task as any).task_block_id === 'MUEBLES_GROUP'
+  const isFurnitureBlock = (task as any).task_block_id === 'MUEBLES_GROUP' ||
+    (task as any).catalog_sku === 'MUEBLES_GROUP'
   const isCuttingTask = isFurnitureBlock && /cort|despiece/i.test(task.task_name)
   const isAssemblyTask = isFurnitureBlock && /ensambl/i.test(task.task_name)
-  const taskBlockOrder = (task as any).block_order as number | undefined
+  const taskBlockOrder = typeof (task as any).block_order === 'number'
+    ? (task as any).block_order as number
+    : undefined
 
   useEffect(() => {
     const loadFiles = async () => {
@@ -50,26 +53,49 @@ export default function TaskInstructionsModal({
       // OR any task that has a project with furniture work orders
       if (task.project_id) {
         try {
-          console.log('📐 TaskInstructions: loading blueprints for', task.task_name, 'project:', task.project_id)
+          console.log('📐 TaskInstructions: loading blueprints for', task.task_name,
+            'project:', task.project_id,
+            'isFurnitureBlock:', isFurnitureBlock,
+            'isCutting:', isCuttingTask,
+            'isAssembly:', isAssemblyTask,
+            'blockOrder:', taskBlockOrder,
+            'task_block_id:', (task as any).task_block_id,
+            'catalog_sku:', (task as any).catalog_sku)
+
           const { FurnitureWorkOrderService, FurnitureDesignService } =
             await import('@/features/design/services/furnitureDesignService')
           const wo = await FurnitureWorkOrderService.getByProject(task.project_id)
-          console.log('📐 WO encontrada:', wo?.id, 'cutlist_svg:', !!wo?.cutlist_svg)
-          if (!wo) { setLoadingFiles(false); return }
+
+          if (!wo) {
+            console.log('📐 No WO found for project:', task.project_id)
+            setLoadingFiles(false)
+            return
+          }
+
+          console.log('📐 WO encontrada:', wo.id,
+            'cutlist_svg:', !!wo.cutlist_svg, wo.cutlist_svg ? `(${wo.cutlist_svg.length} bytes)` : '',
+            'board_cutlist_svgs:', Array.isArray((wo as any).board_cutlist_svgs),
+            (wo as any).board_cutlist_svgs ? `(${((wo as any).board_cutlist_svgs as any[]).length} entries)` : '(none)')
 
           const bps: BlueprintInfo[] = []
           const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
-          console.log('📐 Diseños cargados:', designs.length, 'con plano:', designs.filter(d => d.blueprint_svg).length)
+          console.log('📐 Diseños cargados:', designs.length,
+            'con plano:', designs.filter(d => d.blueprint_svg).length,
+            'nombres:', designs.map(d => d.quote_item_name))
 
           if (isCuttingTask) {
             // Cutting task → show the specific board's cut-list SVG
             const boardSvgs = (wo as any).board_cutlist_svgs as string[] | undefined
             const boardIdx = taskBlockOrder ?? 0
+            console.log('📐 Buscando cutlist para boardIdx:', boardIdx,
+              'boardSvgs disponibles:', boardSvgs?.length ?? 0)
             if (boardSvgs && boardSvgs[boardIdx]) {
               bps.push({ itemName: task.task_name, svg: boardSvgs[boardIdx], type: 'cutlist' })
             } else if (wo.cutlist_svg) {
               // Fallback: show the combined cutlist
               bps.push({ itemName: 'Despiece total', svg: wo.cutlist_svg, type: 'cutlist' })
+            } else {
+              console.warn('📐 Cutting task sin SVG: no board_cutlist_svgs ni cutlist_svg en WO')
             }
           } else if (isAssemblyTask && task.product_name) {
             // Assembly task → show the specific item's blueprint
@@ -82,7 +108,8 @@ export default function TaskInstructionsModal({
             if (match?.blueprint_svg) {
               bps.push({ itemName: match.quote_item_name, svg: match.blueprint_svg, type: 'assembly' })
             } else {
-              console.warn('📐 No se encontró plano para:', task.product_name, 'diseños:', designs.map(d => d.quote_item_name))
+              console.warn('📐 No se encontró plano para:', task.product_name,
+                'diseños:', designs.map(d => ({ name: d.quote_item_name, hasBP: !!d.blueprint_svg })))
               // Fallback: show all blueprints if specific match fails
               for (const d of designs) {
                 if (d.blueprint_svg) {
@@ -112,7 +139,7 @@ export default function TaskInstructionsModal({
             }
           }
 
-          console.log('📐 Planos encontrados:', bps.length, bps.map(b => b.itemName))
+          console.log('📐 Planos encontrados:', bps.length, bps.map(b => `${b.itemName} (${b.type}, ${b.svg.length}b)`))
           setBlueprints(bps)
         } catch (err) {
           console.error('📐 Error cargando planos:', err)

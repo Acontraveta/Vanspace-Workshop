@@ -23,7 +23,19 @@ export class MaterialCatalogService {
         .order('name')
 
       if (error) throw error
-      this.cache = (data ?? []) as CatalogMaterial[]
+      const rows = (data ?? []) as CatalogMaterial[]
+      // If the DB table is empty, fall back to defaults so the designer
+      // always has materials available.
+      if (rows.length === 0) {
+        console.warn('[MaterialCatalog] Tabla vacía — usando catálogo por defecto')
+        this.cache = DEFAULT_CATALOG_MATERIALS
+      } else {
+        // Merge: Supabase rows first, then any defaults whose id is not
+        // already present (handles mixed-ID situations).
+        const ids = new Set(rows.map(r => r.id))
+        const extras = DEFAULT_CATALOG_MATERIALS.filter(d => !ids.has(d.id))
+        this.cache = [...rows, ...extras]
+      }
       return this.cache
     } catch {
       // Table might not exist yet — fall back to defaults

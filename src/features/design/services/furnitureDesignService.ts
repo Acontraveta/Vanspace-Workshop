@@ -70,7 +70,14 @@ export class FurnitureWorkOrderService {
       if (error) throw error
       return data as FurnitureWorkOrder | null
     } catch (err: any) {
-      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll().find(w => w.project_id === projectId) ?? null
+      if (isTableMissing(err)) {
+        const all = FurnitureWorkOrderService._lsGetAll()
+        const found = all.find(w => w.project_id === projectId)
+        console.log('🔍 getByProject localStorage:', all.length, 'WOs,', found ? `found ${found.id}` : 'NOT FOUND',
+          'searching for project_id:', projectId,
+          found ? `cutlist_svg:${!!found.cutlist_svg} board_svgs:${!!((found as any).board_cutlist_svgs)}` : '')
+        return found ?? null
+      }
       throw err
     }
   }
@@ -176,16 +183,25 @@ export class FurnitureWorkOrderService {
       if (error) throw error
     } catch (err: any) {
       if (isTableMissing(err)) {
-        const all = FurnitureWorkOrderService._lsGetAll()
-        const idx = all.findIndex(w => w.id === id)
-        if (idx >= 0) {
-          all[idx] = {
-            ...all[idx],
-            cutlist_svg: cutlistSvg,
-            ...(boardCutlistSvgs ? { board_cutlist_svgs: boardCutlistSvgs } : {}),
-            updated_at: new Date().toISOString(),
+        try {
+          const all = FurnitureWorkOrderService._lsGetAll()
+          const idx = all.findIndex(w => w.id === id)
+          if (idx >= 0) {
+            all[idx] = {
+              ...all[idx],
+              cutlist_svg: cutlistSvg,
+              ...(boardCutlistSvgs ? { board_cutlist_svgs: boardCutlistSvgs } : {}),
+              updated_at: new Date().toISOString(),
+            }
+            const json = JSON.stringify(all)
+            console.log('💾 updateCutlistSvg → localStorage:', (json.length / 1024).toFixed(0), 'KB,',
+              boardCutlistSvgs?.length ?? 0, 'board SVGs')
+            localStorage.setItem(LS_WO_KEY, json)
+          } else {
+            console.warn('⚠️ updateCutlistSvg: WO not found in localStorage for id:', id)
           }
-          localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
+        } catch (lsErr) {
+          console.error('❌ updateCutlistSvg: localStorage write failed (quota?):', lsErr)
         }
         return
       }
@@ -411,7 +427,12 @@ export class FurnitureDesignService {
       if (error) throw error
       return data as FurnitureDesign | null
     } catch (err: any) {
-      if (isTableMissing(err)) return null
+      if (isTableMissing(err)) {
+        // Fallback: search localStorage
+        return lsGetAll().find(d =>
+          d.work_order_id === workOrderId && d.quote_item_name === quoteItemName
+        ) ?? null
+      }
       throw err
     }
   }
@@ -443,7 +464,12 @@ export class FurnitureDesignService {
       if (error) throw error
       return (data ?? []) as FurnitureDesign[]
     } catch (err: any) {
-      if (isTableMissing(err)) return lsGetAll().filter(d => d.work_order_id === workOrderId)
+      if (isTableMissing(err)) {
+        const results = lsGetAll().filter(d => d.work_order_id === workOrderId)
+        console.log('🔍 getByWorkOrder localStorage:', results.length, 'designs for WO:', workOrderId,
+          results.map(d => `${d.quote_item_name} bp:${!!d.blueprint_svg}`))
+        return results
+      }
       throw err
     }
   }
@@ -555,11 +581,18 @@ export class FurnitureDesignService {
       if (error) throw error
     } catch (err: any) {
       if (isTableMissing(err)) {
-        const all = lsGetAll()
-        const idx = all.findIndex(d => d.id === designId)
-        if (idx >= 0) {
-          all[idx] = { ...all[idx], blueprint_svg: blueprintSvg, updated_at: new Date().toISOString() }
-          lsSave(all)
+        try {
+          const all = lsGetAll()
+          const idx = all.findIndex(d => d.id === designId)
+          if (idx >= 0) {
+            all[idx] = { ...all[idx], blueprint_svg: blueprintSvg, updated_at: new Date().toISOString() }
+            console.log('💾 updateBlueprint → localStorage:', designId, blueprintSvg.length, 'bytes')
+            lsSave(all)
+          } else {
+            console.warn('⚠️ updateBlueprint: Design not found in localStorage for id:', designId)
+          }
+        } catch (lsErr) {
+          console.error('❌ updateBlueprint: localStorage write failed (quota?):', lsErr)
         }
         return
       }

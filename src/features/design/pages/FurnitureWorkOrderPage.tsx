@@ -95,7 +95,7 @@ export default function FurnitureWorkOrderPage() {
             type: p.type,
             id:   p.id,
             materialId:   matId,
-            materialName: matId ? matNameMap.get(matId) : undefined,
+            materialName: matId ? matNameMap.get(matId) : d.module.name ?? 'Tablero',
           }
         })
     )
@@ -208,22 +208,36 @@ export default function FurnitureWorkOrderPage() {
         const latestDesigns = await FurnitureDesignService.getByWorkOrder(wo.id)
         console.log('📦 Diseños cargados:', latestDesigns.length)
 
+        // Build material name map: catalog + defaults to cover any ID format
         const matNameMap = new Map(catalogMaterials.map(m => [m.id, m.name]))
+        // Also index defaults so legacy 'mat-chopo-16'-style IDs resolve
+        const { DEFAULT_CATALOG_MATERIALS } = await import('../constants/furniture.constants')
+        for (const dm of DEFAULT_CATALOG_MATERIALS) {
+          if (!matNameMap.has(dm.id)) matNameMap.set(dm.id, dm.name)
+        }
+        console.log('🗂️ matNameMap tamaño:', matNameMap.size, 'catalogMaterials:', catalogMaterials.length)
+
         const allPieces: Piece[] = latestDesigns.flatMap(d =>
           (d.pieces as InteractivePiece[])
             .filter(p => p.type !== 'trasera')
             .map(p => {
               const matId = p.materialId ?? d.module.catalogMaterialId
+              const matName = matId ? matNameMap.get(matId) : undefined
               const [d1, d2] = [p.w, p.h, p.d].sort((a, b) => b - a)
+              if (!matName) {
+                console.warn('⚠️ materialName no encontrado para pieza:', p.name,
+                  'materialId:', p.materialId, 'module.catalogMaterialId:', d.module.catalogMaterialId,
+                  'matId:', matId)
+              }
               return {
                 ref: `${d.quote_item_name} · ${p.name}`,
                 w: d1, h: d2, type: p.type, id: p.id,
                 materialId: matId,
-                materialName: matId ? matNameMap.get(matId) : undefined,
+                materialName: matName ?? d.module.name ?? 'Tablero',
               }
             })
         )
-        console.log('🧩 Piezas totales:', allPieces.length)
+        console.log('🧩 Piezas totales:', allPieces.length, 'con material:', allPieces.filter(p => p.materialName && p.materialName !== 'Tablero').length)
 
         const optimized = optimizeCutList(allPieces)
         const boardInfos = enumerateBoards(optimized)
