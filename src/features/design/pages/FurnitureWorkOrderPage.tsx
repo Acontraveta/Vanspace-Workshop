@@ -171,29 +171,42 @@ export default function FurnitureWorkOrderPage() {
   const approveItem = async (itemName: string) => {
     if (!wo) return
     try {
-      // Generate and store the blueprint SVG for this design
+      // 1. Generate and store the blueprint SVG for this design
       const design = designByItem[itemName]
       if (design) {
-        const blueprintSvg = generateBlueprintSVG({
-          pieces: design.pieces as InteractivePiece[],
-          module: design.module,
-          itemName,
-          projectInfo: `${wo.quote_number} · ${wo.client_name}`,
-          catalogMaterials,
-        })
-        await FurnitureDesignService.updateBlueprint(design.id, blueprintSvg)
+        try {
+          console.log('📐 Generando plano técnico para:', itemName)
+          const blueprintSvg = generateBlueprintSVG({
+            pieces: design.pieces as InteractivePiece[],
+            module: design.module,
+            itemName,
+            projectInfo: `${wo.quote_number} · ${wo.client_name}`,
+            catalogMaterials,
+          })
+          console.log('📐 Plano generado:', blueprintSvg.length, 'bytes')
+          await FurnitureDesignService.updateBlueprint(design.id, blueprintSvg)
+          console.log('💾 Plano guardado para:', design.id)
+        } catch (bpErr) {
+          console.error('Error generando/guardando plano técnico:', bpErr)
+          // Don't block approval if blueprint generation fails
+        }
       }
 
+      // 2. Update WO item status → 'approved'
       const newItems = wo.items.map(i =>
         i.quoteItemName === itemName ? { ...i, designStatus: 'approved' as const } : i
       )
       await FurnitureWorkOrderService.updateItems(wo.id, newItems)
 
-      // ── When ALL items are approved → generate cutlist + rebuild operator tasks
+      // 3. When ALL items are approved → generate cutlist + rebuild operator tasks
       const allNowApproved = newItems.every(i => i.designStatus === 'approved')
       if (allNowApproved) {
+        console.log('✅ Todos los diseños aprobados — generando despiece y tareas...')
+
         // Fetch latest designs to compute combined cut list
         const latestDesigns = await FurnitureDesignService.getByWorkOrder(wo.id)
+        console.log('📦 Diseños cargados:', latestDesigns.length)
+
         const matNameMap = new Map(catalogMaterials.map(m => [m.id, m.name]))
         const allPieces: Piece[] = latestDesigns.flatMap(d =>
           (d.pieces as InteractivePiece[])
@@ -209,15 +222,24 @@ export default function FurnitureWorkOrderPage() {
               }
             })
         )
+        console.log('🧩 Piezas totales:', allPieces.length)
+
         const optimized = optimizeCutList(allPieces)
         const boards = boardCount(optimized)
+        console.log('📋 Tableros optimizados:', boards, 'piezas colocadas:', optimized.length)
 
         // Generate and store combined cutlist SVG
-        const cutlistSvg = generateCutlistSVG(
-          optimized,
-          `${wo.quote_number} · ${wo.client_name}`
-        )
-        await FurnitureWorkOrderService.updateCutlistSvg(wo.id, cutlistSvg)
+        try {
+          const cutlistSvg = generateCutlistSVG(
+            optimized,
+            `${wo.quote_number} · ${wo.client_name}`
+          )
+          console.log('📋 Cutlist SVG generado:', cutlistSvg.length, 'bytes')
+          await FurnitureWorkOrderService.updateCutlistSvg(wo.id, cutlistSvg)
+          console.log('💾 Cutlist guardado en WO:', wo.id)
+        } catch (cutErr) {
+          console.error('Error generando/guardando cutlist SVG:', cutErr)
+        }
 
         // Rebuild operator tasks: 1 cutting + N assembly
         const totalPieces = allPieces.length
@@ -236,6 +258,7 @@ export default function FurnitureWorkOrderPage() {
             assemblyItems,
             cuttingHours,
           )
+          console.log('🔨 Tareas de producción reconstruidas')
         } catch (e) {
           console.warn('rebuildFurnitureTasks failed (non-critical):', e)
         }
@@ -250,6 +273,7 @@ export default function FurnitureWorkOrderPage() {
 
       await refresh()
     } catch (err: any) {
+      console.error('Error en approveItem:', err)
       toast.error('Error aprobando diseño: ' + err.message)
     }
   }

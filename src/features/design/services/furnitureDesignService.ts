@@ -255,12 +255,21 @@ export class FurnitureWorkOrderService {
         if (asmErr) throw asmErr
       }
     } catch (err: any) {
-      if (isTableMissing(err)) {
-        // localStorage fallback: store task list on the WO for display
-        console.warn('rebuildFurnitureTasks: Supabase not available, tasks stored locally')
-        return
-      }
-      throw err
+      console.warn('rebuildFurnitureTasks: Supabase error, saving tasks to localStorage', err)
+      // localStorage fallback: store the rebuilt task names on the WO so
+      // TaskInstructionsModal can still find them
+      try {
+        const all = FurnitureWorkOrderService._lsGetAll()
+        const idx = all.findIndex(w => w.project_id === projectId)
+        if (idx >= 0) {
+          (all[idx] as any)._rebuilt_tasks = [
+            { task_name: 'Cortar despiece total', product_name: `Despiece (${items.length} muebles)`, type: 'cutting' },
+            ...items.map(i => ({ task_name: `Ensamblar: ${i.quoteItemName}`, product_name: i.quoteItemName, type: 'assembly' })),
+          ]
+          localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
+        }
+      } catch { /* best-effort */ }
+      return
     }
   }
 
@@ -283,8 +292,22 @@ function lsSave(designs: FurnitureDesign[]) {
 }
 
 function isTableMissing(err: any): boolean {
-  const msg = String(err?.message ?? err ?? '')
-  return msg.includes('schema cache') || msg.includes('relation') || msg.includes('does not exist')
+  const msg = String(err?.message ?? err ?? '').toLowerCase()
+  // Catch any Supabase / PostgREST error that indicates the table or column
+  // isn't available: PGRST204 (column), PGRST205 (table), schema cache issues,
+  // Postgres relation errors, RLS errors on non-existent objects, etc.
+  return (
+    msg.includes('schema cache') ||
+    msg.includes('relation') ||
+    msg.includes('does not exist') ||
+    msg.includes('pgrst') ||
+    msg.includes('could not find') ||
+    msg.includes('column') ||
+    msg.includes('404') ||
+    msg.includes('not found') ||
+    msg.includes('undefined') ||
+    msg.includes('permission denied')
+  )
 }
 
 // ─── Furniture Designs (individual piece designs) ─────────────────────────────

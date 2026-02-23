@@ -37,21 +37,28 @@ export default function TaskInstructionsModal({
   useEffect(() => {
     const loadFiles = async () => {
       // Load attached design files
-      const blockId = (task as any).task_block_id || task.product_name
-      if (blockId) {
-        const files = await DesignFilesService.getBlockFiles(blockId)
-        setDesignFiles(files)
-      }
+      try {
+        const blockId = (task as any).task_block_id || task.product_name
+        if (blockId) {
+          const files = await DesignFilesService.getBlockFiles(blockId)
+          setDesignFiles(files)
+        }
+      } catch { /* non-critical */ }
 
       // Load furniture blueprints if this is a MUEBLES_GROUP task
-      if (isFurnitureBlock && task.project_id) {
+      // OR any task that has a project with furniture work orders
+      if (task.project_id) {
         try {
+          console.log('📐 TaskInstructions: loading blueprints for', task.task_name, 'project:', task.project_id)
           const { FurnitureWorkOrderService, FurnitureDesignService } =
             await import('@/features/design/services/furnitureDesignService')
           const wo = await FurnitureWorkOrderService.getByProject(task.project_id)
+          console.log('📐 WO encontrada:', wo?.id, 'cutlist_svg:', !!wo?.cutlist_svg)
           if (!wo) { setLoadingFiles(false); return }
 
           const bps: BlueprintInfo[] = []
+          const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
+          console.log('📐 Diseños cargados:', designs.length, 'con plano:', designs.filter(d => d.blueprint_svg).length)
 
           if (isCuttingTask) {
             // Cutting task → show the combined cut-list SVG
@@ -60,20 +67,38 @@ export default function TaskInstructionsModal({
             }
           } else if (isAssemblyTask && task.product_name) {
             // Assembly task → show the specific item's blueprint
-            const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
             const match = designs.find(d =>
               d.quote_item_name === task.product_name ||
-              task.task_name.includes(d.quote_item_name)
+              task.task_name.includes(d.quote_item_name) ||
+              d.quote_item_name.includes(task.product_name) ||
+              task.product_name.includes(d.quote_item_name)
             )
             if (match?.blueprint_svg) {
               bps.push({ itemName: match.quote_item_name, svg: match.blueprint_svg, type: 'assembly' })
+            } else {
+              console.warn('📐 No se encontró plano para:', task.product_name, 'diseños:', designs.map(d => d.quote_item_name))
+              // Fallback: show all blueprints if specific match fails
+              for (const d of designs) {
+                if (d.blueprint_svg) {
+                  bps.push({ itemName: d.quote_item_name, svg: d.blueprint_svg, type: 'assembly' })
+                }
+              }
             }
-          } else {
+          } else if (isFurnitureBlock) {
             // Unknown furniture task → show all available blueprints
             if (wo.cutlist_svg) {
               bps.push({ itemName: 'Despiece total', svg: wo.cutlist_svg, type: 'cutlist' })
             }
-            const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
+            for (const d of designs) {
+              if (d.blueprint_svg) {
+                bps.push({ itemName: d.quote_item_name, svg: d.blueprint_svg, type: 'assembly' })
+              }
+            }
+          } else if (designs.some(d => d.blueprint_svg) || wo.cutlist_svg) {
+            // Non-MUEBLES_GROUP task but project has furniture data → show everything
+            if (wo.cutlist_svg) {
+              bps.push({ itemName: 'Despiece total', svg: wo.cutlist_svg, type: 'cutlist' })
+            }
             for (const d of designs) {
               if (d.blueprint_svg) {
                 bps.push({ itemName: d.quote_item_name, svg: d.blueprint_svg, type: 'assembly' })
@@ -81,24 +106,11 @@ export default function TaskInstructionsModal({
             }
           }
 
+          console.log('📐 Planos encontrados:', bps.length, bps.map(b => b.itemName))
           setBlueprints(bps)
-        } catch {
-          // non-critical
+        } catch (err) {
+          console.error('📐 Error cargando planos:', err)
         }
-      } else if (task.requires_design && task.project_id) {
-        // Non-furniture task that requires design → load all blueprints as before
-        try {
-          const { FurnitureWorkOrderService, FurnitureDesignService } =
-            await import('@/features/design/services/furnitureDesignService')
-          const wo = await FurnitureWorkOrderService.getByProject(task.project_id)
-          if (wo) {
-            const designs = await FurnitureDesignService.getByWorkOrder(wo.id)
-            const bps: BlueprintInfo[] = designs
-              .filter(d => d.blueprint_svg)
-              .map(d => ({ itemName: d.quote_item_name, svg: d.blueprint_svg!, type: 'assembly' as const }))
-            setBlueprints(bps)
-          }
-        } catch { /* non-critical */ }
       }
 
       setLoadingFiles(false)
