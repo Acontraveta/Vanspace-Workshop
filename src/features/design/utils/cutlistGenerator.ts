@@ -127,49 +127,64 @@ export function generateCutlistSVG(placements: PlacedPiece[], projectInfo?: stri
       parts.push(`<text x="${bx - 4}" y="${by + BOARD_SVG_H / 2}" text-anchor="end" font-family="${FONT}" font-size="8" fill="#94a3b8" transform="rotate(-90 ${bx - 4} ${by + BOARD_SVG_H / 2})">${BOARD_HEIGHT} mm</text>`)
 
       // ─── Pieces on this board ───────────────────────────────────────────
-      for (const p of boardPieces) {
+      for (let j = 0; j < boardPieces.length; j++) {
+        const p = boardPieces[j]
         const px = bx + p.x * SCALE
         const py = by + p.y * SCALE
         const pw = p.w * SCALE
         const ph = p.h * SCALE
+        const clipId = `c${bi}-${j}`
 
         // Piece rect
         const fill = p.rotated ? 'rgba(139,92,246,0.10)' : 'rgba(59,130,246,0.08)'
         const stroke = p.rotated ? '#8b5cf6' : '#2563eb'
         parts.push(`<rect x="${px}" y="${py}" width="${pw}" height="${ph}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`)
 
-        // ─ Ref name (centred) ─────────────────────────────────────────────
-        if (pw > 30 && ph > 14) {
-          const maxChars = Math.floor(pw / 5)
-          const label = p.ref.length > maxChars ? p.ref.slice(0, maxChars - 1) + '…' : p.ref
-          const fontSize = Math.min(8, Math.max(5, pw / 14))
-          const textFill = p.rotated ? '#6d28d9' : '#1e3a8a'
-          parts.push(`<text x="${px + pw / 2}" y="${py + ph / 2}" text-anchor="middle" dominant-baseline="middle" font-family="${FONT}" font-size="${fontSize.toFixed(1)}" font-weight="700" fill="${textFill}">${esc(label)}</text>`)
-        }
+        // Clip so no text overflows the piece
+        parts.push(`<clipPath id="${clipId}"><rect x="${px}" y="${py}" width="${pw}" height="${ph}"/></clipPath>`)
+        parts.push(`<g clip-path="url(#${clipId})">`)
 
-        // ─ Width dimension (top edge, horizontal) ─────────────────────────
+        // ─ Dimensions ─────────────────────────────────────────────────────
         const dimW = Math.round(p.w)
         const dimH = Math.round(p.h)
         const dimColor = p.rotated ? '#7c3aed' : '#2563eb'
         const dimFontSize = Math.min(7, Math.max(4.5, pw / 16))
 
+        // Space reserved by dimension labels
+        const topReserve  = (pw > 22) ? dimFontSize + DIM_PAD * 2 : 0
+        const rightReserve = (ph > 22) ? dimFontSize * 1.4 + DIM_PAD * 2 : 0
+
+        // Width dimension (top edge, horizontal)
         if (pw > 22) {
-          // Width along top edge
           parts.push(`<text x="${px + pw / 2}" y="${py + DIM_PAD + dimFontSize}" text-anchor="middle" font-family="${FONT}" font-size="${dimFontSize.toFixed(1)}" font-weight="600" fill="${dimColor}">${dimW}</text>`)
         }
 
-        // ─ Height dimension (right edge, vertical) ────────────────────────
+        // Height dimension (right edge, vertical)
         if (ph > 22) {
-          // Height along right edge (rotated text)
           const rx = px + pw - DIM_PAD - dimFontSize * 0.4
           const ry = py + ph / 2
           parts.push(`<text x="${rx}" y="${ry}" text-anchor="middle" dominant-baseline="middle" font-family="${FONT}" font-size="${dimFontSize.toFixed(1)}" font-weight="600" fill="${dimColor}" transform="rotate(-90 ${rx} ${ry})">${dimH}</text>`)
+        }
+
+        // ─ Ref name (centred in remaining space) ──────────────────────────
+        const availW = pw - rightReserve
+        const availH = ph - topReserve
+        if (availW > 16 && availH > 8) {
+          const maxChars = Math.max(2, Math.floor(availW / 5))
+          const label = p.ref.length > maxChars ? p.ref.slice(0, maxChars - 1) + '…' : p.ref
+          const fontSize = Math.min(7, Math.max(4, availW / 16))
+          const textFill = p.rotated ? '#6d28d9' : '#1e3a8a'
+          const cx = px + availW / 2
+          const cy = py + topReserve + availH / 2
+          parts.push(`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-family="${FONT}" font-size="${fontSize.toFixed(1)}" font-weight="700" fill="${textFill}">${esc(label)}</text>`)
         }
 
         // Rotation indicator
         if (p.rotated && pw > 24 && ph > 24) {
           parts.push(`<text x="${px + pw - 6}" y="${py + ph - 4}" font-family="${FONT}" font-size="7" fill="#8b5cf6">↻</text>`)
         }
+
+        parts.push(`</g>`)
       }
 
       curY += BOARD_SVG_H + BOARD_GAP

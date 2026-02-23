@@ -110,6 +110,13 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
                 <div className="relative border-4 border-slate-300 rounded-lg bg-slate-50 overflow-hidden"
                   style={{ width: containerW, height: containerH }}>
                   <svg width="100%" height="100%" viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`}>
+                    <defs>
+                      {boardPieces.map((p, i) => (
+                        <clipPath key={`clip-${bi}-${i}`} id={`clip-${bi}-${i}`}>
+                          <rect x={p.x} y={p.y} width={p.w} height={p.h} />
+                        </clipPath>
+                      ))}
+                    </defs>
                     {boardPieces.map((p, i) => {
                       const dimW = Math.round(p.w)
                       const dimH = Math.round(p.h)
@@ -117,19 +124,19 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
                       const dimFill = p.rotated ? '#7c3aed' : '#2563eb'
                       const dimPad = 8
                       const dimFontSize = Math.min(20, Math.max(12, p.w / 12))
+                      // Space reserved by dimension labels
+                      const topReserve = (p.w > 60) ? dimFontSize + dimPad * 2 : 0
+                      const rightReserve = (p.h > 60) ? dimFontSize * 1.4 + dimPad * 2 : 0
+                      const availW = p.w - rightReserve
+                      const availH = p.h - topReserve
+                      const maxChars = Math.max(2, Math.floor(availW / 30))
+                      const label = p.ref.length > maxChars ? p.ref.slice(0, maxChars - 1) + '…' : p.ref
+                      const refFontSize = Math.min(20, Math.max(12, availW / 14))
                       return (
-                      <g key={i}>
+                      <g key={i} clipPath={`url(#clip-${bi}-${i})`}>
                         <rect x={p.x} y={p.y} width={p.w} height={p.h}
                           fill={p.rotated ? 'rgba(139,92,246,.12)' : 'rgba(59,130,246,.1)'}
                           stroke={p.rotated ? '#8b5cf6' : '#2563eb'} strokeWidth="3" />
-                        {/* Ref name (centred) */}
-                        {p.w > 100 && p.h > 40 && (
-                          <text x={p.x + p.w / 2} y={p.y + p.h / 2} fontSize="20"
-                            textAnchor="middle" dominantBaseline="middle"
-                            style={{ fill: textFill, fontWeight: 700 }}>
-                            {p.ref}
-                          </text>
-                        )}
                         {/* Width dimension (top edge, horizontal) */}
                         {p.w > 60 && (
                           <text x={p.x + p.w / 2} y={p.y + dimPad + dimFontSize}
@@ -145,6 +152,14 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
                             transform={`rotate(-90 ${p.x + p.w - dimPad - dimFontSize * 0.4} ${p.y + p.h / 2})`}
                             style={{ fill: dimFill, fontWeight: 600 }}>
                             {dimH}
+                          </text>
+                        )}
+                        {/* Ref name (centred in available space, avoiding dims) */}
+                        {availW > 40 && availH > 20 && (
+                          <text x={p.x + availW / 2} y={p.y + topReserve + availH / 2}
+                            fontSize={refFontSize} textAnchor="middle" dominantBaseline="middle"
+                            style={{ fill: textFill, fontWeight: 700 }}>
+                            {label}
                           </text>
                         )}
                         {/* Rotation indicator */}
