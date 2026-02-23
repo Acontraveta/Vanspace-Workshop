@@ -110,27 +110,51 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
                 <div className="relative border-4 border-slate-300 rounded-lg bg-slate-50 overflow-hidden"
                   style={{ width: containerW, height: containerH }}>
                   <svg width="100%" height="100%" viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`}>
-                    {boardPieces.map((p, i) => (
+                    {boardPieces.map((p, i) => {
+                      const dimW = Math.round(p.w)
+                      const dimH = Math.round(p.h)
+                      const textFill = p.rotated ? '#6d28d9' : '#1e3a8a'
+                      const dimFill = p.rotated ? '#7c3aed' : '#2563eb'
+                      const dimPad = 8
+                      const dimFontSize = Math.min(20, Math.max(12, p.w / 12))
+                      return (
                       <g key={i}>
                         <rect x={p.x} y={p.y} width={p.w} height={p.h}
                           fill={p.rotated ? 'rgba(139,92,246,.12)' : 'rgba(59,130,246,.1)'}
-                          stroke={p.rotated ? '#8b5cf6' : '#3b82f6'} strokeWidth="2" />
-                        {p.w > 120 && p.h > 50 && (
-                          <text x={p.x + p.w / 2} y={p.y + p.h / 2} fontSize="22"
+                          stroke={p.rotated ? '#8b5cf6' : '#2563eb'} strokeWidth="3" />
+                        {/* Ref name (centred) */}
+                        {p.w > 100 && p.h > 40 && (
+                          <text x={p.x + p.w / 2} y={p.y + p.h / 2} fontSize="20"
                             textAnchor="middle" dominantBaseline="middle"
-                            style={{ fill: p.rotated ? '#6d28d9' : '#1d4ed8', fontWeight: 600 }}>
+                            style={{ fill: textFill, fontWeight: 700 }}>
                             {p.ref}
                           </text>
                         )}
-                        {p.w > 120 && p.h > 80 && (
-                          <text x={p.x + p.w / 2} y={p.y + p.h / 2 + 28} fontSize="18"
-                            textAnchor="middle" dominantBaseline="middle"
-                            style={{ fill: p.rotated ? '#8b5cf6' : '#3b82f6' }}>
-                            {p.w}×{p.h}{p.rotated ? ' ↻' : ''}
+                        {/* Width dimension (top edge, horizontal) */}
+                        {p.w > 60 && (
+                          <text x={p.x + p.w / 2} y={p.y + dimPad + dimFontSize}
+                            fontSize={dimFontSize} textAnchor="middle"
+                            style={{ fill: dimFill, fontWeight: 600 }}>
+                            {dimW}
                           </text>
                         )}
+                        {/* Height dimension (right edge, vertical rotated) */}
+                        {p.h > 60 && (
+                          <text x={p.x + p.w - dimPad - dimFontSize * 0.4} y={p.y + p.h / 2}
+                            fontSize={dimFontSize} textAnchor="middle" dominantBaseline="middle"
+                            transform={`rotate(-90 ${p.x + p.w - dimPad - dimFontSize * 0.4} ${p.y + p.h / 2})`}
+                            style={{ fill: dimFill, fontWeight: 600 }}>
+                            {dimH}
+                          </text>
+                        )}
+                        {/* Rotation indicator */}
+                        {p.rotated && p.w > 60 && p.h > 60 && (
+                          <text x={p.x + p.w - 20} y={p.y + p.h - 10} fontSize="18"
+                            style={{ fill: '#8b5cf6' }}>↻</text>
+                        )}
                       </g>
-                    ))}
+                      )
+                    })}
                   </svg>
                 </div>
               </div>

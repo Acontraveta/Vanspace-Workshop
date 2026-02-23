@@ -8,7 +8,6 @@ import { FurnitureOptimizerView } from './FurnitureOptimizerView'
 import { FurnitureStickersView } from './FurnitureStickersView'
 import { FurnitureDesign } from '../types/furniture.types'
 import { MaterialCatalogService } from '../services/materialCatalogService'
-import { processStockConsumption } from '@/features/production/services/stockConsumption'
 import toast from 'react-hot-toast'
 
 type Tab = 'diseno' | 'optimizado' | 'pegatinas'
@@ -485,22 +484,8 @@ export function FurniturePieceEditor({
     setSaving(true)
     try {
       await onSave(module, pieces, optimized)
-
-      // Only deduct stock when saving production pieces (work orders), not library designs
-      if (isProduction) {
-        const report = await processStockConsumption(pieces, module, catalogMaterials, projectInfo, optimized)
-        if (report.items.length > 0) {
-          const sheetsTotal = report.items.reduce((s, i) => s + i.sheetsNeeded, 0)
-          toast.success(`📦 ${sheetsTotal} tablero(s) descontados del stock`)
-        }
-        if (report.purchaseItemsCreated > 0) {
-          toast(`🛒 ${report.purchaseItemsCreated} material(es) añadidos a la lista de compra (stock mínimo)`, { icon: '⚠️' })
-        }
-
-        // Refresh catalog materials in case stock changed
-        MaterialCatalogService.invalidateCache()
-        MaterialCatalogService.getAll().then(setCatalogMaterials).catch(() => {})
-      }
+      // Stock deduction is handled at approval time (FurnitureWorkOrderPage.approveItem)
+      // when all designs are approved and the combined optimizer result is final
     } catch (err: any) {
       toast.error('Error guardando: ' + (err.message ?? err))
     } finally {

@@ -21,6 +21,7 @@ import { MaterialCatalogService } from '../services/materialCatalogService'
 import { optimizeCutList, boardCount } from '../utils/geometry'
 import { generateBlueprintSVG } from '../utils/blueprintGenerator'
 import { generateCutlistSVG } from '../utils/cutlistGenerator'
+import { processStockConsumption } from '@/features/production/services/stockConsumption'
 import toast from 'react-hot-toast'
 
 type PageView = 'list' | 'editor' | 'cutlist' | 'stickers' | 'pick-source' | 'blueprint'
@@ -261,6 +262,34 @@ export default function FurnitureWorkOrderPage() {
           console.log('🔨 Tareas de producción reconstruidas')
         } catch (e) {
           console.warn('rebuildFurnitureTasks failed (non-critical):', e)
+        }
+
+        // 4. Deduct board stock based on the optimized cut list
+        try {
+          console.log('📦 Descontando tableros del stock...')
+          const allDesignPieces = latestDesigns.flatMap(d => d.pieces as InteractivePiece[])
+          const firstModule = latestDesigns[0]?.module
+          if (firstModule) {
+            const report = await processStockConsumption(
+              allDesignPieces,
+              firstModule,
+              catalogMaterials,
+              `${wo.quote_number} · ${wo.client_name}`,
+              optimized,
+            )
+            if (report.items.length > 0) {
+              const sheetsTotal = report.items.reduce((s, i) => s + i.sheetsNeeded, 0)
+              console.log(`📦 ${sheetsTotal} tablero(s) descontados del stock`)
+            }
+            if (report.purchaseItemsCreated > 0) {
+              toast(`🛒 ${report.purchaseItemsCreated} material(es) añadidos a compras (stock mínimo)`, { icon: '⚠️' })
+            }
+            // Refresh catalog materials cache
+            MaterialCatalogService.invalidateCache()
+            MaterialCatalogService.getAll().then(setCatalogMaterials).catch(() => {})
+          }
+        } catch (stockErr) {
+          console.error('Error descontando stock:', stockErr)
         }
 
         toast.success(
