@@ -115,14 +115,21 @@ export default function TaskBoard({
 
       const rawBlocks = groupIntoBlocks(filteredTasks, projects)
 
-      // En vista del operario, ordenar bloques por fecha de entrega del proyecto (más próxima primero)
-      if (viewMode === 'my_tasks') {
-        rawBlocks.sort((a, b) => {
+      // Sort blocks: by project delivery date (nearest first), then by first task order_index
+      rawBlocks.sort((a, b) => {
+        // First: group by project (same project blocks together)
+        const projA = a.project?.id ?? ''
+        const projB = b.project?.id ?? ''
+        if (projA !== projB) {
           const dateA = a.project?.end_date ? new Date(a.project.end_date).getTime() : Infinity
           const dateB = b.project?.end_date ? new Date(b.project.end_date).getTime() : Infinity
           return dateA - dateB
-        })
-      }
+        }
+        // Within same project: sort by first task's order_index
+        const idxA = a.tasks[0]?.order_index ?? 0
+        const idxB = b.tasks[0]?.order_index ?? 0
+        return idxA - idxB
+      })
 
       setBlocks(rawBlocks)
     } catch {
@@ -194,12 +201,15 @@ export default function TaskBoard({
   const groupIntoBlocks = (tasks: ProductionTask[], projs: ProductionProject[]): TaskBlock[] => {
     const blockMap: Record<string, ProductionTask[]> = {}
     tasks.forEach(task => {
-      const key = (task as any).task_block_id || task.product_name || 'sin-producto'
+      // Key MUST include project_id to prevent cross-project mixing
+      const blockPart = (task as any).task_block_id || task.product_name || 'sin-producto'
+      const key = `${task.project_id}::${blockPart}`
       if (!blockMap[key]) blockMap[key] = []
       blockMap[key].push(task)
     })
 
-    return Object.entries(blockMap).map(([blockId, blockTasks]) => {
+    return Object.entries(blockMap).map(([compositeKey, blockTasks]) => {
+      const blockId = compositeKey.includes('::') ? compositeKey.split('::').slice(1).join('::') : compositeKey
       const sorted = [...blockTasks].sort((a, b) =>
         ((a as any).block_order ?? a.order_index ?? 0) -
         ((b as any).block_order ?? b.order_index ?? 0)

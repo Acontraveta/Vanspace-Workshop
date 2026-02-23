@@ -64,7 +64,21 @@ export default function TaskInstructionsModal({
 
           const { FurnitureWorkOrderService, FurnitureDesignService } =
             await import('@/features/design/services/furnitureDesignService')
-          const wo = await FurnitureWorkOrderService.getByProject(task.project_id)
+
+          // Try primary lookup by project_id
+          let wo = await FurnitureWorkOrderService.getByProject(task.project_id)
+
+          // If not found and this is a furniture task, try broader search
+          if (!wo && isFurnitureBlock) {
+            console.log('📐 WO no encontrada por project_id, buscando en todas las WOs...')
+            const allWos = await FurnitureWorkOrderService.getAll()
+            console.log('📐 Total WOs disponibles:', allWos.length,
+              allWos.map(w => `${w.id} proj:${w.project_id} svg:${!!w.cutlist_svg}`))
+            // Find by closest match — same project_id prefix or any WO with cutlist
+            wo = allWos.find(w => w.project_id === task.project_id)
+              ?? allWos.find(w => w.cutlist_svg && w.project_id?.startsWith(task.project_id?.substring(0, 8)))
+              ?? null
+          }
 
           if (!wo) {
             console.log('📐 No WO found for project:', task.project_id)
@@ -72,10 +86,12 @@ export default function TaskInstructionsModal({
             return
           }
 
+          const hasCutlistSvg = !!wo.cutlist_svg
+          const boardSvgs = (wo as any).board_cutlist_svgs as string[] | undefined
           console.log('📐 WO encontrada:', wo.id,
-            'cutlist_svg:', !!wo.cutlist_svg, wo.cutlist_svg ? `(${wo.cutlist_svg.length} bytes)` : '',
-            'board_cutlist_svgs:', Array.isArray((wo as any).board_cutlist_svgs),
-            (wo as any).board_cutlist_svgs ? `(${((wo as any).board_cutlist_svgs as any[]).length} entries)` : '(none)')
+            'cutlist_svg:', hasCutlistSvg, hasCutlistSvg ? `(${wo.cutlist_svg!.length} bytes)` : '',
+            'board_cutlist_svgs:', Array.isArray(boardSvgs),
+            boardSvgs ? `(${boardSvgs.length} entries)` : '(none)')
 
           const bps: BlueprintInfo[] = []
           const designs = await FurnitureDesignService.getByWorkOrder(wo.id)

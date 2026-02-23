@@ -61,6 +61,7 @@ export class FurnitureWorkOrderService {
   }
 
   static async getByProject(projectId: string): Promise<FurnitureWorkOrder | null> {
+    let supabaseWo: FurnitureWorkOrder | null = null
     try {
       const { data, error } = await supabase
         .from(WO_TABLE)
@@ -68,18 +69,39 @@ export class FurnitureWorkOrderService {
         .eq('project_id', projectId)
         .maybeSingle()
       if (error) throw error
-      return data as FurnitureWorkOrder | null
+      supabaseWo = data as FurnitureWorkOrder | null
     } catch (err: any) {
-      if (isTableMissing(err)) {
-        const all = FurnitureWorkOrderService._lsGetAll()
-        const found = all.find(w => w.project_id === projectId)
-        console.log('🔍 getByProject localStorage:', all.length, 'WOs,', found ? `found ${found.id}` : 'NOT FOUND',
-          'searching for project_id:', projectId,
-          found ? `cutlist_svg:${!!found.cutlist_svg} board_svgs:${!!((found as any).board_cutlist_svgs)}` : '')
-        return found ?? null
-      }
-      throw err
+      if (!isTableMissing(err)) throw err
     }
+
+    // Always check localStorage for SVG data that may not be in Supabase
+    // (cutlist_svg / board_cutlist_svgs columns might not exist in DB yet)
+    const lsAll = FurnitureWorkOrderService._lsGetAll()
+    const lsWo = lsAll.find(w => w.project_id === projectId) ?? null
+
+    if (supabaseWo && lsWo) {
+      // Merge: Supabase data + localStorage SVGs
+      const merged = {
+        ...supabaseWo,
+        cutlist_svg: supabaseWo.cutlist_svg || lsWo.cutlist_svg,
+        board_cutlist_svgs: (supabaseWo as any).board_cutlist_svgs || (lsWo as any).board_cutlist_svgs,
+      }
+      console.log('🔍 getByProject: merged Supabase + localStorage for', projectId,
+        'cutlist_svg:', !!merged.cutlist_svg,
+        'board_svgs:', !!merged.board_cutlist_svgs)
+      return merged
+    }
+
+    if (supabaseWo) return supabaseWo
+    if (lsWo) {
+      console.log('🔍 getByProject: localStorage only for', projectId,
+        'cutlist_svg:', !!lsWo.cutlist_svg,
+        'board_svgs:', !!((lsWo as any).board_cutlist_svgs))
+      return lsWo
+    }
+
+    console.log('🔍 getByProject: NOT FOUND for', projectId, '(supabase + localStorage)')
+    return null
   }
 
   static async getByTask(taskId: string): Promise<FurnitureWorkOrder | null> {
@@ -248,9 +270,9 @@ export class FurnitureWorkOrderService {
         materials_collected: false,
         catalog_sku: 'MUEBLES_GROUP',
         created_at: now,
-        // Populated fields for operator
-        materials: [{ name: board.materialName, quantity: 1, unit: 'tablero' }],
-        consumables: [{ name: 'Disco de sierra / cuchilla', quantity: 1, unit: 'ud' }],
+        // Populated fields for operator — JSON.stringify for TEXT columns
+        materials: JSON.stringify([{ name: board.materialName, quantity: 1, unit: 'tablero' }]),
+        consumables: JSON.stringify([{ name: 'Disco de sierra / cuchilla', quantity: 1, unit: 'ud' }]),
         instructions_design: `Cortar ${board.pieceCount} pieza${board.pieceCount !== 1 ? 's' : ''} del tablero de ${board.materialName}.\nVer plano de despiece adjunto.${board.pieceRefs?.length ? '\n\nPiezas: ' + board.pieceRefs.join(', ') : ''}`,
         requiere_diseno: true,
       }))
@@ -281,12 +303,12 @@ export class FurnitureWorkOrderService {
         materials_collected: false,
         catalog_sku: 'MUEBLES_GROUP',
         created_at: now,
-        // Populated fields for operator
-        materials: [],
-        consumables: [
+        // Populated fields for operator — JSON.stringify for TEXT columns
+        materials: JSON.stringify([]),
+        consumables: JSON.stringify([
           { name: 'Cola de carpintero', quantity: 1, unit: 'ud' },
           { name: 'Tornillos / herrajes', quantity: 1, unit: 'juego' },
-        ],
+        ]),
         instructions_design: `Ensamblar ${item.quoteItemName} (${item.pieceCount} piezas).\nVer plano de montaje adjunto.${item.pieceNames?.length ? '\n\nPiezas: ' + item.pieceNames.join(', ') : ''}`,
         requiere_diseno: true,
       }))
@@ -455,6 +477,7 @@ export class FurnitureDesignService {
 
   /** All designs for a work order */
   static async getByWorkOrder(workOrderId: string): Promise<FurnitureDesign[]> {
+    let supabaseDesigns: FurnitureDesign[] | null = null
     try {
       const { data, error } = await supabase
         .from(DES_TABLE)
@@ -462,16 +485,36 @@ export class FurnitureDesignService {
         .eq('work_order_id', workOrderId)
         .order('updated_at', { ascending: false })
       if (error) throw error
-      return (data ?? []) as FurnitureDesign[]
+      supabaseDesigns = (data ?? []) as FurnitureDesign[]
     } catch (err: any) {
-      if (isTableMissing(err)) {
-        const results = lsGetAll().filter(d => d.work_order_id === workOrderId)
-        console.log('🔍 getByWorkOrder localStorage:', results.length, 'designs for WO:', workOrderId,
-          results.map(d => `${d.quote_item_name} bp:${!!d.blueprint_svg}`))
-        return results
-      }
-      throw err
+      if (!isTableMissing(err)) throw err
     }
+
+    // Merge localStorage (for blueprint_svg that may not be in DB column)
+    const lsDesigns = lsGetAll().filter(d => d.work_order_id === workOrderId)
+
+    if (supabaseDesigns && supabaseDesigns.length > 0) {
+      // Merge blueprint_svg from localStorage into Supabase results
+      const lsMap = new Map(lsDesigns.map(d => [d.id, d]))
+      const merged = supabaseDesigns.map(d => {
+        const lsVersion = lsMap.get(d.id)
+        if (lsVersion?.blueprint_svg && !d.blueprint_svg) {
+          return { ...d, blueprint_svg: lsVersion.blueprint_svg }
+        }
+        return d
+      })
+      console.log('🔍 getByWorkOrder: merged', merged.length, 'designs,',
+        merged.filter(d => d.blueprint_svg).length, 'con plano')
+      return merged
+    }
+
+    if (lsDesigns.length > 0) {
+      console.log('🔍 getByWorkOrder localStorage:', lsDesigns.length, 'designs for WO:', workOrderId,
+        lsDesigns.map(d => `${d.quote_item_name} bp:${!!d.blueprint_svg}`))
+      return lsDesigns
+    }
+
+    return []
   }
 
   /** Get a single design by its id */
