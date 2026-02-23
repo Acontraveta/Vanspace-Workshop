@@ -200,8 +200,8 @@ export class FurnitureWorkOrderService {
    */
   static async rebuildFurnitureTasks(
     projectId: string,
-    boards: { boardLabel: string; materialName: string; pieceCount: number; estimatedHours: number }[],
-    assemblyItems: { quoteItemName: string; estimatedHours: number }[],
+    boards: { boardLabel: string; materialName: string; pieceCount: number; estimatedHours: number; pieceRefs?: string[] }[],
+    assemblyItems: { quoteItemName: string; estimatedHours: number; pieceCount: number; pieceNames?: string[] }[],
   ): Promise<void> {
     try {
       // Delete old MUEBLES_GROUP tasks for this project
@@ -232,6 +232,11 @@ export class FurnitureWorkOrderService {
         materials_collected: false,
         catalog_sku: 'MUEBLES_GROUP',
         created_at: now,
+        // Populated fields for operator
+        materials: [{ name: board.materialName, quantity: 1, unit: 'tablero' }],
+        consumables: [{ name: 'Disco de sierra / cuchilla', quantity: 1, unit: 'ud' }],
+        instructions_design: `Cortar ${board.pieceCount} pieza${board.pieceCount !== 1 ? 's' : ''} del tablero de ${board.materialName}.\nVer plano de despiece adjunto.${board.pieceRefs?.length ? '\n\nPiezas: ' + board.pieceRefs.join(', ') : ''}`,
+        requiere_diseno: true,
       }))
 
       if (cuttingTasks.length > 0) {
@@ -260,6 +265,14 @@ export class FurnitureWorkOrderService {
         materials_collected: false,
         catalog_sku: 'MUEBLES_GROUP',
         created_at: now,
+        // Populated fields for operator
+        materials: [],
+        consumables: [
+          { name: 'Cola de carpintero', quantity: 1, unit: 'ud' },
+          { name: 'Tornillos / herrajes', quantity: 1, unit: 'juego' },
+        ],
+        instructions_design: `Ensamblar ${item.quoteItemName} (${item.pieceCount} piezas).\nVer plano de montaje adjunto.${item.pieceNames?.length ? '\n\nPiezas: ' + item.pieceNames.join(', ') : ''}`,
+        requiere_diseno: true,
       }))
 
       if (assemblyTasks.length > 0) {

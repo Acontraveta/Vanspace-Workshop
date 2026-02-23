@@ -253,17 +253,23 @@ export default function FurnitureWorkOrderPage() {
         }
 
         // Rebuild operator tasks: 1 cutting task per board + N assembly
-        const boardTasks = boardInfos.map((bi, idx) => ({
-          boardLabel: `Tablero ${idx + 1} — ${bi.materialName}`,
-          materialName: bi.materialName,
-          pieceCount: bi.pieceCount,
-          estimatedHours: Math.max(0.5, Math.round(0.5 * 10) / 10), // ~30min per board
-        }))
+        const boardTasks = boardInfos.map((bi, idx) => {
+          const boardPieces = optimized.filter(p => (p.board ?? 0) === bi.boardIndex)
+          return {
+            boardLabel: `Tablero ${idx + 1} — ${bi.materialName}`,
+            materialName: bi.materialName,
+            pieceCount: bi.pieceCount,
+            estimatedHours: Math.max(0.5, Math.round(0.5 * 10) / 10),
+            pieceRefs: boardPieces.map(p => p.ref),
+          }
+        })
         const assemblyItems = latestDesigns.map(d => {
-          const pCount = (d.pieces as InteractivePiece[]).length
+          const pieces = d.pieces as InteractivePiece[]
           return {
             quoteItemName: d.quote_item_name,
-            estimatedHours: Math.max(0.5, Math.round(pCount * 0.3 * 10) / 10),
+            estimatedHours: Math.max(0.5, Math.round(pieces.length * 0.3 * 10) / 10),
+            pieceCount: pieces.length,
+            pieceNames: pieces.map(p => p.name),
           }
         })
 

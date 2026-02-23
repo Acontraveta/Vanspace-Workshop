@@ -276,7 +276,18 @@ export default function TaskInstructionsModal({
                 </ul>
               </div>
             </div>
-          ) : (
+          ) : blueprints.length > 0 ? (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <p className="text-xs font-semibold text-green-700 mb-2">💡 Información</p>
+              <p className="text-sm text-green-700">
+                {isCuttingTask
+                  ? 'Sigue el plano de despiece de arriba para cortar las piezas según las medidas indicadas.'
+                  : isAssemblyTask
+                  ? 'Sigue el plano de montaje de arriba para ensamblar el mueble.'
+                  : 'Consulta los planos técnicos de arriba para realizar esta tarea.'}
+              </p>
+            </div>
+          ) : !loadingFiles ? (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📋</div>
               <p className="text-gray-500 font-medium">No hay instrucciones específicas</p>
@@ -284,7 +295,7 @@ export default function TaskInstructionsModal({
                 Procede con el procedimiento estándar para este tipo de tarea
               </p>
             </div>
-          )}
+          ) : null}
         </CardContent>
 
         <div className="border-t p-4 bg-gray-50 flex gap-3">
