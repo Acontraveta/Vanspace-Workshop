@@ -18,9 +18,9 @@ import { FurniturePieceEditor } from '../components/FurniturePieceEditor'
 import { FurnitureOptimizerView } from '../components/FurnitureOptimizerView'
 import { FurnitureStickersView } from '../components/FurnitureStickersView'
 import { MaterialCatalogService } from '../services/materialCatalogService'
-import { optimizeCutList, boardCount } from '../utils/geometry'
+import { optimizeCutList } from '../utils/geometry'
 import { generateBlueprintSVG } from '../utils/blueprintGenerator'
-import { generateCutlistSVG } from '../utils/cutlistGenerator'
+import { generateCutlistSVG, generateBoardCutlistSVG, enumerateBoards } from '../utils/cutlistGenerator'
 import { processStockConsumption } from '@/features/production/services/stockConsumption'
 import toast from 'react-hot-toast'
 
@@ -226,25 +226,39 @@ export default function FurnitureWorkOrderPage() {
         console.log('🧩 Piezas totales:', allPieces.length)
 
         const optimized = optimizeCutList(allPieces)
-        const boards = boardCount(optimized)
-        console.log('📋 Tableros optimizados:', boards, 'piezas colocadas:', optimized.length)
+        const boardInfos = enumerateBoards(optimized)
+        const totalBoardCount = boardInfos.length
+        console.log('📋 Tableros optimizados:', totalBoardCount, 'piezas colocadas:', optimized.length)
 
-        // Generate and store combined cutlist SVG
+        // Generate and store combined cutlist SVG + per-board SVGs
         try {
           const cutlistSvg = generateCutlistSVG(
             optimized,
             `${wo.quote_number} · ${wo.client_name}`
           )
-          console.log('📋 Cutlist SVG generado:', cutlistSvg.length, 'bytes')
-          await FurnitureWorkOrderService.updateCutlistSvg(wo.id, cutlistSvg)
-          console.log('💾 Cutlist guardado en WO:', wo.id)
+          // Generate individual SVG for each board
+          const boardCutlistSvgs = boardInfos.map((bi, idx) =>
+            generateBoardCutlistSVG(
+              optimized,
+              bi.boardIndex,
+              `Tablero ${idx + 1} — ${bi.materialName}`,
+              `${wo.quote_number} · ${wo.client_name}`,
+            )
+          )
+          console.log('📋 Cutlist SVGs generados:', cutlistSvg.length, 'bytes total,', boardCutlistSvgs.length, 'tableros')
+          await FurnitureWorkOrderService.updateCutlistSvg(wo.id, cutlistSvg, boardCutlistSvgs)
+          console.log('💾 Cutlists guardados en WO:', wo.id)
         } catch (cutErr) {
           console.error('Error generando/guardando cutlist SVG:', cutErr)
         }
 
-        // Rebuild operator tasks: 1 cutting + N assembly
-        const totalPieces = allPieces.length
-        const cuttingHours = Math.max(0.5, Math.round(boards * 0.5 * 10) / 10)
+        // Rebuild operator tasks: 1 cutting task per board + N assembly
+        const boardTasks = boardInfos.map((bi, idx) => ({
+          boardLabel: `Tablero ${idx + 1} — ${bi.materialName}`,
+          materialName: bi.materialName,
+          pieceCount: bi.pieceCount,
+          estimatedHours: Math.max(0.5, Math.round(0.5 * 10) / 10), // ~30min per board
+        }))
         const assemblyItems = latestDesigns.map(d => {
           const pCount = (d.pieces as InteractivePiece[]).length
           return {
@@ -256,10 +270,10 @@ export default function FurnitureWorkOrderPage() {
         try {
           await FurnitureWorkOrderService.rebuildFurnitureTasks(
             wo.project_id,
+            boardTasks,
             assemblyItems,
-            cuttingHours,
           )
-          console.log('🔨 Tareas de producción reconstruidas')
+          console.log('🔨 Tareas de producción reconstruidas:', boardTasks.length, 'corte +', assemblyItems.length, 'montaje')
         } catch (e) {
           console.warn('rebuildFurnitureTasks failed (non-critical):', e)
         }
@@ -293,7 +307,7 @@ export default function FurnitureWorkOrderPage() {
         }
 
         toast.success(
-          `✅ Todos los diseños aprobados · ${boards} tablero${boards !== 1 ? 's' : ''} · ${totalPieces} piezas\nTareas de producción actualizadas`,
+          `✅ Todos los diseños aprobados · ${totalBoardCount} tablero${totalBoardCount !== 1 ? 's' : ''} · ${allPieces.length} piezas\nTareas de producción actualizadas`,
           { duration: 5000 }
         )
       } else {

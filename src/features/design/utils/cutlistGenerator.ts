@@ -46,7 +46,11 @@ function esc(s: string): string {
 
 // ─── Main generator ───────────────────────────────────────────────────────────
 
-export function generateCutlistSVG(placements: PlacedPiece[], projectInfo?: string): string {
+export function generateCutlistSVG(
+  placements: PlacedPiece[],
+  projectInfo?: string,
+  titleOverride?: string,
+): string {
   if (!placements.length) return ''
 
   const groups = groupByMaterial(placements)
@@ -80,7 +84,8 @@ export function generateCutlistSVG(placements: PlacedPiece[], projectInfo?: stri
   parts.push(`<rect x="0" y="0" width="${svgW}" height="${totalH}" fill="white"/>`)
 
   // Title
-  parts.push(`<text x="${svgW / 2}" y="26" text-anchor="middle" font-family="${FONT}" font-size="16" font-weight="700" fill="#0f172a">Despiece Total — ${totalBoards} tablero${totalBoards !== 1 ? 's' : ''}</text>`)
+  const title = titleOverride || `Despiece Total — ${totalBoards} tablero${totalBoards !== 1 ? 's' : ''}`
+  parts.push(`<text x="${svgW / 2}" y="26" text-anchor="middle" font-family="${FONT}" font-size="16" font-weight="700" fill="#0f172a">${esc(title)}</text>`)
   if (projectInfo) {
     parts.push(`<text x="${svgW / 2}" y="44" text-anchor="middle" font-family="${FONT}" font-size="10" fill="#64748b">${esc(projectInfo)} · Tablero ${BOARD_WIDTH}×${BOARD_HEIGHT} mm · ${placements.length} piezas</text>`)
   }
@@ -232,4 +237,48 @@ export function generateCutlistSVG(placements: PlacedPiece[], projectInfo?: stri
     ...parts,
     '</svg>',
   ].join('\n')
+}
+
+// ─── Per-board SVG generator ──────────────────────────────────────────────────
+// Generates an individual SVG for a single board (used for operator cutting tasks)
+
+export interface BoardInfo {
+  boardIndex: number
+  materialName: string
+  pieceCount: number
+}
+
+/** Enumerate all unique boards from optimized placements */
+export function enumerateBoards(placements: PlacedPiece[]): BoardInfo[] {
+  const map = new Map<number, { materialName: string; count: number }>()
+  for (const p of placements) {
+    const bi = p.board ?? 0
+    const existing = map.get(bi)
+    if (!existing) {
+      map.set(bi, { materialName: p.materialName || 'Material por defecto', count: 1 })
+    } else {
+      existing.count++
+    }
+  }
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([boardIndex, info]) => ({
+      boardIndex,
+      materialName: info.materialName,
+      pieceCount: info.count,
+    }))
+}
+
+/** Generate a cutlist SVG for a single board */
+export function generateBoardCutlistSVG(
+  allPlacements: PlacedPiece[],
+  boardIndex: number,
+  boardLabel: string,
+  projectInfo?: string,
+): string {
+  const boardPieces = allPlacements
+    .filter(p => (p.board ?? 0) === boardIndex)
+    .map(p => ({ ...p, board: 0 }))
+  if (!boardPieces.length) return ''
+  return generateCutlistSVG(boardPieces, projectInfo, boardLabel)
 }

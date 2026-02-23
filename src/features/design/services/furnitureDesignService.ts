@@ -162,11 +162,16 @@ export class FurnitureWorkOrderService {
   }
 
   /** Store the combined cut-list SVG on the work order */
-  static async updateCutlistSvg(id: string, cutlistSvg: string): Promise<void> {
+  static async updateCutlistSvg(id: string, cutlistSvg: string, boardCutlistSvgs?: string[]): Promise<void> {
     try {
+      const updates: Record<string, unknown> = {
+        cutlist_svg: cutlistSvg,
+        updated_at: new Date().toISOString(),
+      }
+      if (boardCutlistSvgs) updates.board_cutlist_svgs = boardCutlistSvgs
       const { error } = await supabase
         .from(WO_TABLE)
-        .update({ cutlist_svg: cutlistSvg, updated_at: new Date().toISOString() })
+        .update(updates)
         .eq('id', id)
       if (error) throw error
     } catch (err: any) {
@@ -174,7 +179,12 @@ export class FurnitureWorkOrderService {
         const all = FurnitureWorkOrderService._lsGetAll()
         const idx = all.findIndex(w => w.id === id)
         if (idx >= 0) {
-          all[idx] = { ...all[idx], cutlist_svg: cutlistSvg, updated_at: new Date().toISOString() }
+          all[idx] = {
+            ...all[idx],
+            cutlist_svg: cutlistSvg,
+            ...(boardCutlistSvgs ? { board_cutlist_svgs: boardCutlistSvgs } : {}),
+            updated_at: new Date().toISOString(),
+          }
           localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
         }
         return
@@ -185,13 +195,13 @@ export class FurnitureWorkOrderService {
 
   /**
    * Replace MUEBLES_GROUP tasks with the final operator task list:
-   *   1. "Cortar despiece total" (single cutting task)
+   *   1. "Cortar tablero N — MaterialName" (one per physical board)
    *   2. "Ensamblar: <itemName>" (one per furniture item)
    */
   static async rebuildFurnitureTasks(
     projectId: string,
-    items: { quoteItemName: string; estimatedHours: number }[],
-    totalCuttingHours: number,
+    boards: { boardLabel: string; materialName: string; pieceCount: number; estimatedHours: number }[],
+    assemblyItems: { quoteItemName: string; estimatedHours: number }[],
   ): Promise<void> {
     try {
       // Delete old MUEBLES_GROUP tasks for this project
@@ -202,34 +212,38 @@ export class FurnitureWorkOrderService {
         .eq('task_block_id', 'MUEBLES_GROUP')
       if (delErr) throw delErr
 
-      // Create cutting task
       const now = new Date().toISOString()
-      const cuttingTask = {
+
+      // Create one cutting task per board
+      const cuttingTasks = boards.map((board, idx) => ({
         project_id: projectId,
-        task_name: 'Cortar despiece total',
-        product_name: `Despiece (${items.length} mueble${items.length !== 1 ? 's' : ''})`,
-        estimated_hours: totalCuttingHours,
+        task_name: `Cortar: ${board.boardLabel}`,
+        product_name: `${board.materialName} (${board.pieceCount} pieza${board.pieceCount !== 1 ? 's' : ''})`,
+        estimated_hours: board.estimatedHours,
         status: 'PENDING',
         requires_material: null,
         material_ready: true,
         requires_design: true,
         design_ready: true,
-        order_index: 0,
+        order_index: idx,
         task_block_id: 'MUEBLES_GROUP',
-        block_order: 0,
-        is_block_first: true,
+        block_order: idx,
+        is_block_first: idx === 0,
         materials_collected: false,
         catalog_sku: 'MUEBLES_GROUP',
         created_at: now,
+      }))
+
+      if (cuttingTasks.length > 0) {
+        const { error: cutErr } = await supabase
+          .from('production_tasks')
+          .insert(cuttingTasks)
+        if (cutErr) throw cutErr
       }
 
-      const { error: cutErr } = await supabase
-        .from('production_tasks')
-        .insert(cuttingTask)
-      if (cutErr) throw cutErr
-
       // Create one assembly task per furniture item
-      const assemblyTasks = items.map((item, idx) => ({
+      const orderOffset = boards.length
+      const assemblyTasks = assemblyItems.map((item, idx) => ({
         project_id: projectId,
         task_name: `Ensamblar: ${item.quoteItemName}`,
         product_name: item.quoteItemName,
@@ -239,9 +253,9 @@ export class FurnitureWorkOrderService {
         material_ready: true,
         requires_design: true,
         design_ready: true,
-        order_index: idx + 1,
+        order_index: orderOffset + idx,
         task_block_id: 'MUEBLES_GROUP',
-        block_order: idx + 1,
+        block_order: orderOffset + idx,
         is_block_first: false,
         materials_collected: false,
         catalog_sku: 'MUEBLES_GROUP',
@@ -263,8 +277,8 @@ export class FurnitureWorkOrderService {
         const idx = all.findIndex(w => w.project_id === projectId)
         if (idx >= 0) {
           (all[idx] as any)._rebuilt_tasks = [
-            { task_name: 'Cortar despiece total', product_name: `Despiece (${items.length} muebles)`, type: 'cutting' },
-            ...items.map(i => ({ task_name: `Ensamblar: ${i.quoteItemName}`, product_name: i.quoteItemName, type: 'assembly' })),
+            ...boards.map((b, i) => ({ task_name: `Cortar: ${b.boardLabel}`, product_name: b.materialName, type: 'cutting', block_order: i })),
+            ...assemblyItems.map((item, i) => ({ task_name: `Ensamblar: ${item.quoteItemName}`, product_name: item.quoteItemName, type: 'assembly', block_order: boards.length + i })),
           ]
           localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
         }

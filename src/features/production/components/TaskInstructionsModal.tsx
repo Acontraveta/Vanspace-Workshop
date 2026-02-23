@@ -33,6 +33,7 @@ export default function TaskInstructionsModal({
   const isFurnitureBlock = (task as any).task_block_id === 'MUEBLES_GROUP'
   const isCuttingTask = isFurnitureBlock && /cort|despiece/i.test(task.task_name)
   const isAssemblyTask = isFurnitureBlock && /ensambl/i.test(task.task_name)
+  const taskBlockOrder = (task as any).block_order as number | undefined
 
   useEffect(() => {
     const loadFiles = async () => {
@@ -61,8 +62,13 @@ export default function TaskInstructionsModal({
           console.log('📐 Diseños cargados:', designs.length, 'con plano:', designs.filter(d => d.blueprint_svg).length)
 
           if (isCuttingTask) {
-            // Cutting task → show the combined cut-list SVG
-            if (wo.cutlist_svg) {
+            // Cutting task → show the specific board's cut-list SVG
+            const boardSvgs = (wo as any).board_cutlist_svgs as string[] | undefined
+            const boardIdx = taskBlockOrder ?? 0
+            if (boardSvgs && boardSvgs[boardIdx]) {
+              bps.push({ itemName: task.task_name, svg: boardSvgs[boardIdx], type: 'cutlist' })
+            } else if (wo.cutlist_svg) {
+              // Fallback: show the combined cutlist
               bps.push({ itemName: 'Despiece total', svg: wo.cutlist_svg, type: 'cutlist' })
             }
           } else if (isAssemblyTask && task.product_name) {

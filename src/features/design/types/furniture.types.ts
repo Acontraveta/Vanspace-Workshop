@@ -106,6 +106,7 @@ export interface FurnitureWorkOrder {
   client_name: string
   items: FurnitureWorkOrderItem[]
   cutlist_svg?: string       // combined cut-list blueprint (generated on completion)
+  board_cutlist_svgs?: string[] // per-board cut-list SVGs (one per physical board)
   status: 'pending' | 'in_progress' | 'completed'
   created_at: string
   updated_at: string
