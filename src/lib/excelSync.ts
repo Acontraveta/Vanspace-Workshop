@@ -129,6 +129,7 @@ function parseStockWorkbook(workbook: XLSX.WorkBook) {
         unidad: String(rowObj['Unidad'] || 'ud'),
         coste_iva_incluido: parseFloat(rowObj['Coste IVA incluido']) || 0,
         ubicacion: rowObj['Ubicación'] || rowObj['UBICACION'] || rowObj['Ubicacion'] || null,
+        proveedor: rowObj['Proveedor'] || rowObj['PROVEEDOR'] || null,
       })
     }
   }
@@ -283,6 +284,7 @@ export async function exportStockToExcel() {
     'Unidad': s.unidad,
     'Coste IVA incluido': s.coste_iva_incluido,
     'Ubicación': s.ubicacion,
+    'Proveedor': s.proveedor,
   }))
 
   const worksheet = XLSX.utils.json_to_sheet(rows)
