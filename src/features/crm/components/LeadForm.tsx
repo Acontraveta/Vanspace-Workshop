@@ -47,6 +47,8 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showReceptionModal, setShowReceptionModal] = useState(false)
+  const [editingOppId, setEditingOppId] = useState<string | null>(null)
+  const [oppForm, setOppForm] = useState<Partial<LeadOpportunity>>({})
 
   // Quotes linked to this lead (read-only view)
   const linkedQuotes = useMemo(
@@ -127,13 +129,58 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
       })
       onClose()
     } catch (err: any) {
-      setError(err?.message ?? 'Error creando nueva oportunidad')
+      setError(err?.message ?? 'Error creando nuevo estado comercial')
     } finally {
       setSaving(false)
     }
   }
 
   const opportunities: LeadOpportunity[] = lead?.oportunidades ?? []
+
+  const handleEditOpp = (opp: LeadOpportunity) => {
+    if (editingOppId === opp.id) {
+      setEditingOppId(null)
+      setOppForm({})
+    } else {
+      setEditingOppId(opp.id)
+      setOppForm({ ...opp })
+    }
+  }
+
+  const setOpp = (key: keyof LeadOpportunity, value: any) =>
+    setOppForm(f => ({ ...f, [key]: value }))
+
+  const handleSaveOpp = async () => {
+    if (!lead || !editingOppId) return
+    const updated = opportunities.map(o =>
+      o.id === editingOppId ? { ...o, ...oppForm } as LeadOpportunity : o
+    )
+    setSaving(true)
+    setError(null)
+    try {
+      await updateLead(lead.id, { oportunidades: updated as any })
+      setEditingOppId(null)
+      setOppForm({})
+    } catch (err: any) {
+      setError(err?.message ?? 'Error guardando estado comercial')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteOpp = async (oppId: string) => {
+    if (!lead || !confirm('¿Eliminar este estado comercial del historial?')) return
+    const updated = opportunities.filter(o => o.id !== oppId)
+    setSaving(true)
+    try {
+      await updateLead(lead.id, { oportunidades: updated as any })
+      if (editingOppId === oppId) { setEditingOppId(null); setOppForm({}) }
+    } catch (err: any) {
+      setError(err?.message ?? 'Error eliminando')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <>
@@ -284,43 +331,100 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
               </Row>
             </Section>
 
-            {/* New opportunity button + history */}
+            {/* Estados comerciales — historial editable */}
             {lead && (
-              <Section title="🔄 Oportunidades comerciales">
+              <Section title="🔄 Estados comerciales">
                 {opportunities.length > 0 && (
                   <div className="space-y-2 mb-3">
                     {[...opportunities].reverse().map((opp, idx) => {
                       const cfg = getStatusConfig(opp.estado)
+                      const isEditing = editingOppId === opp.id
                       return (
-                        <div key={opp.id} className={`rounded-lg border px-3 py-2 text-sm ${cfg.color} ${cfg.borderColor}`}>
-                          <div className="flex items-center justify-between">
+                        <div key={opp.id} className={`rounded-lg border text-sm transition-all ${isEditing ? 'ring-2 ring-indigo-400 border-indigo-300 bg-white' : `${cfg.color} ${cfg.borderColor} cursor-pointer hover:shadow-md`}`}>
+                          {/* Header row — always visible, click to toggle */}
+                          <div
+                            className="flex items-center justify-between px-3 py-2"
+                            onClick={() => handleEditOpp(opp)}
+                          >
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-gray-900">#{opportunities.length - idx}</span>
                               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.color} ${cfg.textColor}`}>
-                                {opp.estado}
+                                {isEditing ? (oppForm.estado ?? opp.estado) : opp.estado}
                               </span>
-                              {opp.linea_negocio && (
+                              {!isEditing && opp.linea_negocio && (
                                 <span className="text-xs text-gray-500">{opp.linea_negocio}</span>
                               )}
                             </div>
                             <div className="flex items-center gap-3 text-xs text-gray-500">
-                              {opp.importe != null && (
+                              {!isEditing && opp.importe != null && (
                                 <span className="font-medium text-gray-700">
                                   {opp.importe.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                                 </span>
                               )}
-                              {opp.fecha_inicio && <span>{opp.fecha_inicio}</span>}
-                              {opp.fecha_entrega && <span>→ {opp.fecha_entrega}</span>}
+                              {!isEditing && opp.fecha_inicio && <span>{opp.fecha_inicio}</span>}
+                              {!isEditing && opp.fecha_entrega && <span>→ {opp.fecha_entrega}</span>}
+                              <span className="text-indigo-500 font-medium">{isEditing ? '▲ Cerrar' : '▼ Editar'}</span>
                             </div>
                           </div>
-                          {opp.vehiculo && (
-                            <p className="text-xs text-gray-500 mt-1">🚐 {opp.vehiculo}</p>
+
+                          {/* Collapsed summary */}
+                          {!isEditing && (
+                            <div className="px-3 pb-2">
+                              {opp.vehiculo && <p className="text-xs text-gray-500">🚐 {opp.vehiculo}</p>}
+                              {opp.notas && <p className="text-xs text-gray-400 line-clamp-1">{opp.notas}</p>}
+                            </div>
                           )}
-                          {opp.notas && (
-                            <p className="text-xs text-gray-400 mt-1 line-clamp-2">{opp.notas}</p>
-                          )}
-                          {opp.satisfaccion && (
-                            <p className="text-xs text-gray-400 mt-0.5">Satisfacción: {opp.satisfaccion}</p>
+
+                          {/* Expanded inline editor */}
+                          {isEditing && (
+                            <div className="px-3 pb-3 space-y-3 border-t border-gray-200 mt-1 pt-3">
+                              <Row>
+                                <Field label="Estado">
+                                  <select value={oppForm.estado ?? ''} onChange={e => setOpp('estado', e.target.value)} className={inputCls}>
+                                    <option value="">—</option>
+                                    {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                                  </select>
+                                </Field>
+                                <Field label="Importe (€)">
+                                  <input type="number" step="0.01" value={oppForm.importe ?? ''} onChange={e => setOpp('importe', e.target.value ? parseFloat(e.target.value) : undefined)} className={inputCls} />
+                                </Field>
+                                <Field label="Línea de negocio">
+                                  <input value={oppForm.linea_negocio ?? ''} onChange={e => setOpp('linea_negocio', e.target.value)} className={inputCls} />
+                                </Field>
+                              </Row>
+                              <Row>
+                                <Field label="Vehículo">
+                                  <input value={oppForm.vehiculo ?? ''} onChange={e => setOpp('vehiculo', e.target.value)} className={inputCls} />
+                                </Field>
+                                <Field label="Fecha inicio">
+                                  <input type="date" value={oppForm.fecha_inicio ?? ''} onChange={e => setOpp('fecha_inicio', e.target.value)} className={inputCls} />
+                                </Field>
+                                <Field label="Fecha entrega">
+                                  <input type="date" value={oppForm.fecha_entrega ?? ''} onChange={e => setOpp('fecha_entrega', e.target.value)} className={inputCls} />
+                                </Field>
+                              </Row>
+                              <Row>
+                                <Field label="Satisfacción">
+                                  <input value={oppForm.satisfaccion ?? ''} onChange={e => setOpp('satisfaccion', e.target.value)} className={inputCls} placeholder="1-5 ★" />
+                                </Field>
+                                <div className="sm:col-span-2">
+                                  <Field label="Notas">
+                                    <textarea value={oppForm.notas ?? ''} onChange={e => setOpp('notas', e.target.value)} className={`${inputCls} h-16 resize-none`} />
+                                  </Field>
+                                </div>
+                              </Row>
+                              <div className="flex items-center gap-2 pt-1">
+                                <button type="button" onClick={handleSaveOpp} disabled={saving} className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition font-medium">
+                                  💾 Guardar
+                                </button>
+                                <button type="button" onClick={() => { setEditingOppId(null); setOppForm({}) }} className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition">
+                                  Cancelar
+                                </button>
+                                <button type="button" onClick={() => handleDeleteOpp(opp.id)} disabled={saving} className="ml-auto px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition">
+                                  🗑 Eliminar
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </div>
                       )
@@ -334,11 +438,11 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
                     disabled={saving || !form.estado || form.estado === 'Nuevo'}
                     className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition font-medium"
                   >
-                    🔄 Nueva oportunidad (archivar estado actual)
+                    🔄 Nuevo estado comercial
                   </button>
                   <p className="text-[10px] text-gray-400 flex-1">
                     Archiva el estado comercial actual y reinicia el lead a «Nuevo» para un nuevo proyecto.
-                    {opportunities.length > 0 && ` Historial: ${opportunities.length} oportunidad(es) pasada(s).`}
+                    {opportunities.length > 0 && ` Historial: ${opportunities.length} estado(s) comercial(es).`}
                   </p>
                 </div>
               </Section>
