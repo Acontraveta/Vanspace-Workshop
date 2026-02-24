@@ -1,11 +1,14 @@
 // ── Van Interior Design ────────────────────────────────────────────
-// Floor plan of a generic van where users can:
-// 1) Place furniture items (from the project quote) with real dimensions
-// 2) Draw electrical diagram (batteries, fusebox, lights, sockets, wiring)
+// Floor plan of a van where users can:
+// 1) Place furniture items with real dimensions
+// 2) Draw electrical diagram (batteries, fusebox, lights, sockets)
 // 3) Draw water/plumbing diagram (tank, pump, heater, taps, piping)
 //
-// In WO-driven mode: only quote items from the work order are available.
-// In free mode: the full default palettes are available.
+// Van size is configurable via presets or custom dimensions.
+// Floor dimensions derive from the van body config.
+// Items are constrained to the floor area.
+//
+// WO-driven mode: only quote items. Free mode: full default palettes.
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -13,13 +16,19 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { FurnitureWorkOrderService } from '../services/furnitureDesignService'
 import { FurnitureWorkOrder, FurnitureWorkOrderItem } from '../types/furniture.types'
+import {
+  VanConfig, VAN_PRESETS, DEFAULT_VAN, DEFAULT_PRESET,
+  findPreset, saveVanConfig, loadVanConfig,
+} from '../constants/vanPresets'
 
-// ── Van floor plan dimensions (mm) ───────────────────────────────
-const FLOOR = {
-  length: 4200, // cargo area length
-  width: 1700,  // interior width between walls
-  wallThickness: 40,
-  cabinDepth: 400, // space for cab seats shown as reference
+// ── Floor dimensions derived from van config ─────────────────────
+function getFloor(van: VanConfig) {
+  return {
+    length: van.bodyLength,               // cargo area length
+    width: van.width - 280,               // interior width (walls ~140mm each side)
+    wallThickness: 40,
+    cabinDepth: 400,                      // space for cab seats reference
+  }
 }
 
 // ── Item types ────────────────────────────────────────────────────
@@ -41,7 +50,7 @@ export interface InteriorItem {
   quoteItemName?: string
 }
 
-// ── Palette definitions ──────────────────────────────────────────
+// ── Palette definitions (real product dimensions, mm) ────────────
 interface PaletteItem {
   type: string
   label: string
@@ -52,27 +61,32 @@ interface PaletteItem {
   layer: DiagramLayer
 }
 
+// Furniture — top-down: length × depth (as seen from above)
 const FURNITURE_PALETTE: PaletteItem[] = [
-  { type: 'cama', label: 'Cama', w: 1800, h: 1300, color: '#8b5cf6', icon: '🛏️', layer: 'furniture' },
-  { type: 'armario', label: 'Armario', w: 600, h: 500, color: '#a855f7', icon: '🪑', layer: 'furniture' },
-  { type: 'cocina', label: 'Bloque cocina', w: 800, h: 500, color: '#f97316', icon: '🍳', layer: 'furniture' },
-  { type: 'mesa', label: 'Mesa', w: 600, h: 400, color: '#eab308', icon: '🪵', layer: 'furniture' },
-  { type: 'nevera', label: 'Nevera', w: 500, h: 500, color: '#06b6d4', icon: '❄️', layer: 'furniture' },
-  { type: 'asiento', label: 'Asiento giratorio', w: 500, h: 500, color: '#64748b', icon: '💺', layer: 'furniture' },
-  { type: 'bano', label: 'Baño/ducha', w: 700, h: 700, color: '#0ea5e9', icon: '🚿', layer: 'furniture' },
+  { type: 'cama_trans', label: 'Cama transversal', w: 1900, h: 1300, color: '#8b5cf6', icon: '🛏️', layer: 'furniture' },
+  { type: 'cama_long', label: 'Cama longitudinal', w: 1900, h: 700, color: '#8b5cf6', icon: '🛏️', layer: 'furniture' },
+  { type: 'armario', label: 'Armario columna', w: 600, h: 450, color: '#a855f7', icon: '🗄️', layer: 'furniture' },
+  { type: 'cocina', label: 'Bloque cocina', w: 1200, h: 550, color: '#f97316', icon: '🍳', layer: 'furniture' },
+  { type: 'cocina_sm', label: 'Cocina compacta', w: 800, h: 500, color: '#f97316', icon: '🍳', layer: 'furniture' },
+  { type: 'mesa', label: 'Mesa plegable', w: 600, h: 400, color: '#eab308', icon: '🪵', layer: 'furniture' },
+  { type: 'nevera', label: 'Nevera compresor', w: 525, h: 380, color: '#06b6d4', icon: '❄️', layer: 'furniture' },
+  { type: 'nevera_top', label: 'Nevera top-load', w: 650, h: 400, color: '#06b6d4', icon: '❄️', layer: 'furniture' },
+  { type: 'asiento', label: 'Asiento giratorio', w: 500, h: 460, color: '#64748b', icon: '💺', layer: 'furniture' },
+  { type: 'bano', label: 'Baño/ducha', w: 800, h: 700, color: '#0ea5e9', icon: '🚿', layer: 'furniture' },
   { type: 'almacenaje', label: 'Almacenaje bajo', w: 600, h: 400, color: '#78716c', icon: '📦', layer: 'furniture' },
+  { type: 'banco', label: 'Banco con cofre', w: 1100, h: 450, color: '#92400e', icon: '🪑', layer: 'furniture' },
 ]
 
 const ELECTRICAL_PALETTE: PaletteItem[] = [
-  { type: 'bateria', label: 'Batería aux. 12V', w: 300, h: 200, color: '#dc2626', icon: '🔋', layer: 'electrical' },
-  { type: 'bateria_litio', label: 'Batería LiFePO4', w: 350, h: 200, color: '#dc2626', icon: '⚡', layer: 'electrical' },
+  { type: 'bateria', label: 'Batería AGM 12V', w: 330, h: 175, color: '#dc2626', icon: '🔋', layer: 'electrical' },
+  { type: 'bateria_litio', label: 'Batería LiFePO4', w: 325, h: 175, color: '#dc2626', icon: '⚡', layer: 'electrical' },
   { type: 'fusiblera', label: 'Fusiblera', w: 200, h: 100, color: '#f59e0b', icon: '🔌', layer: 'electrical' },
-  { type: 'inversor', label: 'Inversor 12V→220V', w: 250, h: 150, color: '#f97316', icon: '🔄', layer: 'electrical' },
-  { type: 'regulador_solar', label: 'Regulador solar', w: 200, h: 120, color: '#16a34a', icon: '☀️', layer: 'electrical' },
+  { type: 'inversor', label: 'Inversor 12V→220V', w: 260, h: 160, color: '#f97316', icon: '🔄', layer: 'electrical' },
+  { type: 'regulador_solar', label: 'Regulador solar MPPT', w: 190, h: 130, color: '#16a34a', icon: '☀️', layer: 'electrical' },
   { type: 'enchufe_220', label: 'Enchufe 220V', w: 80, h: 80, color: '#3b82f6', icon: '🔌', layer: 'electrical' },
   { type: 'enchufe_usb', label: 'Toma USB', w: 80, h: 60, color: '#6366f1', icon: '🔌', layer: 'electrical' },
   { type: 'enchufe_12v', label: 'Toma 12V', w: 80, h: 80, color: '#0ea5e9', icon: '🔌', layer: 'electrical' },
-  { type: 'luz_led', label: 'Tira LED', w: 400, h: 40, color: '#eab308', icon: '💡', layer: 'electrical' },
+  { type: 'luz_led', label: 'Tira LED', w: 400, h: 30, color: '#eab308', icon: '💡', layer: 'electrical' },
   { type: 'luz_foco', label: 'Foco LED', w: 80, h: 80, color: '#eab308', icon: '💡', layer: 'electrical' },
   { type: 'interruptor', label: 'Interruptor', w: 80, h: 60, color: '#475569', icon: '🔘', layer: 'electrical' },
   { type: 'panel_control', label: 'Panel de control', w: 200, h: 120, color: '#334155', icon: '📊', layer: 'electrical' },
@@ -87,48 +101,51 @@ const WATER_PALETTE: PaletteItem[] = [
   { type: 'grifo_ducha', label: 'Grifo ducha', w: 80, h: 80, color: '#06b6d4', icon: '🚿', layer: 'water' },
   { type: 'filtro', label: 'Filtro de agua', w: 120, h: 80, color: '#14b8a6', icon: '🧪', layer: 'water' },
   { type: 'desague', label: 'Desagüe', w: 80, h: 80, color: '#78716c', icon: '⬇️', layer: 'water' },
-  { type: 'tuberia_fria', label: 'Tubería fría (tramo)', w: 400, h: 30, color: '#3b82f6', icon: '〰️', layer: 'water' },
-  { type: 'tuberia_caliente', label: 'Tubería caliente (tramo)', w: 400, h: 30, color: '#ef4444', icon: '〰️', layer: 'water' },
+  { type: 'tuberia_fria', label: 'Tubería fría (tramo)', w: 400, h: 25, color: '#3b82f6', icon: '〰️', layer: 'water' },
+  { type: 'tuberia_caliente', label: 'Tubería caliente (tramo)', w: 400, h: 25, color: '#ef4444', icon: '〰️', layer: 'water' },
 ]
 
 const LAYER_CONFIG: Record<DiagramLayer, { label: string; icon: string; color: string; palette: PaletteItem[] }> = {
-  furniture:   { label: 'Muebles', icon: '🪑', color: '#8b5cf6', palette: FURNITURE_PALETTE },
-  electrical:  { label: 'Eléctrico', icon: '⚡', color: '#f59e0b', palette: ELECTRICAL_PALETTE },
-  water:       { label: 'Agua', icon: '💧', color: '#3b82f6', palette: WATER_PALETTE },
+  furniture: { label: 'Muebles', icon: '🪑', color: '#8b5cf6', palette: FURNITURE_PALETTE },
+  electrical: { label: 'Eléctrico', icon: '⚡', color: '#f59e0b', palette: ELECTRICAL_PALETTE },
+  water: { label: 'Agua', icon: '💧', color: '#3b82f6', palette: WATER_PALETTE },
 }
 
 // ── Helpers: map quote item names to interior palette items ──────
 const INTERIOR_TYPE_MAP: { keywords: string[]; type: string; layer: DiagramLayer; color: string; icon: string; defaultW: number; defaultH: number }[] = [
   // Furniture
-  { keywords: ['cama'],                     type: 'cama',             layer: 'furniture',   color: '#8b5cf6', icon: '🛏️', defaultW: 1800, defaultH: 1300 },
-  { keywords: ['armario'],                  type: 'armario',          layer: 'furniture',   color: '#a855f7', icon: '🪑', defaultW: 600,  defaultH: 500 },
-  { keywords: ['cocina'],                   type: 'cocina',           layer: 'furniture',   color: '#f97316', icon: '🍳', defaultW: 800,  defaultH: 500 },
-  { keywords: ['mesa'],                     type: 'mesa',             layer: 'furniture',   color: '#eab308', icon: '🪵', defaultW: 600,  defaultH: 400 },
-  { keywords: ['nevera', 'frigorífico'],    type: 'nevera',           layer: 'furniture',   color: '#06b6d4', icon: '❄️', defaultW: 500,  defaultH: 500 },
-  { keywords: ['asiento', 'silla'],         type: 'asiento',          layer: 'furniture',   color: '#64748b', icon: '💺', defaultW: 500,  defaultH: 500 },
-  { keywords: ['baño', 'ducha'],            type: 'bano',             layer: 'furniture',   color: '#0ea5e9', icon: '🚿', defaultW: 700,  defaultH: 700 },
-  { keywords: ['almacenaje', 'cajón'],      type: 'almacenaje',       layer: 'furniture',   color: '#78716c', icon: '📦', defaultW: 600,  defaultH: 400 },
+  { keywords: ['cama transversal'], type: 'cama_trans', layer: 'furniture', color: '#8b5cf6', icon: '🛏️', defaultW: 1900, defaultH: 1300 },
+  { keywords: ['cama longitudinal'], type: 'cama_long', layer: 'furniture', color: '#8b5cf6', icon: '🛏️', defaultW: 1900, defaultH: 700 },
+  { keywords: ['cama'], type: 'cama_trans', layer: 'furniture', color: '#8b5cf6', icon: '🛏️', defaultW: 1900, defaultH: 1300 },
+  { keywords: ['armario'], type: 'armario', layer: 'furniture', color: '#a855f7', icon: '🗄️', defaultW: 600, defaultH: 450 },
+  { keywords: ['cocina'], type: 'cocina', layer: 'furniture', color: '#f97316', icon: '🍳', defaultW: 1200, defaultH: 550 },
+  { keywords: ['mesa'], type: 'mesa', layer: 'furniture', color: '#eab308', icon: '🪵', defaultW: 600, defaultH: 400 },
+  { keywords: ['nevera', 'frigorífico'], type: 'nevera', layer: 'furniture', color: '#06b6d4', icon: '❄️', defaultW: 525, defaultH: 380 },
+  { keywords: ['asiento', 'silla'], type: 'asiento', layer: 'furniture', color: '#64748b', icon: '💺', defaultW: 500, defaultH: 460 },
+  { keywords: ['baño', 'ducha'], type: 'bano', layer: 'furniture', color: '#0ea5e9', icon: '🚿', defaultW: 800, defaultH: 700 },
+  { keywords: ['almacenaje', 'cajón'], type: 'almacenaje', layer: 'furniture', color: '#78716c', icon: '📦', defaultW: 600, defaultH: 400 },
+  { keywords: ['banco'], type: 'banco', layer: 'furniture', color: '#92400e', icon: '🪑', defaultW: 1100, defaultH: 450 },
   // Electrical
-  { keywords: ['batería', 'bateria'],       type: 'bateria',          layer: 'electrical',  color: '#dc2626', icon: '🔋', defaultW: 300,  defaultH: 200 },
-  { keywords: ['fusiblera', 'fusible'],     type: 'fusiblera',        layer: 'electrical',  color: '#f59e0b', icon: '🔌', defaultW: 200,  defaultH: 100 },
-  { keywords: ['inversor'],                 type: 'inversor',         layer: 'electrical',  color: '#f97316', icon: '🔄', defaultW: 250,  defaultH: 150 },
-  { keywords: ['regulador solar'],          type: 'regulador_solar',  layer: 'electrical',  color: '#16a34a', icon: '☀️', defaultW: 200,  defaultH: 120 },
-  { keywords: ['enchufe 220', '220v'],      type: 'enchufe_220',      layer: 'electrical',  color: '#3b82f6', icon: '🔌', defaultW: 80,   defaultH: 80 },
-  { keywords: ['usb'],                      type: 'enchufe_usb',      layer: 'electrical',  color: '#6366f1', icon: '🔌', defaultW: 80,   defaultH: 60 },
-  { keywords: ['12v'],                      type: 'enchufe_12v',      layer: 'electrical',  color: '#0ea5e9', icon: '🔌', defaultW: 80,   defaultH: 80 },
-  { keywords: ['tira led', 'tira'],         type: 'luz_led',          layer: 'electrical',  color: '#eab308', icon: '💡', defaultW: 400,  defaultH: 40 },
-  { keywords: ['foco'],                     type: 'luz_foco',         layer: 'electrical',  color: '#eab308', icon: '💡', defaultW: 80,   defaultH: 80 },
-  { keywords: ['interruptor'],              type: 'interruptor',      layer: 'electrical',  color: '#475569', icon: '🔘', defaultW: 80,   defaultH: 60 },
-  { keywords: ['panel control', 'panel'],   type: 'panel_control',    layer: 'electrical',  color: '#334155', icon: '📊', defaultW: 200,  defaultH: 120 },
+  { keywords: ['batería', 'bateria'], type: 'bateria', layer: 'electrical', color: '#dc2626', icon: '🔋', defaultW: 330, defaultH: 175 },
+  { keywords: ['fusiblera', 'fusible'], type: 'fusiblera', layer: 'electrical', color: '#f59e0b', icon: '🔌', defaultW: 200, defaultH: 100 },
+  { keywords: ['inversor'], type: 'inversor', layer: 'electrical', color: '#f97316', icon: '🔄', defaultW: 260, defaultH: 160 },
+  { keywords: ['regulador solar'], type: 'regulador_solar', layer: 'electrical', color: '#16a34a', icon: '☀️', defaultW: 190, defaultH: 130 },
+  { keywords: ['enchufe 220', '220v'], type: 'enchufe_220', layer: 'electrical', color: '#3b82f6', icon: '🔌', defaultW: 80, defaultH: 80 },
+  { keywords: ['usb'], type: 'enchufe_usb', layer: 'electrical', color: '#6366f1', icon: '🔌', defaultW: 80, defaultH: 60 },
+  { keywords: ['12v'], type: 'enchufe_12v', layer: 'electrical', color: '#0ea5e9', icon: '🔌', defaultW: 80, defaultH: 80 },
+  { keywords: ['tira led', 'tira'], type: 'luz_led', layer: 'electrical', color: '#eab308', icon: '💡', defaultW: 400, defaultH: 30 },
+  { keywords: ['foco'], type: 'luz_foco', layer: 'electrical', color: '#eab308', icon: '💡', defaultW: 80, defaultH: 80 },
+  { keywords: ['interruptor'], type: 'interruptor', layer: 'electrical', color: '#475569', icon: '🔘', defaultW: 80, defaultH: 60 },
+  { keywords: ['panel control', 'panel'], type: 'panel_control', layer: 'electrical', color: '#334155', icon: '📊', defaultW: 200, defaultH: 120 },
   // Water
   { keywords: ['depósito limpia', 'deposito limpia', 'agua limpia'], type: 'deposito_limpia', layer: 'water', color: '#3b82f6', icon: '💧', defaultW: 500, defaultH: 300 },
-  { keywords: ['depósito gris', 'deposito gris', 'agua gris'],      type: 'deposito_gris',   layer: 'water', color: '#6b7280', icon: '🚰', defaultW: 500, defaultH: 300 },
-  { keywords: ['bomba'],                    type: 'bomba',            layer: 'water',       color: '#0ea5e9', icon: '⚙️', defaultW: 150,  defaultH: 100 },
-  { keywords: ['calentador', 'boiler'],     type: 'calentador',       layer: 'water',       color: '#ef4444', icon: '🔥', defaultW: 250,  defaultH: 200 },
-  { keywords: ['grifo cocina'],             type: 'grifo_cocina',     layer: 'water',       color: '#06b6d4', icon: '🚰', defaultW: 80,   defaultH: 80 },
-  { keywords: ['grifo ducha'],              type: 'grifo_ducha',      layer: 'water',       color: '#06b6d4', icon: '🚿', defaultW: 80,   defaultH: 80 },
-  { keywords: ['filtro'],                   type: 'filtro',           layer: 'water',       color: '#14b8a6', icon: '🧪', defaultW: 120,  defaultH: 80 },
-  { keywords: ['desagüe', 'desague'],       type: 'desague',          layer: 'water',       color: '#78716c', icon: '⬇️', defaultW: 80,   defaultH: 80 },
+  { keywords: ['depósito gris', 'deposito gris', 'agua gris'], type: 'deposito_gris', layer: 'water', color: '#6b7280', icon: '🚰', defaultW: 500, defaultH: 300 },
+  { keywords: ['bomba'], type: 'bomba', layer: 'water', color: '#0ea5e9', icon: '⚙️', defaultW: 150, defaultH: 100 },
+  { keywords: ['calentador', 'boiler'], type: 'calentador', layer: 'water', color: '#ef4444', icon: '🔥', defaultW: 250, defaultH: 200 },
+  { keywords: ['grifo cocina'], type: 'grifo_cocina', layer: 'water', color: '#06b6d4', icon: '🚰', defaultW: 80, defaultH: 80 },
+  { keywords: ['grifo ducha'], type: 'grifo_ducha', layer: 'water', color: '#06b6d4', icon: '🚿', defaultW: 80, defaultH: 80 },
+  { keywords: ['filtro'], type: 'filtro', layer: 'water', color: '#14b8a6', icon: '🧪', defaultW: 120, defaultH: 80 },
+  { keywords: ['desagüe', 'desague'], type: 'desague', layer: 'water', color: '#78716c', icon: '⬇️', defaultW: 80, defaultH: 80 },
 ]
 
 function quoteItemToInteriorPalette(item: FurnitureWorkOrderItem, idx: number): PaletteItem & { fromQuote: true } {
@@ -151,7 +168,6 @@ function quoteItemToInteriorPalette(item: FurnitureWorkOrderItem, idx: number): 
       }
     }
   }
-  // Fallback: furniture layer generic
   return {
     type: 'custom',
     label: item.quoteItemName,
@@ -164,9 +180,18 @@ function quoteItemToInteriorPalette(item: FurnitureWorkOrderItem, idx: number): 
   }
 }
 
+// ── Floor bounds clamp ────────────────────────────────────────────
+function clampFloor(x: number, y: number, w: number, h: number, floor: ReturnType<typeof getFloor>) {
+  const { cabinDepth: cd, wallThickness: wt, length: fl, width: fw } = floor
+  return {
+    x: Math.max(cd, Math.min(cd + fl - w, x)),
+    y: Math.max(wt, Math.min(wt + fw - h, y)),
+  }
+}
+
 // ── SVG Floor Plan ────────────────────────────────────────────────
-function VanFloorPlanSVG() {
-  const { length: l, width: w, wallThickness: wt, cabinDepth: cd } = FLOOR
+function VanFloorPlanSVG({ floor }: { floor: ReturnType<typeof getFloor> }) {
+  const { length: l, width: w, wallThickness: wt, cabinDepth: cd } = floor
   const totalL = l + cd
   return (
     <g className="van-floor" stroke="#94a3b8" strokeWidth="6" fill="none">
@@ -192,19 +217,15 @@ function VanFloorPlanSVG() {
         L ${cd} ${w + wt * 2}
       `} fill="none" stroke="#94a3b8" strokeWidth="3" />
 
-      {/* Cabin reference (seats) */}
+      {/* Cabin reference */}
       <rect x={0} y={wt + 100} width={cd - wt} height={w - 200}
         fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="3" rx={20} />
       <text x={(cd - wt) / 2} y={wt + w / 2} textAnchor="middle" dominantBaseline="middle"
         fontSize="60" fill="#94a3b8" fontFamily="Arial">Cabina</text>
 
-      {/* Cabin separation line */}
+      {/* Cabin separation */}
       <line x1={cd} y1={0} x2={cd} y2={w + wt * 2}
         stroke="#94a3b8" strokeWidth="4" strokeDasharray="20,10" />
-
-      {/* Rear doors */}
-      <line x1={totalL - 20} y1={wt + w / 2 - 10} x2={totalL - 20} y2={wt + w / 2 + 10}
-        stroke="#cbd5e1" strokeWidth="3" />
 
       {/* Grid (250mm) */}
       {Array.from({ length: Math.floor(l / 250) }, (_, i) => (i + 1) * 250).map(x => (
@@ -220,8 +241,14 @@ function VanFloorPlanSVG() {
       <line x1={cd} y1={wt + w / 2} x2={totalL} y2={wt + w / 2}
         stroke="#e2e8f0" strokeWidth="2" strokeDasharray="30,15" />
 
+      {/* Side labels */}
+      <text x={cd + l / 2} y={-20} textAnchor="middle" fontSize="60"
+        fill="#cbd5e1" fontFamily="Arial">IZQUIERDO (conductor)</text>
+      <text x={cd + l / 2} y={w + wt * 2 + 60} textAnchor="middle" fontSize="60"
+        fill="#cbd5e1" fontFamily="Arial">DERECHO (pasajero)</text>
+
       {/* Dimensions */}
-      <text x={cd + l / 2} y={w + wt * 2 + 80} textAnchor="middle" fontSize="70"
+      <text x={cd + l / 2} y={w + wt * 2 + 130} textAnchor="middle" fontSize="70"
         fill="#94a3b8" fontFamily="Arial">{l} mm</text>
       <text x={-60} y={wt + w / 2} textAnchor="middle" fontSize="60"
         fill="#94a3b8" fontFamily="Arial"
@@ -234,11 +261,87 @@ function VanFloorPlanSVG() {
   )
 }
 
+// ── Van Config panel ──────────────────────────────────────────────
+function VanConfigPanel({ config, preset, onPreset, onChange }: {
+  config: VanConfig
+  preset: string
+  onPreset: (key: string) => void
+  onChange: (c: VanConfig) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const floor = getFloor(config)
+  const fields: { key: keyof VanConfig; label: string }[] = [
+    { key: 'bodyLength', label: 'Largo carga' },
+    { key: 'width', label: 'Ancho total' },
+    { key: 'bodyHeight', label: 'Alto carga' },
+  ]
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+      <button onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors">
+        <span>🚐 Furgoneta: {VAN_PRESETS[preset]?.label ?? 'Personalizado'}</span>
+        <span className="text-xs text-slate-400">{open ? '▲' : '▼'} suelo: {floor.length}×{floor.width} mm</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-slate-100">
+          <div className="flex items-center gap-2 pt-3">
+            <label className="text-xs text-slate-500">Modelo:</label>
+            <select value={preset}
+              onChange={e => onPreset(e.target.value)}
+              className="text-xs border rounded-lg px-2 py-1.5 flex-1">
+              {Object.entries(VAN_PRESETS).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+              <option value="custom">Personalizado</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            {fields.map(f => (
+              <div key={f.key}>
+                <label className="text-slate-400 block mb-0.5">{f.label} (mm)</label>
+                <input type="number" value={config[f.key]} step={50}
+                  onChange={e => {
+                    onChange({ ...config, [f.key]: +e.target.value })
+                    onPreset('custom')
+                  }}
+                  className="w-full border rounded-lg px-2 py-1.5 text-xs font-mono" />
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-slate-400">
+            Suelo interior derivado: {floor.length}×{floor.width} mm (descontando paredes)
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Component ────────────────────────────────────────────────
 export default function VanInteriorDesign() {
   const navigate = useNavigate()
   const { workOrderId, projectId } = useParams<{ workOrderId?: string; projectId?: string }>()
   const isWoMode = !!workOrderId
+  const configId = workOrderId ?? projectId ?? 'free'
+
+  // Van config state
+  const [van, setVan] = useState<VanConfig>(() => loadVanConfig(configId) ?? DEFAULT_VAN)
+  const [preset, setPreset] = useState<string>(() => findPreset(van) ?? DEFAULT_PRESET)
+  const floor = useMemo(() => getFloor(van), [van])
+
+  const handlePreset = (key: string) => {
+    setPreset(key)
+    if (key !== 'custom' && VAN_PRESETS[key]) {
+      const cfg = { ...VAN_PRESETS[key] }
+      delete (cfg as any).label
+      setVan(cfg)
+      saveVanConfig(configId, cfg)
+    }
+  }
+  const handleVanChange = (cfg: VanConfig) => {
+    setVan(cfg)
+    saveVanConfig(configId, cfg)
+  }
 
   const [workOrder, setWorkOrder] = useState<FurnitureWorkOrder | null>(null)
   const [woPalettes, setWoPalettes] = useState<Record<DiagramLayer, (PaletteItem & { fromQuote?: boolean })[]>>({
@@ -260,7 +363,6 @@ export default function VanInteriorDesign() {
           const wo = await FurnitureWorkOrderService.getById(workOrderId)
           if (wo) {
             setWorkOrder(wo)
-            // Build per-layer palettes from WO items
             const grouped: Record<DiagramLayer, (PaletteItem & { fromQuote?: boolean })[]> = {
               furniture: [], electrical: [], water: []
             }
@@ -270,7 +372,6 @@ export default function VanInteriorDesign() {
             })
             setWoPalettes(grouped)
           }
-          // Load saved design
           const { data } = await supabase
             .from('interior_designs')
             .select('items')
@@ -326,19 +427,23 @@ export default function VanInteriorDesign() {
       if (!dragging) return
       const pt = svgPoint(e.clientX, e.clientY)
       setItems(prev =>
-        prev.map(it =>
-          it.id === dragging.id
-            ? { ...it, x: snap(pt.x - dragging.offsetX), y: snap(pt.y - dragging.offsetY) }
-            : it,
-        ),
+        prev.map(it => {
+          if (it.id !== dragging.id) return it
+          const raw = { x: snap(pt.x - dragging.offsetX), y: snap(pt.y - dragging.offsetY) }
+          const clamped = clampFloor(raw.x, raw.y, it.w, it.h, floor)
+          return { ...it, ...clamped }
+        }),
       )
-    }, [dragging, svgPoint],
+    }, [dragging, svgPoint, floor],
   )
 
   const handleMouseUp = useCallback(() => setDragging(null), [])
 
   const addItem = (tpl: PaletteItem) => {
-    const { length: l, width: w, wallThickness: wt, cabinDepth: cd } = FLOOR
+    const { length: l, width: w, wallThickness: wt, cabinDepth: cd } = floor
+    const rawX = snap(cd + l / 2 - tpl.w / 2)
+    const rawY = snap(wt + w / 2 - tpl.h / 2)
+    const clamped = clampFloor(rawX, rawY, tpl.w, tpl.h, floor)
     const item: InteriorItem = {
       id: `int-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       layer: tpl.layer,
@@ -346,8 +451,7 @@ export default function VanInteriorDesign() {
       label: tpl.label,
       w: tpl.w,
       h: tpl.h,
-      x: snap(cd + l / 2 - tpl.w / 2),
-      y: snap(wt + w / 2 - tpl.h / 2),
+      ...clamped,
       rotation: 0,
       color: tpl.color,
       icon: tpl.icon,
@@ -366,11 +470,12 @@ export default function VanInteriorDesign() {
   const rotateSelected = () => {
     if (!selected) return
     setItems(prev =>
-      prev.map(it =>
-        it.id === selected
-          ? { ...it, rotation: (it.rotation + 90) % 360, w: it.h, h: it.w }
-          : it,
-      ),
+      prev.map(it => {
+        if (it.id !== selected) return it
+        const rotated = { ...it, rotation: (it.rotation + 90) % 360, w: it.h, h: it.w }
+        const clamped = clampFloor(rotated.x, rotated.y, rotated.w, rotated.h, floor)
+        return { ...rotated, ...clamped }
+      }),
     )
   }
 
@@ -383,7 +488,8 @@ export default function VanInteriorDesign() {
       x: src.x + 100,
       y: src.y + 100,
     }
-    setItems(prev => [...prev, dup])
+    const clamped = clampFloor(dup.x, dup.y, dup.w, dup.h, floor)
+    setItems(prev => [...prev, { ...dup, ...clamped }])
     setSelected(dup.id)
   }
 
@@ -404,7 +510,6 @@ export default function VanInteriorDesign() {
     setSaving(true)
     try {
       if (workOrderId) {
-        // WO-driven: save linked to work order
         const { data: existing } = await supabase
           .from('interior_designs')
           .select('id')
@@ -418,13 +523,8 @@ export default function VanInteriorDesign() {
         } else {
           await supabase
             .from('interior_designs')
-            .insert({
-              work_order_id: workOrderId,
-              project_id: workOrder?.project_id,
-              items,
-            })
+            .insert({ work_order_id: workOrderId, project_id: workOrder?.project_id, items })
         }
-        // Update WO items status
         if (workOrder) {
           const updatedItems = (workOrder.items as FurnitureWorkOrderItem[]).map(item => ({
             ...item,
@@ -433,7 +533,6 @@ export default function VanInteriorDesign() {
           await FurnitureWorkOrderService.updateItems(workOrder.id, updatedItems)
         }
       } else {
-        // Free mode: save linked to project
         await supabase
           .from('interior_designs')
           .upsert({ project_id: projectId, items, updated_at: new Date().toISOString() })
@@ -455,12 +554,12 @@ export default function VanInteriorDesign() {
   const layerCfg = LAYER_CONFIG[activeLayer]
 
   // SVG viewBox
-  const totalL = FLOOR.length + FLOOR.cabinDepth
-  const totalW = FLOOR.width + FLOOR.wallThickness * 2
-  const pad = 150
+  const totalL = floor.length + floor.cabinDepth
+  const totalW = floor.width + floor.wallThickness * 2
+  const pad = 180
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-5">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -472,7 +571,7 @@ export default function VanInteriorDesign() {
             </h1>
             {workOrder ? (
               <p className="text-xs text-slate-500 mt-0.5">
-                📋 {workOrder.quote_number} · {workOrder.client_name} · {(workOrder.items ?? []).length} elementos del presupuesto
+                📋 {workOrder.quote_number} · {workOrder.client_name} · {(workOrder.items ?? []).length} elementos
               </p>
             ) : (
               <p className="text-xs text-slate-500 mt-0.5">
@@ -491,9 +590,12 @@ export default function VanInteriorDesign() {
         </div>
       </div>
 
+      {/* Van config panel */}
+      <VanConfigPanel config={van} preset={preset}
+        onPreset={handlePreset} onChange={handleVanChange} />
+
       {/* Layer tabs + visibility toggles */}
       <div className="flex items-center gap-4 flex-wrap">
-        {/* Active layer (determines palette) */}
         <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
           {(Object.entries(LAYER_CONFIG) as [DiagramLayer, typeof LAYER_CONFIG['furniture']][]).map(([key, cfg]) => (
             <button key={key} onClick={() => setActiveLayer(key)}
@@ -505,7 +607,6 @@ export default function VanInteriorDesign() {
           ))}
         </div>
 
-        {/* Visibility toggles */}
         <div className="flex gap-2 text-xs">
           <span className="text-slate-400 self-center">Capas visibles:</span>
           {(Object.entries(LAYER_CONFIG) as [DiagramLayer, typeof LAYER_CONFIG['furniture']][]).map(([key, cfg]) => (
@@ -527,14 +628,14 @@ export default function VanInteriorDesign() {
           <svg
             ref={svgRef}
             width="100%"
-            viewBox={`${-pad} ${-pad} ${totalL + pad * 2 + FLOOR.wallThickness} ${totalW + pad * 2}`}
+            viewBox={`${-pad} ${-pad} ${totalL + pad * 2 + floor.wallThickness} ${totalW + pad * 2}`}
             className="bg-white rounded-xl cursor-crosshair"
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onClick={() => setSelected(null)}
           >
-            <VanFloorPlanSVG />
+            <VanFloorPlanSVG floor={floor} />
 
             {/* Placed items */}
             {visibleItems.map(item => {
@@ -553,7 +654,6 @@ export default function VanInteriorDesign() {
                     strokeWidth={isSelected ? 6 : 3}
                     strokeDasharray={isSelected ? '12,4' : item.layer === 'water' ? '8,4' : item.layer === 'electrical' ? '4,4' : 'none'}
                   />
-                  {/* Icon + label */}
                   <text
                     x={item.x + item.w / 2}
                     y={item.y + item.h / 2 - 15}
@@ -578,7 +678,6 @@ export default function VanInteriorDesign() {
                   >
                     {item.label}
                   </text>
-                  {/* Dimensions */}
                   {item.w > 150 && (
                     <text
                       x={item.x + item.w / 2}
@@ -599,17 +698,16 @@ export default function VanInteriorDesign() {
 
           <div className="mt-2 flex justify-between text-xs text-slate-400">
             <span>
-              {items.filter(i => i.layer === 'furniture').length} muebles ·
-              {items.filter(i => i.layer === 'electrical').length} eléctricos ·
+              {items.filter(i => i.layer === 'furniture').length} muebles ·{' '}
+              {items.filter(i => i.layer === 'electrical').length} eléctricos ·{' '}
               {items.filter(i => i.layer === 'water').length} agua
             </span>
-            <span>Cuadrícula: 50 mm</span>
+            <span>Cuadrícula: 50 mm · Acotados al suelo</span>
           </div>
         </div>
 
         {/* ── Sidebar ───────────────────────────────────────── */}
         <div className="space-y-4">
-          {/* Selected item properties */}
           {selectedItem && (
             <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
               <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
@@ -623,26 +721,40 @@ export default function VanInteriorDesign() {
                 <div>
                   <label className="text-slate-400 block mb-0.5">X (mm)</label>
                   <input type="number" value={selectedItem.x} step={50}
-                    onChange={e => setItems(prev => prev.map(it => it.id === selected ? { ...it, x: +e.target.value } : it))}
-                    className="w-full border rounded-lg px-2 py-1.5 text-xs" />
+                    onChange={e => {
+                      const c = clampFloor(+e.target.value, selectedItem.y, selectedItem.w, selectedItem.h, floor)
+                      setItems(prev => prev.map(it => it.id === selected ? { ...it, x: c.x } : it))
+                    }}
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs font-mono" />
                 </div>
                 <div>
                   <label className="text-slate-400 block mb-0.5">Y (mm)</label>
                   <input type="number" value={selectedItem.y} step={50}
-                    onChange={e => setItems(prev => prev.map(it => it.id === selected ? { ...it, y: +e.target.value } : it))}
-                    className="w-full border rounded-lg px-2 py-1.5 text-xs" />
+                    onChange={e => {
+                      const c = clampFloor(selectedItem.x, +e.target.value, selectedItem.w, selectedItem.h, floor)
+                      setItems(prev => prev.map(it => it.id === selected ? { ...it, y: c.y } : it))
+                    }}
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs font-mono" />
                 </div>
                 <div>
                   <label className="text-slate-400 block mb-0.5">Ancho (mm)</label>
-                  <input type="number" value={selectedItem.w} step={50}
-                    onChange={e => setItems(prev => prev.map(it => it.id === selected ? { ...it, w: +e.target.value } : it))}
-                    className="w-full border rounded-lg px-2 py-1.5 text-xs" />
+                  <input type="number" value={selectedItem.w} step={10}
+                    onChange={e => {
+                      const nw = +e.target.value
+                      const c = clampFloor(selectedItem.x, selectedItem.y, nw, selectedItem.h, floor)
+                      setItems(prev => prev.map(it => it.id === selected ? { ...it, w: nw, ...c } : it))
+                    }}
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs font-mono" />
                 </div>
                 <div>
                   <label className="text-slate-400 block mb-0.5">Alto (mm)</label>
-                  <input type="number" value={selectedItem.h} step={50}
-                    onChange={e => setItems(prev => prev.map(it => it.id === selected ? { ...it, h: +e.target.value } : it))}
-                    className="w-full border rounded-lg px-2 py-1.5 text-xs" />
+                  <input type="number" value={selectedItem.h} step={10}
+                    onChange={e => {
+                      const nh = +e.target.value
+                      const c = clampFloor(selectedItem.x, selectedItem.y, selectedItem.w, nh, floor)
+                      setItems(prev => prev.map(it => it.id === selected ? { ...it, h: nh, ...c } : it))
+                    }}
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs font-mono" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -708,10 +820,10 @@ export default function VanInteriorDesign() {
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[10px] text-slate-500 space-y-1">
             <p className="font-bold text-slate-600 text-xs">💡 Instrucciones</p>
             <p>• Selecciona la capa (Muebles / Eléctrico / Agua)</p>
-            <p>• Añade elementos desde la paleta</p>
-            <p>• Arrastra para posicionar en la planta de la furgo</p>
+            <p>• Añade elementos desde la paleta (medidas reales)</p>
+            <p>• Arrastra para posicionar (acotado al suelo)</p>
             <p>• Activa/desactiva capas para ver cada diagrama</p>
-            <p>• Los elementos de otras capas se atenúan</p>
+            <p>• Configura el tamaño de la furgoneta con ▼ arriba</p>
           </div>
         </div>
       </div>
