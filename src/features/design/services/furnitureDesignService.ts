@@ -123,6 +123,7 @@ export class FurnitureWorkOrderService {
   }
 
   static async getById(id: string): Promise<FurnitureWorkOrder | null> {
+    let supabaseWo: FurnitureWorkOrder | null = null
     try {
       const { data, error } = await supabase
         .from(WO_TABLE)
@@ -130,11 +131,25 @@ export class FurnitureWorkOrderService {
         .eq('id', id)
         .maybeSingle()
       if (error) throw error
-      return data as FurnitureWorkOrder | null
+      supabaseWo = data as FurnitureWorkOrder | null
     } catch (err: any) {
-      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll().find(w => w.id === id) ?? null
-      throw err
+      if (!isTableMissing(err)) throw err
     }
+
+    // Always check localStorage (WO may be there if design_type column doesn't exist yet)
+    const lsWo = FurnitureWorkOrderService._lsGetAll().find(w => w.id === id) ?? null
+
+    if (supabaseWo && lsWo) {
+      return {
+        ...supabaseWo,
+        cutlist_svg: supabaseWo.cutlist_svg || lsWo.cutlist_svg,
+        board_cutlist_svgs: (supabaseWo as any).board_cutlist_svgs || (lsWo as any).board_cutlist_svgs,
+        design_type: supabaseWo.design_type || lsWo.design_type || 'furniture',
+      }
+    }
+    if (supabaseWo) return supabaseWo
+    if (lsWo) return lsWo
+    return null
   }
 
   /** Update items array and recalculate status */
@@ -164,23 +179,31 @@ export class FurnitureWorkOrderService {
     }
   }
 
-  /** List all work orders, newest first */
+  /** List all work orders, newest first — merges Supabase + localStorage */
   static async getAll(): Promise<FurnitureWorkOrder[]> {
+    let supabaseWos: FurnitureWorkOrder[] = []
     try {
       const { data, error } = await supabase
         .from(WO_TABLE)
         .select('*')
         .order('created_at', { ascending: false })
       if (error) throw error
-      return (data ?? []) as FurnitureWorkOrder[]
+      supabaseWos = (data ?? []) as FurnitureWorkOrder[]
     } catch (err: any) {
-      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll()
-      throw err
+      if (!isTableMissing(err)) throw err
     }
+
+    // Merge localStorage WOs that are not in Supabase
+    const lsWos = FurnitureWorkOrderService._lsGetAll()
+    const supabaseIds = new Set(supabaseWos.map(w => w.id))
+    const lsOnly = lsWos.filter(w => !supabaseIds.has(w.id))
+
+    return [...supabaseWos, ...lsOnly]
   }
 
-  /** List work orders filtered by design_type */
+  /** List work orders filtered by design_type — merges Supabase + localStorage */
   static async getAllByType(type: DesignType): Promise<FurnitureWorkOrder[]> {
+    let supabaseWos: FurnitureWorkOrder[] = []
     try {
       const { data, error } = await supabase
         .from(WO_TABLE)
@@ -188,11 +211,18 @@ export class FurnitureWorkOrderService {
         .eq('design_type', type)
         .order('created_at', { ascending: false })
       if (error) throw error
-      return (data ?? []) as FurnitureWorkOrder[]
+      supabaseWos = (data ?? []) as FurnitureWorkOrder[]
     } catch (err: any) {
-      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll().filter(w => (w.design_type || 'furniture') === type)
-      throw err
+      if (!isTableMissing(err)) throw err
     }
+
+    // Merge localStorage WOs of this type not in Supabase
+    const lsWos = FurnitureWorkOrderService._lsGetAll()
+      .filter(w => (w.design_type || 'furniture') === type)
+    const supabaseIds = new Set(supabaseWos.map(w => w.id))
+    const lsOnly = lsWos.filter(w => !supabaseIds.has(w.id))
+
+    return [...supabaseWos, ...lsOnly]
   }
 
   /** Link the task id after the production task has been created */
