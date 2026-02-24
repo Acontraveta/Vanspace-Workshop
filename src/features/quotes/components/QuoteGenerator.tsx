@@ -15,8 +15,8 @@ import { QuoteService } from '../services/quoteService'
 import { QuoteAutomation } from '../services/quoteAutomation'
 import { CatalogService } from '../services/catalogService'
 import { QuotePDF, QuoteDocumentData, CustomLine, PaymentInstallment } from './QuotePDF'
-import { ConfigService } from '@/features/config/services/configService'
 import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
+import { loadCompanyInfo } from '@/shared/utils/companyInfo'
 import ClientDataForm from './ClientDataForm'
 import toast from 'react-hot-toast'
 import ManualProductModal from './ManualProductModal'
@@ -38,15 +38,14 @@ const TARIFAS_FALLBACK: Tarifa[] = [
  * Renders QuotePDF off-screen and uploads an HTML snapshot to the lead’s documents.
  */
 async function autoAttachQuoteToLead(quote: Quote, leadId: string): Promise<void> {
-  const companyRows = await ConfigService.getCompanyInfo().catch(() => null)
-  const get = (c: string) => (companyRows as any[])?.find(r => r.campo === c)?.valor ?? ''
+  const companyData = await loadCompanyInfo()
   const company: QuoteDocumentData['company'] = {
-    name: get('nombre_empresa') || 'VanSpace Workshop',
-    nif: get('nif') || '',
-    address: get('direccion') || '',
-    phone: get('telefono') || '',
-    email: get('email') || '',
-    logoUrl: get('logo_url') || '/assets/logo-vanspace.jpeg',
+    name: companyData.name,
+    nif: companyData.nif,
+    address: companyData.address,
+    phone: companyData.phone,
+    email: companyData.email,
+    logoUrl: companyData.logoUrl,
   }
 
   // Use saved documentData if available (preserves manual edits)

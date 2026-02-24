@@ -16,9 +16,9 @@ import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { Quote, QuoteItem } from '../types/quote.types'
 import { QuotePDF, QuoteDocumentData, CustomLine, PaymentInstallment, printQuoteDocument } from './QuotePDF'
-import { ConfigService } from '@/features/config/services/configService'
 import { generatePdfBlob, downloadPdf } from '../services/pdfGenerator'
 import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
+import { loadCompanyInfo, DEFAULT_COMPANY as SHARED_DEFAULT_COMPANY, LOGO_URL } from '@/shared/utils/companyInfo'
 import toast from 'react-hot-toast'
 
 interface QuotePreviewProps {
@@ -60,12 +60,9 @@ function quoteToCusomLines(quote: Quote): CustomLine[] {
 
 // Valores por defecto de empresa cuando Supabase no responde
 const DEFAULT_COMPANY = {
-  name: 'VanSpace Workshop',
-  nif: 'B00000000',
-  address: 'C/ Ejemplo 1, 28001 Madrid',
-  phone: '+34 600 000 000',
-  email: 'info@vanspace.es',
-  logoUrl: '/assets/logo-vanspace.jpeg',
+  ...SHARED_DEFAULT_COMPANY,
+  nif: SHARED_DEFAULT_COMPANY.nif || '',
+  logoUrl: SHARED_DEFAULT_COMPANY.logoUrl || LOGO_URL,
 }
 
 export default function QuotePreview({ quote, type, invoiceNumber, onApprove, onSaveEdits, onClose }: QuotePreviewProps) {
@@ -91,20 +88,14 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
   // Cargar datos empresa desde Supabase (solo si no hay datos guardados)
   useEffect(() => {
     if (savedDoc?.company) return // ya cargado desde documentData
-    ConfigService.getCompanyInfo()
-      .then(rows => {
-        if (!rows || rows.length === 0) return
-        const get = (campo: string) => rows.find(r => r.campo === campo)?.valor ?? ''
-        setCompany({
-          name: get('nombre_empresa') || DEFAULT_COMPANY.name,
-          nif: get('nif') || DEFAULT_COMPANY.nif,
-          address: get('direccion') || DEFAULT_COMPANY.address,
-          phone: get('telefono') || DEFAULT_COMPANY.phone,
-          email: get('email') || DEFAULT_COMPANY.email,
-          logoUrl: get('logo_url') || '/assets/logo-vanspace.jpeg',
-        })
-      })
-      .catch(() => {/* usar defaults */})
+    loadCompanyInfo().then(c => setCompany({
+      name: c.name,
+      nif: c.nif,
+      address: c.address,
+      phone: c.phone,
+      email: c.email,
+      logoUrl: c.logoUrl,
+    }))
   }, [])
 
   // ─── Edición de líneas ───

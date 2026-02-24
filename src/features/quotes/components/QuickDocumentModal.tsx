@@ -12,10 +12,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
-import { ConfigService } from '@/features/config/services/configService'
 import { QuickDocService } from '../services/quickDocService'
 import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
 import { generatePdfBlob } from '../services/pdfGenerator'
+import { loadCompanyInfo, LOGO_URL } from '@/shared/utils/companyInfo'
 
 // ─── Tipos ───────────────────────────────────────────────────
 
@@ -71,11 +71,11 @@ const DOC_META: Record<QuickDocType, { label: string; prefix: string; color: str
 
 const DEFAULT_COMPANY: CompanyInfo = {
   name: 'VanSpace Workshop',
-  nif: 'B00000000',
-  address: 'C/ Ejemplo 1, 28001 Madrid',
-  phone: '+34 600 000 000',
-  email: 'info@vanspace.es',
-  logoUrl: '/assets/logo-vanspace.jpeg',
+  nif: '',
+  address: '',
+  phone: '',
+  email: '',
+  logoUrl: LOGO_URL,
 }
 
 function fmt(n: number) {
@@ -123,20 +123,14 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
 
   // Load company from Supabase
   useEffect(() => {
-    ConfigService.getCompanyInfo()
-      .then(rows => {
-        if (!rows?.length) return
-        const get = (c: string) => rows.find(r => r.campo === c)?.valor ?? ''
-        setCompany({
-          name: get('nombre_empresa') || DEFAULT_COMPANY.name,
-          nif: get('nif') || DEFAULT_COMPANY.nif,
-          address: get('direccion') || DEFAULT_COMPANY.address,
-          phone: get('telefono') || DEFAULT_COMPANY.phone,
-          email: get('email') || DEFAULT_COMPANY.email,
-          logoUrl: get('logo_url') || DEFAULT_COMPANY.logoUrl,
-        })
-      })
-      .catch(() => {})
+    loadCompanyInfo().then(c => setCompany({
+      name: c.name,
+      nif: c.nif,
+      address: c.address,
+      phone: c.phone,
+      email: c.email,
+      logoUrl: c.logoUrl,
+    }))
   }, [])
 
   // Calculations

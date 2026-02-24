@@ -41,7 +41,11 @@ export async function loadCompanyInfo(): Promise<CompanyData> {
     const rows = await ConfigService.getCompanyInfo()
     if (!rows || rows.length === 0) return { ...DEFAULT_COMPANY }
 
-    const get = (campo: string) => rows.find(r => r.campo === campo)?.valor ?? ''
+    // Case-insensitive lookup — DB may store campos as UPPERCASE or lowercase
+    const get = (campo: string) => {
+      const key = campo.toUpperCase()
+      return rows.find(r => r.campo.toUpperCase() === key)?.valor ?? ''
+    }
 
     return {
       name: get('nombre_empresa') || DEFAULT_COMPANY.name,
