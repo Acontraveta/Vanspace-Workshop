@@ -28,6 +28,7 @@ function toDb(q: Quote) {
     cancelled_at: q.cancelledAt instanceof Date ? q.cancelledAt.toISOString() : (q.cancelledAt ?? null),
     status: q.status,
     notes: (q as any).notes ?? null,
+    document_data: q.documentData ?? null,
     created_at: q.createdAt instanceof Date ? q.createdAt.toISOString() : q.createdAt,
   }
 }

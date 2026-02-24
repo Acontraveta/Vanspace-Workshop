@@ -17,6 +17,9 @@ import { Input } from '@/shared/components/ui/input'
 import { Quote, QuoteItem } from '../types/quote.types'
 import { QuotePDF, QuoteDocumentData, CustomLine, PaymentInstallment, printQuoteDocument } from './QuotePDF'
 import { ConfigService } from '@/features/config/services/configService'
+import { generatePdfBlob, downloadPdf } from '../services/pdfGenerator'
+import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
+import toast from 'react-hot-toast'
 
 interface QuotePreviewProps {
   quote: Quote
@@ -24,6 +27,14 @@ interface QuotePreviewProps {
   invoiceNumber?: string
   /** Llamada cuando el usuario confirma la aprobación desde el preview */
   onApprove?: () => void
+  /** Llamada para persistir los cambios editados en el documento */
+  onSaveEdits?: (data: {
+    customLines: CustomLine[]
+    footerNotes: string
+    showBreakdown: boolean
+    paymentInstallments: PaymentInstallment[]
+    company: QuoteDocumentData['company']
+  }) => void
   /** Llamada al cerrar sin aprobar */
   onClose: () => void
 }
@@ -57,22 +68,29 @@ const DEFAULT_COMPANY = {
   logoUrl: '',
 }
 
-export default function QuotePreview({ quote, type, invoiceNumber, onApprove, onClose }: QuotePreviewProps) {
-  const [lines, setLines] = useState<CustomLine[]>(() => quoteToCusomLines(quote))
+export default function QuotePreview({ quote, type, invoiceNumber, onApprove, onSaveEdits, onClose }: QuotePreviewProps) {
+  // Si el presupuesto tiene datos editados guardados, inicializar desde ahí
+  const savedDoc = quote.documentData
+  const [lines, setLines] = useState<CustomLine[]>(() =>
+    savedDoc?.customLines ?? quoteToCusomLines(quote)
+  )
   const [footerNotes, setFooterNotes] = useState(
+    savedDoc?.footerNotes ??
     quote.notes ??
     (type === 'PRESUPUESTO'
       ? 'Este presupuesto tiene una validez de 30 días. Los precios incluyen mano de obra y materiales. IVA no incluido en las líneas, se aplica al total.'
       : 'Factura emitida conforme a lo acordado. Pago a 30 días desde la fecha de emisión.')
   )
-  const [company, setCompany] = useState(DEFAULT_COMPANY)
+  const [company, setCompany] = useState(savedDoc?.company ?? DEFAULT_COMPANY)
   const [editingLine, setEditingLine] = useState<string | null>(null)
   const [invoiceNum, setInvoiceNum] = useState(invoiceNumber ?? `FAC-${quote.quoteNumber}`)
-  const [showBreakdown, setShowBreakdown] = useState(false)
-  const [installments, setInstallments] = useState<PaymentInstallment[]>([])
+  const [showBreakdown, setShowBreakdown] = useState(savedDoc?.showBreakdown ?? false)
+  const [installments, setInstallments] = useState<PaymentInstallment[]>(savedDoc?.paymentInstallments ?? [])
+  const [savingPdf, setSavingPdf] = useState(false)
 
-  // Cargar datos empresa desde Supabase
+  // Cargar datos empresa desde Supabase (solo si no hay datos guardados)
   useEffect(() => {
+    if (savedDoc?.company) return // ya cargado desde documentData
     ConfigService.getCompanyInfo()
       .then(rows => {
         if (!rows || rows.length === 0) return
@@ -145,6 +163,78 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
       ...i,
       [field]: field === 'percentage' ? (parseFloat(value) || 0) : value,
     }))
+  }
+
+  // ─── Guardar ediciones en el presupuesto ───
+  const handleSaveEdits = () => {
+    if (onSaveEdits) {
+      onSaveEdits({
+        customLines: lines,
+        footerNotes,
+        showBreakdown,
+        paymentInstallments: installments,
+        company,
+      })
+      toast.success('Cambios del documento guardados')
+    }
+  }
+
+  // ─── Descargar PDF ───
+  const handleDownloadPdf = async () => {
+    setSavingPdf(true)
+    try {
+      const filename = type === 'FACTURA'
+        ? `${invoiceNum}.pdf`
+        : `${quote.quoteNumber}.pdf`
+      await downloadPdf(filename)
+      toast.success('PDF descargado')
+    } catch (err: any) {
+      console.error('Error generando PDF:', err)
+      toast.error('Error al generar el PDF')
+    } finally {
+      setSavingPdf(false)
+    }
+  }
+
+  // ─── Guardar PDF en documentos del lead ───
+  const handleSaveToLeadDocs = async () => {
+    if (!quote.lead_id) {
+      toast.error('Este presupuesto no está vinculado a un lead')
+      return
+    }
+    setSavingPdf(true)
+    try {
+      // 1. Guardar ediciones en el presupuesto primero
+      if (onSaveEdits) {
+        onSaveEdits({
+          customLines: lines,
+          footerNotes,
+          showBreakdown,
+          paymentInstallments: installments,
+          company,
+        })
+      }
+      // 2. Generar PDF
+      const blob = await generatePdfBlob()
+      const filename = type === 'FACTURA'
+        ? `${invoiceNum}.pdf`
+        : `${quote.quoteNumber}.pdf`
+      const file = new File([blob], filename, { type: 'application/pdf' })
+      const category = type === 'FACTURA' ? 'factura' : 'presupuesto'
+      await LeadDocumentsService.upload(
+        quote.lead_id,
+        file,
+        category,
+        `${type === 'FACTURA' ? 'Factura' : 'Presupuesto'} generado desde el editor`,
+        ''
+      )
+      toast.success(`PDF guardado en documentos del cliente`)
+    } catch (err: any) {
+      console.error('Error guardando PDF en lead:', err)
+      toast.error('Error al guardar PDF en documentos')
+    } finally {
+      setSavingPdf(false)
+    }
   }
 
   // ─── Documento ───
@@ -392,12 +482,43 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
 
         {/* Botones de acción */}
         <div className="p-4 border-t space-y-2">
+          {/* Guardar cambios editados */}
+          {onSaveEdits && (
+            <Button
+              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+              onClick={handleSaveEdits}
+            >
+              💾 Guardar cambios
+            </Button>
+          )}
+
+          {/* Guardar PDF en documentación del lead */}
+          {quote.lead_id && (
+            <Button
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+              onClick={handleSaveToLeadDocs}
+              disabled={savingPdf}
+            >
+              {savingPdf ? '⏳ Generando…' : '📎 Guardar PDF en cliente'}
+            </Button>
+          )}
+
+          {/* Descargar PDF */}
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={savingPdf}
+          >
+            {savingPdf ? '⏳ Generando…' : '📥 Descargar PDF'}
+          </Button>
+
           <Button
             className="w-full"
             variant="outline"
             onClick={() => printQuoteDocument(docData)}
           >
-            🖨️ Imprimir / PDF
+            🖨️ Imprimir
           </Button>
 
           {onApprove && (

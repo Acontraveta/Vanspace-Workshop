@@ -173,4 +173,23 @@ export interface Quote {
   cancelledAt?: Date
   status: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED' | 'EXPIRED'
   notes?: string
+
+  /**
+   * Datos editados del documento (líneas personalizadas, notas al pie, etc.).
+   * Se persisten al guardar desde QuotePreview para que la factura conserve los cambios.
+   */
+  documentData?: {
+    customLines?: import('../components/QuotePDF').CustomLine[]
+    footerNotes?: string
+    showBreakdown?: boolean
+    paymentInstallments?: import('../components/QuotePDF').PaymentInstallment[]
+    company?: {
+      name: string
+      nif: string
+      address: string
+      phone: string
+      email: string
+      logoUrl?: string
+    }
+  }
 }

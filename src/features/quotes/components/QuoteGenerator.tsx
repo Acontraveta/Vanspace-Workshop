@@ -14,7 +14,7 @@ import { PriceCalculator } from '../utils/priceCalculator'
 import { QuoteService } from '../services/quoteService'
 import { QuoteAutomation } from '../services/quoteAutomation'
 import { CatalogService } from '../services/catalogService'
-import { QuotePDF, QuoteDocumentData } from './QuotePDF'
+import { QuotePDF, QuoteDocumentData, CustomLine, PaymentInstallment } from './QuotePDF'
 import { ConfigService } from '@/features/config/services/configService'
 import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
 import ClientDataForm from './ClientDataForm'
@@ -24,6 +24,7 @@ import QuotePreview from './QuotePreview'
 import QuickDocumentModal, { QuickDocType } from './QuickDocumentModal'
 import ConsumableResolverModal, { UnresolvedConsumable } from './ConsumableResolverModal'
 import { StockService } from '@/features/purchases/services/stockService'
+import { generatePdfBlob } from '../services/pdfGenerator'
 
 const TARIFAS_FALLBACK: Tarifa[] = [
   { id: 'camperizacion_total', name: 'Camperización Total', hourlyRate: 50, profitMargin: 25 },
@@ -47,24 +48,36 @@ async function autoAttachQuoteToLead(quote: Quote, leadId: string): Promise<void
     email: get('email') || '',
   }
 
-  const docData: QuoteDocumentData = { quote, company, type: 'PRESUPUESTO' }
+  // Use saved documentData if available (preserves manual edits)
+  const docData: QuoteDocumentData = {
+    quote,
+    customLines: quote.documentData?.customLines,
+    company: quote.documentData?.company ?? company,
+    type: 'PRESUPUESTO',
+    footerNotes: quote.documentData?.footerNotes,
+    showBreakdown: quote.documentData?.showBreakdown,
+    paymentInstallments: quote.documentData?.paymentInstallments,
+  }
 
-  // Render QuotePDF to static HTML using an off-screen div
+  // Render QuotePDF to an off-screen div for PDF generation
   const container = document.createElement('div')
-  container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none'
+  container.style.cssText = 'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;z-index:-9999;width:210mm'
   document.body.appendChild(container)
 
   try {
     const root = createRoot(container)
     flushSync(() => { root.render(createElement(QuotePDF, { data: docData })) })
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>${quote.quoteNumber}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:11px}</style></head><body>${container.innerHTML}</body></html>`
+
+    // Generate real PDF from the rendered HTML
+    const pdfEl = container.querySelector('#quote-pdf-content') as HTMLElement
+    if (!pdfEl) throw new Error('PDF content element not found')
+
+    const blob = await generatePdfBlob(pdfEl)
     root.unmount()
-    const blob = new Blob([html], { type: 'text/html' })
-    const file = new File([blob], `${quote.quoteNumber}.html`, { type: 'text/html' })
-    await LeadDocumentsService.upload(leadId, file, 'presupuesto', 'Generado automáticamente al guardar', '')
+
+    const file = new File([blob], `${quote.quoteNumber}.pdf`, { type: 'application/pdf' })
+    await LeadDocumentsService.upload(leadId, file, 'presupuesto', 'Generado al guardar presupuesto', '')
   } finally {
-    // Use .remove() instead of document.body.removeChild() — tolerates nodes
-    // that root.unmount() may have already detached from the DOM.
     container.remove()
   }
 }
@@ -349,6 +362,29 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       handleSaveQuote()
     }
     setShowPreview(type)
+  }
+
+  /** Persiste las ediciones manuales del documento (líneas, notas, empresa, etc.) */
+  const handleSaveDocumentEdits = (data: {
+    customLines: CustomLine[]
+    footerNotes: string
+    showBreakdown: boolean
+    paymentInstallments: PaymentInstallment[]
+    company: QuoteDocumentData['company']
+  }) => {
+    if (!currentQuote) return
+    const updated: Quote = {
+      ...currentQuote,
+      documentData: {
+        customLines: data.customLines,
+        footerNotes: data.footerNotes,
+        showBreakdown: data.showBreakdown,
+        paymentInstallments: data.paymentInstallments,
+        company: data.company,
+      },
+    }
+    QuoteService.saveQuote(updated)
+    setCurrentQuote(updated)
   }
 
   const handleApproveFromPreview = async () => {
@@ -900,6 +936,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
           quote={currentQuote}
           type={showPreview}
           onApprove={showPreview === 'PRESUPUESTO' && currentQuote.status !== 'APPROVED' ? handleApproveFromPreview : undefined}
+          onSaveEdits={handleSaveDocumentEdits}
           onClose={() => setShowPreview(null)}
         />
       )}
