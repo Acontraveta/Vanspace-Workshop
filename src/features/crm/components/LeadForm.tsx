@@ -624,9 +624,21 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
               </button>
             )}
             {lead && lead.recepcion_confirmada && (
-              <span className="px-4 py-2 text-sm bg-green-100 text-green-800 rounded-lg font-medium border border-green-300">
-                ✅ Vehículo recibido
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-2 text-sm bg-green-100 text-green-800 rounded-lg font-medium border border-green-300">
+                  ✅ Vehículo recibido
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await updateLead(lead.id, { recepcion_confirmada: false, fecha_recepcion: null, hora_recepcion: null } as any)
+                    setShowReceptionModal(true)
+                  }}
+                  className="px-3 py-2 text-sm border border-amber-400 text-amber-700 rounded-lg hover:bg-amber-50 transition font-medium"
+                >
+                  🚐 Programar nueva recepción
+                </button>
+              </div>
             )}
             {lead && (
               <button
