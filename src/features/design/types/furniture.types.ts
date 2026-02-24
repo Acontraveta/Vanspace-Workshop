@@ -87,8 +87,11 @@ export interface FurnitureDesign {
   updated_at: string
 }
 
-// ─── Furniture Work Order ─────────────────────────────────────────────────────
-// Created by automation when a quote with muebles is approved
+// ─── Design Work Order ───────────────────────────────────────────────────────
+// Created by automation when a quote with design items is approved.
+// design_type determines which design tool handles this order.
+
+export type DesignType = 'furniture' | 'exterior' | 'interior'
 
 export interface FurnitureWorkOrderItem {
   quoteItemName: string
@@ -104,6 +107,7 @@ export interface FurnitureWorkOrder {
   lead_id?: string           // CRM lead
   quote_number: string
   client_name: string
+  design_type: DesignType    // furniture | exterior | interior
   items: FurnitureWorkOrderItem[]
   cutlist_svg?: string       // combined cut-list blueprint (generated on completion)
   board_cutlist_svgs?: string[] // per-board cut-list SVGs (one per physical board)

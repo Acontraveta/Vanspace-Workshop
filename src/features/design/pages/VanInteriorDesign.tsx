@@ -3,11 +3,16 @@
 // 1) Place furniture items (from the project quote) with real dimensions
 // 2) Draw electrical diagram (batteries, fusebox, lights, sockets, wiring)
 // 3) Draw water/plumbing diagram (tank, pump, heater, taps, piping)
+//
+// In WO-driven mode: only quote items from the work order are available.
+// In free mode: the full default palettes are available.
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+import { FurnitureWorkOrderService } from '../services/furnitureDesignService'
+import { FurnitureWorkOrder, FurnitureWorkOrderItem } from '../types/furniture.types'
 
 // ── Van floor plan dimensions (mm) ───────────────────────────────
 const FLOOR = {
@@ -92,6 +97,73 @@ const LAYER_CONFIG: Record<DiagramLayer, { label: string; icon: string; color: s
   water:       { label: 'Agua', icon: '💧', color: '#3b82f6', palette: WATER_PALETTE },
 }
 
+// ── Helpers: map quote item names to interior palette items ──────
+const INTERIOR_TYPE_MAP: { keywords: string[]; type: string; layer: DiagramLayer; color: string; icon: string; defaultW: number; defaultH: number }[] = [
+  // Furniture
+  { keywords: ['cama'],                     type: 'cama',             layer: 'furniture',   color: '#8b5cf6', icon: '🛏️', defaultW: 1800, defaultH: 1300 },
+  { keywords: ['armario'],                  type: 'armario',          layer: 'furniture',   color: '#a855f7', icon: '🪑', defaultW: 600,  defaultH: 500 },
+  { keywords: ['cocina'],                   type: 'cocina',           layer: 'furniture',   color: '#f97316', icon: '🍳', defaultW: 800,  defaultH: 500 },
+  { keywords: ['mesa'],                     type: 'mesa',             layer: 'furniture',   color: '#eab308', icon: '🪵', defaultW: 600,  defaultH: 400 },
+  { keywords: ['nevera', 'frigorífico'],    type: 'nevera',           layer: 'furniture',   color: '#06b6d4', icon: '❄️', defaultW: 500,  defaultH: 500 },
+  { keywords: ['asiento', 'silla'],         type: 'asiento',          layer: 'furniture',   color: '#64748b', icon: '💺', defaultW: 500,  defaultH: 500 },
+  { keywords: ['baño', 'ducha'],            type: 'bano',             layer: 'furniture',   color: '#0ea5e9', icon: '🚿', defaultW: 700,  defaultH: 700 },
+  { keywords: ['almacenaje', 'cajón'],      type: 'almacenaje',       layer: 'furniture',   color: '#78716c', icon: '📦', defaultW: 600,  defaultH: 400 },
+  // Electrical
+  { keywords: ['batería', 'bateria'],       type: 'bateria',          layer: 'electrical',  color: '#dc2626', icon: '🔋', defaultW: 300,  defaultH: 200 },
+  { keywords: ['fusiblera', 'fusible'],     type: 'fusiblera',        layer: 'electrical',  color: '#f59e0b', icon: '🔌', defaultW: 200,  defaultH: 100 },
+  { keywords: ['inversor'],                 type: 'inversor',         layer: 'electrical',  color: '#f97316', icon: '🔄', defaultW: 250,  defaultH: 150 },
+  { keywords: ['regulador solar'],          type: 'regulador_solar',  layer: 'electrical',  color: '#16a34a', icon: '☀️', defaultW: 200,  defaultH: 120 },
+  { keywords: ['enchufe 220', '220v'],      type: 'enchufe_220',      layer: 'electrical',  color: '#3b82f6', icon: '🔌', defaultW: 80,   defaultH: 80 },
+  { keywords: ['usb'],                      type: 'enchufe_usb',      layer: 'electrical',  color: '#6366f1', icon: '🔌', defaultW: 80,   defaultH: 60 },
+  { keywords: ['12v'],                      type: 'enchufe_12v',      layer: 'electrical',  color: '#0ea5e9', icon: '🔌', defaultW: 80,   defaultH: 80 },
+  { keywords: ['tira led', 'tira'],         type: 'luz_led',          layer: 'electrical',  color: '#eab308', icon: '💡', defaultW: 400,  defaultH: 40 },
+  { keywords: ['foco'],                     type: 'luz_foco',         layer: 'electrical',  color: '#eab308', icon: '💡', defaultW: 80,   defaultH: 80 },
+  { keywords: ['interruptor'],              type: 'interruptor',      layer: 'electrical',  color: '#475569', icon: '🔘', defaultW: 80,   defaultH: 60 },
+  { keywords: ['panel control', 'panel'],   type: 'panel_control',    layer: 'electrical',  color: '#334155', icon: '📊', defaultW: 200,  defaultH: 120 },
+  // Water
+  { keywords: ['depósito limpia', 'deposito limpia', 'agua limpia'], type: 'deposito_limpia', layer: 'water', color: '#3b82f6', icon: '💧', defaultW: 500, defaultH: 300 },
+  { keywords: ['depósito gris', 'deposito gris', 'agua gris'],      type: 'deposito_gris',   layer: 'water', color: '#6b7280', icon: '🚰', defaultW: 500, defaultH: 300 },
+  { keywords: ['bomba'],                    type: 'bomba',            layer: 'water',       color: '#0ea5e9', icon: '⚙️', defaultW: 150,  defaultH: 100 },
+  { keywords: ['calentador', 'boiler'],     type: 'calentador',       layer: 'water',       color: '#ef4444', icon: '🔥', defaultW: 250,  defaultH: 200 },
+  { keywords: ['grifo cocina'],             type: 'grifo_cocina',     layer: 'water',       color: '#06b6d4', icon: '🚰', defaultW: 80,   defaultH: 80 },
+  { keywords: ['grifo ducha'],              type: 'grifo_ducha',      layer: 'water',       color: '#06b6d4', icon: '🚿', defaultW: 80,   defaultH: 80 },
+  { keywords: ['filtro'],                   type: 'filtro',           layer: 'water',       color: '#14b8a6', icon: '🧪', defaultW: 120,  defaultH: 80 },
+  { keywords: ['desagüe', 'desague'],       type: 'desague',          layer: 'water',       color: '#78716c', icon: '⬇️', defaultW: 80,   defaultH: 80 },
+]
+
+function quoteItemToInteriorPalette(item: FurnitureWorkOrderItem, idx: number): PaletteItem & { fromQuote: true } {
+  const nameLower = item.quoteItemName.toLowerCase()
+  const dimMatch = nameLower.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})/)
+  const parsedW = dimMatch ? parseInt(dimMatch[1]) : undefined
+  const parsedH = dimMatch ? parseInt(dimMatch[2]) : undefined
+
+  for (const mapping of INTERIOR_TYPE_MAP) {
+    if (mapping.keywords.some(k => nameLower.includes(k))) {
+      return {
+        type: mapping.type,
+        label: item.quoteItemName,
+        w: parsedW ?? mapping.defaultW,
+        h: parsedH ?? mapping.defaultH,
+        color: mapping.color,
+        icon: mapping.icon,
+        layer: mapping.layer,
+        fromQuote: true,
+      }
+    }
+  }
+  // Fallback: furniture layer generic
+  return {
+    type: 'custom',
+    label: item.quoteItemName,
+    w: parsedW ?? 400,
+    h: parsedH ?? 300,
+    color: '#64748b',
+    icon: '📦',
+    layer: 'furniture',
+    fromQuote: true,
+  }
+}
+
 // ── SVG Floor Plan ────────────────────────────────────────────────
 function VanFloorPlanSVG() {
   const { length: l, width: w, wallThickness: wt, cabinDepth: cd } = FLOOR
@@ -165,8 +237,13 @@ function VanFloorPlanSVG() {
 // ── Main Component ────────────────────────────────────────────────
 export default function VanInteriorDesign() {
   const navigate = useNavigate()
-  const { projectId } = useParams<{ projectId?: string }>()
+  const { workOrderId, projectId } = useParams<{ workOrderId?: string; projectId?: string }>()
+  const isWoMode = !!workOrderId
 
+  const [workOrder, setWorkOrder] = useState<FurnitureWorkOrder | null>(null)
+  const [woPalettes, setWoPalettes] = useState<Record<DiagramLayer, (PaletteItem & { fromQuote?: boolean })[]>>({
+    furniture: [], electrical: [], water: []
+  })
   const [items, setItems] = useState<InteriorItem[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [activeLayer, setActiveLayer] = useState<DiagramLayer>('furniture')
@@ -175,20 +252,46 @@ export default function VanInteriorDesign() {
   const [saving, setSaving] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
 
-  // Load saved design
+  // Load WO data or saved design
   useEffect(() => {
-    if (!projectId) return
-    ;(async () => {
-      try {
-        const { data } = await supabase
-          .from('interior_designs')
-          .select('items')
-          .eq('project_id', projectId)
-          .maybeSingle()
-        if (data?.items) setItems(data.items)
-      } catch { /* empty */ }
-    })()
-  }, [projectId])
+    if (workOrderId) {
+      ;(async () => {
+        try {
+          const wo = await FurnitureWorkOrderService.getById(workOrderId)
+          if (wo) {
+            setWorkOrder(wo)
+            // Build per-layer palettes from WO items
+            const grouped: Record<DiagramLayer, (PaletteItem & { fromQuote?: boolean })[]> = {
+              furniture: [], electrical: [], water: []
+            }
+            ;(wo.items ?? []).forEach((item, idx) => {
+              const mapped = quoteItemToInteriorPalette(item as FurnitureWorkOrderItem, idx)
+              grouped[mapped.layer].push(mapped)
+            })
+            setWoPalettes(grouped)
+          }
+          // Load saved design
+          const { data } = await supabase
+            .from('interior_designs')
+            .select('items')
+            .eq('work_order_id', workOrderId)
+            .maybeSingle()
+          if (data?.items) setItems(data.items)
+        } catch { /* empty */ }
+      })()
+    } else if (projectId) {
+      ;(async () => {
+        try {
+          const { data } = await supabase
+            .from('interior_designs')
+            .select('items')
+            .eq('project_id', projectId)
+            .maybeSingle()
+          if (data?.items) setItems(data.items)
+        } catch { /* empty */ }
+      })()
+    }
+  }, [workOrderId, projectId])
 
   const snap = (v: number) => Math.round(v / 50) * 50
 
@@ -294,15 +397,47 @@ export default function VanInteriorDesign() {
   }
 
   const save = async () => {
-    if (!projectId) {
+    if (!workOrderId && !projectId) {
       toast.error('Guarda primero el proyecto para vincular el diseño interior')
       return
     }
     setSaving(true)
     try {
-      await supabase
-        .from('interior_designs')
-        .upsert({ project_id: projectId, items, updated_at: new Date().toISOString() })
+      if (workOrderId) {
+        // WO-driven: save linked to work order
+        const { data: existing } = await supabase
+          .from('interior_designs')
+          .select('id')
+          .eq('work_order_id', workOrderId)
+          .maybeSingle()
+        if (existing) {
+          await supabase
+            .from('interior_designs')
+            .update({ items, updated_at: new Date().toISOString() })
+            .eq('id', existing.id)
+        } else {
+          await supabase
+            .from('interior_designs')
+            .insert({
+              work_order_id: workOrderId,
+              project_id: workOrder?.project_id,
+              items,
+            })
+        }
+        // Update WO items status
+        if (workOrder) {
+          const updatedItems = (workOrder.items as FurnitureWorkOrderItem[]).map(item => ({
+            ...item,
+            designStatus: items.length > 0 ? 'designed' as const : item.designStatus,
+          }))
+          await FurnitureWorkOrderService.updateItems(workOrder.id, updatedItems)
+        }
+      } else {
+        // Free mode: save linked to project
+        await supabase
+          .from('interior_designs')
+          .upsert({ project_id: projectId, items, updated_at: new Date().toISOString() })
+      }
       toast.success('Diseño interior guardado')
     } catch (err: any) {
       toast.error('Error guardando: ' + (err.message ?? err))
@@ -329,19 +464,25 @@ export default function VanInteriorDesign() {
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/design')}
-            className="text-sm text-blue-600 hover:underline">← Diseño</button>
+          <button onClick={() => navigate(isWoMode ? '/design/interior' : '/design')}
+            className="text-sm text-blue-600 hover:underline">← {isWoMode ? 'Órdenes' : 'Diseño'}</button>
           <div>
             <h1 className="text-xl font-black text-slate-900 flex items-center gap-2">
               🏠 Diseño Interior
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Distribución de muebles, diagrama eléctrico y diagrama de agua
-            </p>
+            {workOrder ? (
+              <p className="text-xs text-slate-500 mt-0.5">
+                📋 {workOrder.quote_number} · {workOrder.client_name} · {(workOrder.items ?? []).length} elementos del presupuesto
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 mt-0.5">
+                Distribución de muebles, diagrama eléctrico y diagrama de agua
+              </p>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
-          {projectId && (
+          {(workOrderId || projectId) && (
             <button onClick={save} disabled={saving}
               className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
               {saving ? '⏳ Guardando…' : '💾 Guardar'}
@@ -523,26 +664,44 @@ export default function VanInteriorDesign() {
 
           {/* Palette for active layer */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-              {layerCfg.icon} {layerCfg.label}
-              <span className="text-[10px] text-slate-400 ml-auto font-normal">
-                {layerCfg.palette.length} elementos
-              </span>
-            </h3>
-            <div className="space-y-1 max-h-[50vh] overflow-y-auto">
-              {layerCfg.palette.map(tpl => (
-                <button key={tpl.type} onClick={() => addItem(tpl)}
-                  className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all text-xs">
-                  <span className="text-base flex-shrink-0">{tpl.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-700 truncate">{tpl.label}</p>
-                    <p className="text-[10px] text-slate-400">{tpl.w}×{tpl.h} mm</p>
-                  </div>
-                  <span className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: tpl.color }} />
-                </button>
-              ))}
-            </div>
+            {(() => {
+              const paletteItems = isWoMode ? (woPalettes[activeLayer] ?? []) : layerCfg.palette
+              return (
+                <>
+                  <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    {layerCfg.icon} {isWoMode ? `${layerCfg.label} (presupuesto)` : layerCfg.label}
+                    <span className="text-[10px] text-slate-400 ml-auto font-normal">
+                      {paletteItems.length} elementos
+                    </span>
+                  </h3>
+                  {paletteItems.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-4">
+                      No hay elementos de {layerCfg.label.toLowerCase()} en esta orden
+                    </p>
+                  ) : (
+                    <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+                      {paletteItems.map((tpl, idx) => (
+                        <button key={`${tpl.type}-${idx}`} onClick={() => addItem(tpl)}
+                          className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all text-xs">
+                          <span className="text-base flex-shrink-0">{tpl.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-700 truncate">{tpl.label}</p>
+                            <p className="text-[10px] text-slate-400">{tpl.w}×{tpl.h} mm</p>
+                          </div>
+                          {(tpl as any).fromQuote && (
+                            <span className="text-[9px] px-1.5 py-0.5 bg-teal-50 text-teal-600 rounded-full font-bold flex-shrink-0">
+                              PRESU
+                            </span>
+                          )}
+                          <span className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: tpl.color }} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
 
           {/* Legend */}

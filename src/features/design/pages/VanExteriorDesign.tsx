@@ -3,13 +3,15 @@
 // can drag-and-drop catalog elements that require exterior placement:
 // windows, skylights, vents, grilles, etc.
 //
-// Elements come from the project's quote items filtered by category
-// keywords plus a palette of common exterior fittings.
+// In WO-driven mode: only quote items from the work order are available as palette.
+// In free mode: the full default palette is available.
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+import { FurnitureWorkOrderService } from '../services/furnitureDesignService'
+import { FurnitureWorkOrder, FurnitureWorkOrderItem } from '../types/furniture.types'
 
 // ── SVG Van dimensions (mm, proportional to a generic LWB van) ───
 const VAN = {
@@ -187,11 +189,59 @@ function VanRearSVG() {
   )
 }
 
+// ── Helpers: map quote item names to ExteriorElement types ──────
+const EXTERIOR_TYPE_MAP: { keywords: string[]; type: ExteriorElement['type']; color: string; defaultW: number; defaultH: number }[] = [
+  { keywords: ['ventana'],                   type: 'ventana',      color: '#3b82f6', defaultW: 600, defaultH: 400 },
+  { keywords: ['claraboya'],                 type: 'claraboya',    color: '#8b5cf6', defaultW: 400, defaultH: 400 },
+  { keywords: ['aireador'],                  type: 'aireador',     color: '#10b981', defaultW: 200, defaultH: 200 },
+  { keywords: ['rejilla'],                   type: 'rejilla',      color: '#f59e0b', defaultW: 300, defaultH: 150 },
+  { keywords: ['placa solar', 'placa_solar', 'solar'], type: 'placa_solar', color: '#1e3a5f', defaultW: 1600, defaultH: 1000 },
+  { keywords: ['toldo'],                     type: 'toldo',        color: '#be185d', defaultW: 3000, defaultH: 2500 },
+  { keywords: ['portabicis', 'bici'],        type: 'portabicis',   color: '#64748b', defaultW: 600, defaultH: 500 },
+]
+
+function quoteItemToExteriorElement(item: FurnitureWorkOrderItem, idx: number): ExteriorElement {
+  const nameLower = item.quoteItemName.toLowerCase()
+  // Try to extract dimensions from the name (e.g., "Ventana 600×400" or "Ventana 600x400")
+  const dimMatch = nameLower.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})/)
+  const parsedW = dimMatch ? parseInt(dimMatch[1]) : undefined
+  const parsedH = dimMatch ? parseInt(dimMatch[2]) : undefined
+
+  for (const mapping of EXTERIOR_TYPE_MAP) {
+    if (mapping.keywords.some(k => nameLower.includes(k))) {
+      return {
+        id: `wo-ext-${idx}-${Date.now()}`,
+        type: mapping.type,
+        label: item.quoteItemName,
+        w: parsedW ?? mapping.defaultW,
+        h: parsedH ?? mapping.defaultH,
+        color: mapping.color,
+        fromQuote: true,
+        quoteItemId: item.quoteItemSku,
+      }
+    }
+  }
+  // Fallback: generic custom element
+  return {
+    id: `wo-ext-${idx}-${Date.now()}`,
+    type: 'custom',
+    label: item.quoteItemName,
+    w: parsedW ?? 400,
+    h: parsedH ?? 300,
+    color: '#64748b',
+    fromQuote: true,
+    quoteItemId: item.quoteItemSku,
+  }
+}
+
 // ── Main Component ────────────────────────────────────────────────
 export default function VanExteriorDesign() {
   const navigate = useNavigate()
-  const { projectId } = useParams<{ projectId?: string }>()
+  const { workOrderId, projectId } = useParams<{ workOrderId?: string; projectId?: string }>()
+  const isWoMode = !!workOrderId
 
+  const [workOrder, setWorkOrder] = useState<FurnitureWorkOrder | null>(null)
+  const [woPalette, setWoPalette] = useState<ExteriorElement[]>([])
   const [elements, setElements] = useState<PlacedElement[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<ViewId>('side')
@@ -199,20 +249,45 @@ export default function VanExteriorDesign() {
   const [saving, setSaving] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
 
-  // Load saved design
+  // Load WO data or saved design
   useEffect(() => {
-    if (!projectId) return
-    ;(async () => {
-      try {
-        const { data } = await supabase
-          .from('exterior_designs')
-          .select('elements')
-          .eq('project_id', projectId)
-          .maybeSingle()
-        if (data?.elements) setElements(data.elements)
-      } catch { /* empty */ }
-    })()
-  }, [projectId])
+    if (workOrderId) {
+      ;(async () => {
+        try {
+          const wo = await FurnitureWorkOrderService.getById(workOrderId)
+          if (wo) {
+            setWorkOrder(wo)
+            // Build palette from WO items
+            const palette = (wo.items ?? []).map((item, idx) =>
+              quoteItemToExteriorElement(item as FurnitureWorkOrderItem, idx)
+            )
+            setWoPalette(palette)
+          }
+          // Load saved design for this WO
+          const { data } = await supabase
+            .from('exterior_designs')
+            .select('elements')
+            .eq('work_order_id', workOrderId)
+            .maybeSingle()
+          if (data?.elements) setElements(data.elements)
+        } catch { /* empty */ }
+      })()
+    } else if (projectId) {
+      ;(async () => {
+        try {
+          const { data } = await supabase
+            .from('exterior_designs')
+            .select('elements')
+            .eq('project_id', projectId)
+            .maybeSingle()
+          if (data?.elements) setElements(data.elements)
+        } catch { /* empty */ }
+      })()
+    }
+  }, [workOrderId, projectId])
+
+  // The palette to show: WO items only in WO mode, default palette in free mode
+  const activePalette = isWoMode ? woPalette : DEFAULT_PALETTE
 
   const viewConfig = VIEWS.find(v => v.id === activeView)!
 
@@ -303,15 +378,47 @@ export default function VanExteriorDesign() {
 
   // ── Save ─────────────────────────────────────────────────────
   const save = async () => {
-    if (!projectId) {
+    if (!workOrderId && !projectId) {
       toast.error('Guarda primero el proyecto para vincular el diseño exterior')
       return
     }
     setSaving(true)
     try {
-      await supabase
-        .from('exterior_designs')
-        .upsert({ project_id: projectId, elements, updated_at: new Date().toISOString() })
+      if (workOrderId) {
+        // WO-driven: save linked to work order
+        const { data: existing } = await supabase
+          .from('exterior_designs')
+          .select('id')
+          .eq('work_order_id', workOrderId)
+          .maybeSingle()
+        if (existing) {
+          await supabase
+            .from('exterior_designs')
+            .update({ elements, updated_at: new Date().toISOString() })
+            .eq('id', existing.id)
+        } else {
+          await supabase
+            .from('exterior_designs')
+            .insert({
+              work_order_id: workOrderId,
+              project_id: workOrder?.project_id,
+              elements,
+            })
+        }
+        // Update WO items status
+        if (workOrder) {
+          const updatedItems = (workOrder.items as FurnitureWorkOrderItem[]).map(item => ({
+            ...item,
+            designStatus: elements.some(el => el.fromQuote) ? 'designed' as const : item.designStatus,
+          }))
+          await FurnitureWorkOrderService.updateItems(workOrder.id, updatedItems)
+        }
+      } else {
+        // Free mode: save linked to project
+        await supabase
+          .from('exterior_designs')
+          .upsert({ project_id: projectId, elements, updated_at: new Date().toISOString() })
+      }
       toast.success('Diseño exterior guardado')
     } catch (err: any) {
       toast.error('Error guardando: ' + (err.message ?? err))
@@ -334,19 +441,25 @@ export default function VanExteriorDesign() {
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/design')}
-            className="text-sm text-blue-600 hover:underline">← Diseño</button>
+          <button onClick={() => navigate(isWoMode ? '/design/exterior' : '/design')}
+            className="text-sm text-blue-600 hover:underline">← {isWoMode ? 'Órdenes' : 'Diseño'}</button>
           <div>
             <h1 className="text-xl font-black text-slate-900 flex items-center gap-2">
               🚐 Diseño Exterior
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Coloca ventanas, claraboyas, aireadores y demás elementos en la furgoneta
-            </p>
+            {workOrder ? (
+              <p className="text-xs text-slate-500 mt-0.5">
+                📋 {workOrder.quote_number} · {workOrder.client_name} · {(workOrder.items ?? []).length} elementos del presupuesto
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 mt-0.5">
+                Coloca ventanas, claraboyas, aireadores y demás elementos en la furgoneta
+              </p>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
-          {projectId && (
+          {(workOrderId || projectId) && (
             <button onClick={save} disabled={saving}
               className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
               {saving ? '⏳ Guardando…' : '💾 Guardar'}
@@ -488,22 +601,33 @@ export default function VanExteriorDesign() {
           {/* Element palette */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
             <h3 className="text-sm font-bold text-slate-700 mb-3">
-              🧩 Elementos exteriores
+              {isWoMode ? '📋 Elementos del presupuesto' : '🧩 Elementos exteriores'}
             </h3>
-            <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
-              {DEFAULT_PALETTE.map(tpl => (
-                <button key={tpl.id} onClick={() => addElement(tpl)}
-                  className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all text-xs">
-                  <span className="text-base flex-shrink-0">{ELEMENT_ICONS[tpl.type]}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-700 truncate">{tpl.label}</p>
-                    <p className="text-[10px] text-slate-400">{tpl.w}×{tpl.h} mm</p>
-                  </div>
-                  <span className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: tpl.color }} />
-                </button>
-              ))}
-            </div>
+            {isWoMode && activePalette.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">
+                No hay elementos exteriores en esta orden
+              </p>
+            ) : (
+              <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+                {activePalette.map(tpl => (
+                  <button key={tpl.id} onClick={() => addElement(tpl)}
+                    className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all text-xs">
+                    <span className="text-base flex-shrink-0">{ELEMENT_ICONS[tpl.type]}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-700 truncate">{tpl.label}</p>
+                      <p className="text-[10px] text-slate-400">{tpl.w}×{tpl.h} mm</p>
+                    </div>
+                    {tpl.fromQuote && (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-full font-bold flex-shrink-0">
+                        PRESU
+                      </span>
+                    )}
+                    <span className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: tpl.color }} />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Legend */}

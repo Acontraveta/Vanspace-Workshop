@@ -37,6 +37,8 @@ const FurnitureStandaloneEditor = lazyRetry(() => import('@/features/design/page
 const DesignHub = lazyRetry(() => import('@/features/design/pages/DesignHub'))
 const VanExteriorDesign = lazyRetry(() => import('@/features/design/pages/VanExteriorDesign'))
 const VanInteriorDesign = lazyRetry(() => import('@/features/design/pages/VanInteriorDesign'))
+const ExteriorDesignList = lazyRetry(() => import('@/features/design/pages/ExteriorDesignList'))
+const InteriorDesignList = lazyRetry(() => import('@/features/design/pages/InteriorDesignList'))
 // Dashboards
 const AdminDashboard = lazyRetry(() => import('@/features/dashboards/AdminDashboard'))
 const EncargadoDashboard = lazyRetry(() => import('@/features/dashboards/EncargadoDashboard'))
@@ -270,6 +272,26 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <PermissionGuard module="quotes">
+              <ExteriorDesignList />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/exterior/order/:workOrderId',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <VanExteriorDesign />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/exterior/free',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
               <VanExteriorDesign />
             </PermissionGuard>
           </Suspense>
@@ -287,6 +309,26 @@ export const router = createBrowserRouter([
       },
       {
         path: 'design/interior',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <InteriorDesignList />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/interior/order/:workOrderId',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <VanInteriorDesign />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/interior/free',
         element: (
           <Suspense fallback={<PageLoading />}>
             <PermissionGuard module="quotes">

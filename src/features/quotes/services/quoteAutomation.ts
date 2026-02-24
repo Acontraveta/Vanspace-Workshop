@@ -196,39 +196,70 @@ export class QuoteAutomation {
 
         console.log(`✅ ${tasks.length} tareas añadidas al proyecto del calendario`)
 
-        // ── Furniture work order ─────────────────────────────────────────────
+        // ── Design work orders (furniture / exterior / interior) ──────────────
         const FURNITURE_WORDS = ['mueble', 'cocina', 'armario', 'cajonera', 'arcón', 'arcon', 'altillo', 'estantería', 'estanteria', 'aparador', 'alacena']
-        const isFurnitureItem = (item: QuoteItem) => {
+        const EXTERIOR_WORDS  = ['ventana', 'claraboya', 'aireador', 'rejilla', 'placa solar', 'placa_solar', 'toldo', 'portabicis', 'exterior']
+        const INTERIOR_WORDS  = ['batería', 'bateria', 'fusiblera', 'inversor', 'enchufe', 'led', 'interruptor', 'panel control', 'depósito', 'deposito', 'bomba', 'calentador', 'grifo', 'tubería', 'tuberia', 'filtro', 'desagüe', 'desague', 'eléctric', 'electric', 'fontaner', 'agua', 'interior']
+
+        /** Classify a quote item into a design type based on TIPO_DISEÑO, FAMILIA, SKU, and product name */
+        const classifyDesignType = (item: QuoteItem): 'furniture' | 'exterior' | 'interior' | null => {
+          const reqDis = item.catalogData?.REQUIERE_DISEÑO === 'SÍ'
+          if (!reqDis) return null
+
+          const tipo = (item.catalogData?.TIPO_DISEÑO ?? '').toLowerCase()
+          // Explicit TIPO_DISEÑO takes priority
+          if (tipo.includes('mueble'))   return 'furniture'
+          if (tipo.includes('exterior')) return 'exterior'
+          if (tipo.includes('interior')) return 'interior'
+
+          // Heuristic fallback using keywords
           const familia = (item.catalogData?.FAMILIA ?? '').toLowerCase()
           const sku     = (item.catalogSKU ?? '').toLowerCase()
           const name    = (item.productName ?? '').toLowerCase()
-          const reqDis  = item.catalogData?.REQUIERE_DISEÑO === 'SÍ'
-          return FURNITURE_WORDS.some(w => familia.includes(w) || name.includes(w)) ||
-                 sku.startsWith('mue') ||
-                 (reqDis && (item.catalogData?.TIPO_DISEÑO ?? '').toLowerCase().includes('mueble'))
+          const fields  = `${familia} ${sku} ${name}`
+
+          if (FURNITURE_WORDS.some(w => fields.includes(w)) || sku.startsWith('mue')) return 'furniture'
+          if (EXTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ext')) return 'exterior'
+          if (INTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('int') || sku.startsWith('ele')) return 'interior'
+
+          // If REQUIERE_DISEÑO=SÍ but we can't classify, default to furniture
+          return 'furniture'
         }
-        const furnitureItems = quote.items.filter(isFurnitureItem)
-        if (furnitureItems.length > 0) {
+
+        // Group quote items by design type
+        const designGroups: Record<string, QuoteItem[]> = { furniture: [], exterior: [], interior: [] }
+        for (const item of quote.items) {
+          const dt = classifyDesignType(item)
+          if (dt) designGroups[dt].push(item)
+        }
+
+        // Create a work order for each design type that has items
+        const { FurnitureWorkOrderService } = await import(
+          '@/features/design/services/furnitureDesignService'
+        )
+
+        for (const [designType, designItems] of Object.entries(designGroups)) {
+          if (designItems.length === 0) continue
           try {
-            const { FurnitureWorkOrderService } = await import(
-              '@/features/design/services/furnitureDesignService'
-            )
+            const taskId = designType === 'furniture' ? furnitureCuttingTaskId : undefined
             const wo = await FurnitureWorkOrderService.create({
               project_id:      project.id,
-              project_task_id: furnitureCuttingTaskId,
+              project_task_id: taskId,
               lead_id:         quote.lead_id ?? undefined,
               quote_number:    quote.quoteNumber,
               client_name:     quote.clientName,
-              items:           furnitureItems.map((i: QuoteItem) => ({
+              design_type:     designType as 'furniture' | 'exterior' | 'interior',
+              items:           designItems.map((i: QuoteItem) => ({
                 quoteItemName:  i.productName,
                 quoteItemSku:   i.catalogSKU ?? undefined,
                 designStatus:   'pending' as const,
               })),
               status: 'pending',
             })
-            console.log(`🪑 Orden de diseño de muebles creada: ${wo.id} (${furnitureItems.length} piezas)`)
+            const typeIcons: Record<string, string> = { furniture: '🪑', exterior: '🚐', interior: '🏠' }
+            console.log(`${typeIcons[designType] ?? '📐'} Orden de diseño (${designType}) creada: ${wo.id} (${designItems.length} elementos)`)
           } catch (woErr) {
-            console.warn('⚠️ No se pudo crear la orden de diseño de muebles:', woErr)
+            console.warn(`⚠️ No se pudo crear la orden de diseño (${designType}):`, woErr)
           }
         }
         

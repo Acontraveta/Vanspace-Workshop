@@ -6,6 +6,7 @@ import {
   InteractivePiece,
   ModuleDimensions,
   PlacedPiece,
+  DesignType,
 } from '../types/furniture.types'
 
 const WO_TABLE  = 'furniture_work_orders'
@@ -29,6 +30,7 @@ export class FurnitureWorkOrderService {
           lead_id:         payload.lead_id,
           quote_number:    payload.quote_number,
           client_name:     payload.client_name,
+          design_type:     payload.design_type || 'furniture',
           items:           payload.items,
           status:          payload.status,
         })
@@ -46,6 +48,7 @@ export class FurnitureWorkOrderService {
           lead_id:         payload.lead_id,
           quote_number:    payload.quote_number,
           client_name:     payload.client_name,
+          design_type:     payload.design_type || 'furniture',
           items:           payload.items as FurnitureWorkOrderItem[],
           status:          payload.status,
           created_at:      new Date().toISOString(),
@@ -172,6 +175,22 @@ export class FurnitureWorkOrderService {
       return (data ?? []) as FurnitureWorkOrder[]
     } catch (err: any) {
       if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll()
+      throw err
+    }
+  }
+
+  /** List work orders filtered by design_type */
+  static async getAllByType(type: DesignType): Promise<FurnitureWorkOrder[]> {
+    try {
+      const { data, error } = await supabase
+        .from(WO_TABLE)
+        .select('*')
+        .eq('design_type', type)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as FurnitureWorkOrder[]
+    } catch (err: any) {
+      if (isTableMissing(err)) return FurnitureWorkOrderService._lsGetAll().filter(w => (w.design_type || 'furniture') === type)
       throw err
     }
   }
