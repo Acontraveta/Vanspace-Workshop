@@ -12,8 +12,21 @@ export type LeadStatus =
   | 'En espera'
   | 'Entregado'
 
+// A completed commercial cycle archived into the lead's oportunidades array
+export interface LeadOpportunity {
+  id: string
+  estado: string
+  importe?: number
+  linea_negocio?: string
+  vehiculo?: string
+  notas?: string
+  fecha_inicio?: string
+  fecha_entrega?: string
+  satisfaccion?: string
+  created_at: string
+}
+
 export type LeadOrigen =
-  | 'Web'
   | 'Instagram'
   | 'Facebook'
   | 'Referido'
@@ -56,6 +69,9 @@ export interface Lead {
   satisfaccion?: string
   incidencias?: string
   resena?: string
+
+  // Oportunidades (historical commercial states)
+  oportunidades?: LeadOpportunity[]
 
   // Timestamps
   created_at?: string

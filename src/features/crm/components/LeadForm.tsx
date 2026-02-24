@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Lead, LeadFormData } from '../types/crm.types'
+import type { Lead, LeadFormData, LeadOpportunity } from '../types/crm.types'
 import { useCRMStore } from '../store/crmStore'
-import { ALL_STATUSES } from '../utils/crmHelpers'
+import { ALL_STATUSES, getStatusConfig } from '../utils/crmHelpers'
 import { QuoteService } from '@/features/quotes/services/quoteService'
 import { LeadProductionPanel } from './LeadProductionPanel'
 import { LeadDocuments } from './LeadDocuments'
@@ -87,6 +87,53 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
       setSaving(false)
     }
   }
+
+  // Archive current commercial state and start a new opportunity cycle
+  const handleNewOpportunity = async () => {
+    if (!lead) return
+    const prev: LeadOpportunity = {
+      id: `opp-${Date.now()}`,
+      estado: form.estado ?? lead.estado ?? 'Desconocido',
+      importe: form.importe ?? lead.importe,
+      linea_negocio: form.linea_negocio ?? lead.linea_negocio,
+      vehiculo: form.vehiculo ?? lead.vehiculo,
+      notas: form.notas ?? lead.notas,
+      fecha_inicio: lead.fecha ?? lead.created_at?.split('T')[0],
+      fecha_entrega: (form.fecha_entrega ?? lead.fecha_entrega) || undefined,
+      satisfaccion: form.satisfaccion ?? lead.satisfaccion,
+      created_at: new Date().toISOString(),
+    }
+    const existing: LeadOpportunity[] = lead.oportunidades ?? []
+    const newOportunidades = [...existing, prev]
+
+    setSaving(true)
+    setError(null)
+    try {
+      await updateLead(lead.id, {
+        ...form,
+        oportunidades: newOportunidades as any,
+        estado: 'Nuevo',
+        importe: undefined,
+        linea_negocio: '',
+        vehiculo: '',
+        notas: '',
+        fecha_entrega: null,
+        satisfaccion: '',
+        incidencias: '',
+        resena: '',
+        fecha: new Date().toISOString().split('T')[0],
+        proxima_accion: '',
+        fecha_accion: null,
+      })
+      onClose()
+    } catch (err: any) {
+      setError(err?.message ?? 'Error creando nueva oportunidad')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const opportunities: LeadOpportunity[] = lead?.oportunidades ?? []
 
   return (
     <>
@@ -236,6 +283,66 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
                 </Field>
               </Row>
             </Section>
+
+            {/* New opportunity button + history */}
+            {lead && (
+              <Section title="🔄 Oportunidades comerciales">
+                {opportunities.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {[...opportunities].reverse().map((opp, idx) => {
+                      const cfg = getStatusConfig(opp.estado)
+                      return (
+                        <div key={opp.id} className={`rounded-lg border px-3 py-2 text-sm ${cfg.color} ${cfg.borderColor}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">#{opportunities.length - idx}</span>
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.color} ${cfg.textColor}`}>
+                                {opp.estado}
+                              </span>
+                              {opp.linea_negocio && (
+                                <span className="text-xs text-gray-500">{opp.linea_negocio}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                              {opp.importe != null && (
+                                <span className="font-medium text-gray-700">
+                                  {opp.importe.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                                </span>
+                              )}
+                              {opp.fecha_inicio && <span>{opp.fecha_inicio}</span>}
+                              {opp.fecha_entrega && <span>→ {opp.fecha_entrega}</span>}
+                            </div>
+                          </div>
+                          {opp.vehiculo && (
+                            <p className="text-xs text-gray-500 mt-1">🚐 {opp.vehiculo}</p>
+                          )}
+                          {opp.notas && (
+                            <p className="text-xs text-gray-400 mt-1 line-clamp-2">{opp.notas}</p>
+                          )}
+                          {opp.satisfaccion && (
+                            <p className="text-xs text-gray-400 mt-0.5">Satisfacción: {opp.satisfaccion}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleNewOpportunity}
+                    disabled={saving || !form.estado || form.estado === 'Nuevo'}
+                    className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition font-medium"
+                  >
+                    🔄 Nueva oportunidad (archivar estado actual)
+                  </button>
+                  <p className="text-[10px] text-gray-400 flex-1">
+                    Archiva el estado comercial actual y reinicia el lead a «Nuevo» para un nuevo proyecto.
+                    {opportunities.length > 0 && ` Historial: ${opportunities.length} oportunidad(es) pasada(s).`}
+                  </p>
+                </div>
+              </Section>
+            )}
 
             {/* Section: Seguimiento */}
             <Section title="Seguimiento y post-venta">

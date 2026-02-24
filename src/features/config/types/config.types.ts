@@ -54,6 +54,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'purchases.view', 'purchases.create', 'purchases.receive',
     'stock.view', 'stock.edit',
     'warehouse.view', 'warehouse.manage',
+    'calendar.view',
     'exports.excel'
   ],
   // ENCARGADO DE TALLER - Gestión de producción
@@ -71,6 +72,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'tasks.complete', // Completar sus tareas
     'tasks.pause', // Pausar sus tareas
     'production.view', // Ver el proyecto en el que trabaja
+    'calendar.view', // Ver el calendario de producción
   ]
 }
 

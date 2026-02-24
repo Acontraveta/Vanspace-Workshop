@@ -439,8 +439,10 @@ export class FurnitureDesignService {
     optimizedCuts: PlacedPiece[]
     existingId?: string   // pass to UPDATE instead of INSERT
   }): Promise<FurnitureDesign> {
+    // If workOrderId is a local-only ID it won't exist in Supabase → skip FK
+    const isLocalWo = payload.workOrderId?.startsWith('local-')
     const row = {
-      work_order_id:   payload.workOrderId,
+      work_order_id:   isLocalWo ? null : payload.workOrderId,
       lead_id:         payload.leadId,
       project_task_id: payload.projectTaskId,
       quote_item_name: payload.quoteItemName,
