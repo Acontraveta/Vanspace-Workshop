@@ -201,18 +201,24 @@ export class QuoteAutomation {
         const EXTERIOR_WORDS  = ['ventana', 'claraboya', 'aireador', 'rejilla', 'placa solar', 'placa_solar', 'toldo', 'portabicis', 'exterior']
         const INTERIOR_WORDS  = ['batería', 'bateria', 'fusiblera', 'inversor', 'enchufe', 'led', 'interruptor', 'panel control', 'depósito', 'deposito', 'bomba', 'calentador', 'grifo', 'tubería', 'tuberia', 'filtro', 'desagüe', 'desague', 'eléctric', 'electric', 'fontaner', 'agua', 'interior']
 
-        /** Classify a quote item into a design type based on TIPO_DISEÑO, FAMILIA, SKU, and product name */
+        /** Classify a quote item into a design type based on TIPO_DISEÑO, FAMILIA, SKU, and product name.
+         *  - If REQUIERE_DISEÑO='SÍ' + TIPO_DISEÑO set → use TIPO_DISEÑO explicitly
+         *  - If REQUIERE_DISEÑO='SÍ' without TIPO_DISEÑO → keyword heuristic, default furniture
+         *  - If REQUIERE_DISEÑO not set → keyword heuristic still detects designable items
+         *  - Returns null only when no match at all
+         */
         const classifyDesignType = (item: QuoteItem): 'furniture' | 'exterior' | 'interior' | null => {
           const reqDis = item.catalogData?.REQUIERE_DISEÑO === 'SÍ'
-          if (!reqDis) return null
-
           const tipo = (item.catalogData?.TIPO_DISEÑO ?? '').toLowerCase()
-          // Explicit TIPO_DISEÑO takes priority
-          if (tipo.includes('mueble'))   return 'furniture'
-          if (tipo.includes('exterior')) return 'exterior'
-          if (tipo.includes('interior')) return 'interior'
 
-          // Heuristic fallback using keywords
+          // 1) Explicit TIPO_DISEÑO (only when REQUIERE_DISEÑO=SÍ) takes priority
+          if (reqDis && tipo) {
+            if (tipo.includes('mueble'))   return 'furniture'
+            if (tipo.includes('exterior')) return 'exterior'
+            if (tipo.includes('interior')) return 'interior'
+          }
+
+          // 2) Keyword heuristic: works whether REQUIERE_DISEÑO is set or not
           const familia = (item.catalogData?.FAMILIA ?? '').toLowerCase()
           const sku     = (item.catalogSKU ?? '').toLowerCase()
           const name    = (item.productName ?? '').toLowerCase()
@@ -220,18 +226,23 @@ export class QuoteAutomation {
 
           if (FURNITURE_WORDS.some(w => fields.includes(w)) || sku.startsWith('mue')) return 'furniture'
           if (EXTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ext')) return 'exterior'
-          if (INTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('int') || sku.startsWith('ele')) return 'interior'
+          if (INTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ele')) return 'interior'
 
-          // If REQUIERE_DISEÑO=SÍ but we can't classify, default to furniture
-          return 'furniture'
+          // 3) REQUIERE_DISEÑO=SÍ but no keyword match → default to furniture
+          if (reqDis) return 'furniture'
+
+          // 4) No match → not a design item
+          return null
         }
 
         // Group quote items by design type
         const designGroups: Record<string, QuoteItem[]> = { furniture: [], exterior: [], interior: [] }
         for (const item of quote.items) {
           const dt = classifyDesignType(item)
+          console.log(`📐 Clasificar "${item.productName}" (SKU: ${item.catalogSKU ?? '-'}, FAMILIA: ${item.catalogData?.FAMILIA ?? '-'}, REQ_DISEÑO: ${item.catalogData?.REQUIERE_DISEÑO ?? '-'}, TIPO: ${item.catalogData?.TIPO_DISEÑO ?? '-'}) → ${dt ?? 'sin diseño'}`)
           if (dt) designGroups[dt].push(item)
         }
+        console.log(`📐 Diseños agrupados: muebles=${designGroups.furniture.length}, exterior=${designGroups.exterior.length}, interior=${designGroups.interior.length}`)
 
         // Create a work order for each design type that has items
         const { FurnitureWorkOrderService } = await import(
