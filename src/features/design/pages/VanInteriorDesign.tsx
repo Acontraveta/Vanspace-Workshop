@@ -180,6 +180,632 @@ function quoteItemToInteriorPalette(item: FurnitureWorkOrderItem, idx: number): 
   }
 }
 
+// ── SVG Symbol visuals per type ───────────────────────────────────
+interface ItemVisual {
+  shortLabel: string
+  strokeStyle: string
+}
+
+const INTERIOR_VISUALS: Record<string, ItemVisual> = {
+  // Furniture
+  cama_trans:      { shortLabel: 'CT', strokeStyle: '#8b5cf6' },
+  cama_long:       { shortLabel: 'CL', strokeStyle: '#8b5cf6' },
+  armario:         { shortLabel: 'AR', strokeStyle: '#a855f7' },
+  cocina:          { shortLabel: 'CO', strokeStyle: '#f97316' },
+  cocina_sm:       { shortLabel: 'CO', strokeStyle: '#f97316' },
+  mesa:            { shortLabel: 'ME', strokeStyle: '#eab308' },
+  nevera:          { shortLabel: 'NV', strokeStyle: '#06b6d4' },
+  nevera_top:      { shortLabel: 'NV', strokeStyle: '#06b6d4' },
+  asiento:         { shortLabel: 'AS', strokeStyle: '#64748b' },
+  bano:            { shortLabel: 'BA', strokeStyle: '#0ea5e9' },
+  almacenaje:      { shortLabel: 'AL', strokeStyle: '#78716c' },
+  banco:           { shortLabel: 'BN', strokeStyle: '#92400e' },
+  // Electrical
+  bateria:         { shortLabel: 'BT', strokeStyle: '#dc2626' },
+  bateria_litio:   { shortLabel: 'Li', strokeStyle: '#dc2626' },
+  fusiblera:       { shortLabel: 'FU', strokeStyle: '#f59e0b' },
+  inversor:        { shortLabel: 'IN', strokeStyle: '#f97316' },
+  regulador_solar: { shortLabel: 'MP', strokeStyle: '#16a34a' },
+  enchufe_220:     { shortLabel: '220', strokeStyle: '#3b82f6' },
+  enchufe_usb:     { shortLabel: 'USB', strokeStyle: '#6366f1' },
+  enchufe_12v:     { shortLabel: '12V', strokeStyle: '#0ea5e9' },
+  luz_led:         { shortLabel: 'LED', strokeStyle: '#eab308' },
+  luz_foco:        { shortLabel: 'FO', strokeStyle: '#eab308' },
+  interruptor:     { shortLabel: 'SW', strokeStyle: '#475569' },
+  panel_control:   { shortLabel: 'PC', strokeStyle: '#334155' },
+  // Water
+  deposito_limpia: { shortLabel: 'DL', strokeStyle: '#3b82f6' },
+  deposito_gris:   { shortLabel: 'DG', strokeStyle: '#6b7280' },
+  bomba:           { shortLabel: 'BO', strokeStyle: '#0ea5e9' },
+  calentador:      { shortLabel: 'CA', strokeStyle: '#ef4444' },
+  grifo_cocina:    { shortLabel: 'GC', strokeStyle: '#06b6d4' },
+  grifo_ducha:     { shortLabel: 'GD', strokeStyle: '#06b6d4' },
+  filtro:          { shortLabel: 'FI', strokeStyle: '#14b8a6' },
+  desague:         { shortLabel: 'DA', strokeStyle: '#78716c' },
+  tuberia_fria:    { shortLabel: '~F', strokeStyle: '#3b82f6' },
+  tuberia_caliente:{ shortLabel: '~C', strokeStyle: '#ef4444' },
+  custom:          { shortLabel: '?',  strokeStyle: '#64748b' },
+}
+
+// ── SVG Symbol drawings per interior type ─────────────────────────
+function InteriorItemSymbol({ item, isSelected }: { item: InteriorItem; isSelected: boolean }) {
+  const vis = INTERIOR_VISUALS[item.type] ?? INTERIOR_VISUALS.custom
+  const selStroke = isSelected ? '#f43f5e' : vis.strokeStyle
+  const selWidth = isSelected ? 6 : 3
+  const selDash = isSelected ? '12,4' : 'none'
+  const cx = item.x + item.w / 2
+  const cy = item.y + item.h / 2
+
+  // Layer-specific dash
+  const layerDash = item.layer === 'water' ? '8,4' : item.layer === 'electrical' ? '4,4' : 'none'
+  const dash = isSelected ? selDash : layerDash
+
+  switch (item.type) {
+    // ── Furniture ──────────────────────────────────
+    case 'cama_trans':
+    case 'cama_long':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={10}
+            fill="#ede9fe60" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Pillow */}
+          <rect x={item.x + 20} y={item.y + 20} width={Math.min(300, item.w * 0.3)} height={item.h - 40}
+            rx={20} fill="#c4b5fd40" stroke="#8b5cf640" strokeWidth="3" />
+          {/* Blanket lines */}
+          {[0.5, 0.65, 0.8].map(f => (
+            <line key={f} x1={item.x + item.w * f} y1={item.y + 15}
+              x2={item.x + item.w * f} y2={item.y + item.h - 15}
+              stroke="#8b5cf625" strokeWidth="4" />
+          ))}
+        </g>
+      )
+
+    case 'armario':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#f3e8ff40" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Door split */}
+          <line x1={cx} y1={item.y + 10} x2={cx} y2={item.y + item.h - 10}
+            stroke="#a855f740" strokeWidth="3" />
+          {/* Handle dots */}
+          <circle cx={cx - 20} cy={cy} r={6} fill="#a855f750" />
+          <circle cx={cx + 20} cy={cy} r={6} fill="#a855f750" />
+        </g>
+      )
+
+    case 'cocina':
+    case 'cocina_sm':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#fff7ed40" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Hob circles */}
+          {[0.3, 0.7].map(fx => [0.35, 0.65].map(fy => (
+            <circle key={`${fx}-${fy}`}
+              cx={item.x + item.w * fx} cy={item.y + item.h * fy}
+              r={Math.min(item.w, item.h) * 0.1}
+              fill="none" stroke="#f9731650" strokeWidth="3" />
+          )))}
+          {/* Sink rectangle */}
+          <rect x={item.x + item.w * 0.75} y={item.y + item.h * 0.2}
+            width={item.w * 0.18} height={item.h * 0.6}
+            rx={6} fill="none" stroke="#06b6d440" strokeWidth="3" />
+        </g>
+      )
+
+    case 'mesa':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={8}
+            fill="#fefce840" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Cross brace pattern */}
+          <line x1={item.x + 15} y1={item.y + 15} x2={item.x + item.w - 15} y2={item.y + item.h - 15}
+            stroke="#eab30820" strokeWidth="3" />
+          <line x1={item.x + item.w - 15} y1={item.y + 15} x2={item.x + 15} y2={item.y + item.h - 15}
+            stroke="#eab30820" strokeWidth="3" />
+        </g>
+      )
+
+    case 'nevera':
+    case 'nevera_top':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#ecfeff40" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Snowflake hint */}
+          <line x1={cx} y1={cy - 30} x2={cx} y2={cy + 30} stroke="#06b6d440" strokeWidth="4" />
+          <line x1={cx - 25} y1={cy - 15} x2={cx + 25} y2={cy + 15} stroke="#06b6d440" strokeWidth="3" />
+          <line x1={cx + 25} y1={cy - 15} x2={cx - 25} y2={cy + 15} stroke="#06b6d440" strokeWidth="3" />
+        </g>
+      )
+
+    case 'asiento':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={item.w * 0.15}
+            fill="#f8fafc60" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Seat back curve */}
+          <path d={`M ${item.x + 15} ${item.y + item.h * 0.3}
+            Q ${cx} ${item.y + 10} ${item.x + item.w - 15} ${item.y + item.h * 0.3}`}
+            fill="none" stroke="#64748b40" strokeWidth="4" />
+          {/* Rotation arrow */}
+          <path d={`M ${cx + 20} ${cy + 20} A 20 20 0 1 1 ${cx - 10} ${cy + 25}`}
+            fill="none" stroke="#64748b30" strokeWidth="3" markerEnd="url(#arrowR-int)" />
+        </g>
+      )
+
+    case 'bano':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={10}
+            fill="#e0f2fe30" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Shower tray */}
+          <rect x={item.x + 20} y={item.y + 20} width={item.w - 40} height={item.h - 40}
+            rx={15} fill="none" stroke="#0ea5e930" strokeWidth="3" strokeDasharray="10,5" />
+          {/* Drain */}
+          <circle cx={cx} cy={cy + 20} r={15} fill="none" stroke="#0ea5e940" strokeWidth="3" />
+          <circle cx={cx} cy={cy + 20} r={5} fill="#0ea5e930" />
+        </g>
+      )
+
+    case 'almacenaje':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#f5f5f440" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Drawer lines */}
+          {[0.33, 0.66].map(f => (
+            <line key={f} x1={item.x + 10} y1={item.y + item.h * f}
+              x2={item.x + item.w - 10} y2={item.y + item.h * f}
+              stroke="#78716c30" strokeWidth="3" />
+          ))}
+        </g>
+      )
+
+    case 'banco':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#fef3c720" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Lid hinge line */}
+          <line x1={item.x + 10} y1={item.y + 18}
+            x2={item.x + item.w - 10} y2={item.y + 18}
+            stroke="#92400e40" strokeWidth="4" />
+        </g>
+      )
+
+    // ── Electrical ─────────────────────────────────
+    case 'bateria':
+    case 'bateria_litio':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#fef2f230" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* + / - terminals */}
+          <text x={item.x + 20} y={item.y + 30} fontSize="28" fill="#dc262680" fontWeight="900">+</text>
+          <text x={item.x + item.w - 35} y={item.y + 30} fontSize="28" fill="#64748b80" fontWeight="900">−</text>
+          {/* Cells */}
+          {[0.25, 0.5, 0.75].map(f => (
+            <line key={f} x1={item.x + item.w * f} y1={item.y + 10}
+              x2={item.x + item.w * f} y2={item.y + item.h - 10}
+              stroke="#dc262615" strokeWidth="3" />
+          ))}
+        </g>
+      )
+
+    case 'fusiblera':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={4}
+            fill="#fffbeb30" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Fuse slots */}
+          {Array.from({ length: Math.min(6, Math.floor(item.w / 30)) }, (_, i) => (
+            <rect key={i} x={item.x + 10 + i * (item.w - 20) / 6} y={item.y + item.h * 0.25}
+              width={(item.w - 20) / 8} height={item.h * 0.5}
+              rx={2} fill="#f59e0b20" stroke="#f59e0b30" strokeWidth="1.5" />
+          ))}
+        </g>
+      )
+
+    case 'inversor':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#fff7ed30" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* AC wave */}
+          <path d={`M ${item.x + 20} ${cy}
+            Q ${item.x + item.w * 0.3} ${cy - 25} ${cx} ${cy}
+            Q ${item.x + item.w * 0.7} ${cy + 25} ${item.x + item.w - 20} ${cy}`}
+            fill="none" stroke="#f9731640" strokeWidth="4" />
+        </g>
+      )
+
+    case 'regulador_solar':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#f0fdf430" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Sun */}
+          <circle cx={cx} cy={cy} r={Math.min(item.w, item.h) * 0.18}
+            fill="#16a34a15" stroke="#16a34a40" strokeWidth="3" />
+          {[0, 45, 90, 135].map(a => {
+            const r1 = Math.min(item.w, item.h) * 0.22
+            const r2 = Math.min(item.w, item.h) * 0.3
+            const rad = (a * Math.PI) / 180
+            return <line key={a}
+              x1={cx + Math.cos(rad) * r1} y1={cy + Math.sin(rad) * r1}
+              x2={cx + Math.cos(rad) * r2} y2={cy + Math.sin(rad) * r2}
+              stroke="#16a34a30" strokeWidth="3" />
+          })}
+        </g>
+      )
+
+    case 'enchufe_220':
+    case 'enchufe_12v':
+    case 'enchufe_usb':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={item.w * 0.2}
+            fill={item.color + '15'} stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Socket holes */}
+          <circle cx={cx - 10} cy={cy} r={5} fill={item.color + '40'} />
+          <circle cx={cx + 10} cy={cy} r={5} fill={item.color + '40'} />
+        </g>
+      )
+
+    case 'luz_led':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={item.h / 2}
+            fill="#fefce840" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* LED dots */}
+          {Array.from({ length: Math.min(10, Math.floor(item.w / 40)) }, (_, i) => (
+            <circle key={i}
+              cx={item.x + 20 + i * ((item.w - 40) / Math.max(1, Math.min(9, Math.floor(item.w / 40) - 1)))}
+              cy={cy} r={4}
+              fill="#eab30860" />
+          ))}
+        </g>
+      )
+
+    case 'luz_foco':
+      return (
+        <g>
+          <circle cx={cx} cy={cy} r={Math.min(item.w, item.h) / 2}
+            fill="#fefce830" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Light rays */}
+          {[0, 60, 120, 180, 240, 300].map(a => {
+            const r1 = Math.min(item.w, item.h) * 0.2
+            const r2 = Math.min(item.w, item.h) * 0.38
+            const rad = (a * Math.PI) / 180
+            return <line key={a}
+              x1={cx + Math.cos(rad) * r1} y1={cy + Math.sin(rad) * r1}
+              x2={cx + Math.cos(rad) * r2} y2={cy + Math.sin(rad) * r2}
+              stroke="#eab30840" strokeWidth="2" />
+          })}
+        </g>
+      )
+
+    case 'interruptor':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#f8fafc60" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Toggle */}
+          <rect x={cx - 8} y={item.y + 8} width={16} height={item.h - 16}
+            rx={8} fill="#47556920" stroke="#47556930" strokeWidth="2" />
+          <circle cx={cx} cy={cy - 8} r={6} fill="#47556950" />
+        </g>
+      )
+
+    case 'panel_control':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={8}
+            fill="#1e293b10" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Screen */}
+          <rect x={item.x + 15} y={item.y + 15} width={item.w - 30} height={item.h * 0.5}
+            rx={4} fill="#33415520" stroke="#33415520" strokeWidth="2" />
+          {/* Buttons */}
+          {[0.3, 0.5, 0.7].map(f => (
+            <circle key={f} cx={item.x + item.w * f} cy={item.y + item.h * 0.85}
+              r={6} fill="#33415520" />
+          ))}
+        </g>
+      )
+
+    // ── Water ──────────────────────────────────────
+    case 'deposito_limpia':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={10}
+            fill="#dbeafe30" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Water level */}
+          <rect x={item.x + 15} y={cy} width={item.w - 30} height={item.h / 2 - 15}
+            rx={6} fill="#3b82f615" />
+          {/* Waves */}
+          <path d={`M ${item.x + 15} ${cy}
+            Q ${item.x + item.w * 0.3} ${cy - 12} ${cx} ${cy}
+            Q ${item.x + item.w * 0.7} ${cy + 12} ${item.x + item.w - 15} ${cy}`}
+            fill="none" stroke="#3b82f630" strokeWidth="3" />
+        </g>
+      )
+
+    case 'deposito_gris':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={10}
+            fill="#f3f4f630" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          <rect x={item.x + 15} y={cy} width={item.w - 30} height={item.h / 2 - 15}
+            rx={6} fill="#6b728015" />
+          <path d={`M ${item.x + 15} ${cy}
+            Q ${item.x + item.w * 0.3} ${cy - 12} ${cx} ${cy}
+            Q ${item.x + item.w * 0.7} ${cy + 12} ${item.x + item.w - 15} ${cy}`}
+            fill="none" stroke="#6b728030" strokeWidth="3" />
+        </g>
+      )
+
+    case 'bomba':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#e0f2fe30" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Impeller circle */}
+          <circle cx={cx} cy={cy} r={Math.min(item.w, item.h) * 0.25}
+            fill="none" stroke="#0ea5e940" strokeWidth="3" />
+          {/* Blades */}
+          {[0, 120, 240].map(a => {
+            const rad = (a * Math.PI) / 180
+            const r = Math.min(item.w, item.h) * 0.22
+            return <line key={a} x1={cx} y1={cy}
+              x2={cx + Math.cos(rad) * r} y2={cy + Math.sin(rad) * r}
+              stroke="#0ea5e940" strokeWidth="3" />
+          })}
+        </g>
+      )
+
+    case 'calentador':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={8}
+            fill="#fef2f230" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Flame */}
+          <path d={`M ${cx} ${cy + 20}
+            Q ${cx - 15} ${cy - 5} ${cx} ${cy - 25}
+            Q ${cx + 15} ${cy - 5} ${cx} ${cy + 20}`}
+            fill="#ef444420" stroke="#ef444440" strokeWidth="3" />
+        </g>
+      )
+
+    case 'grifo_cocina':
+    case 'grifo_ducha':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={item.w * 0.2}
+            fill="#ecfeff30" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Faucet arc */}
+          <path d={`M ${cx - 15} ${cy + 10}
+            L ${cx - 15} ${cy - 10}
+            Q ${cx - 15} ${cy - 20} ${cx} ${cy - 20}
+            L ${cx + 10} ${cy - 20}`}
+            fill="none" stroke="#06b6d450" strokeWidth="4" strokeLinecap="round" />
+          {/* Drop */}
+          <circle cx={cx + 10} cy={cy} r={4} fill="#06b6d440" />
+        </g>
+      )
+
+    case 'filtro':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill="#f0fdfa30" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Filter mesh lines */}
+          {[0.3, 0.5, 0.7].map(f => (
+            <line key={f} x1={item.x + 8} y1={item.y + item.h * f}
+              x2={item.x + item.w - 8} y2={item.y + item.h * f}
+              stroke="#14b8a630" strokeWidth="2" strokeDasharray="6,3" />
+          ))}
+        </g>
+      )
+
+    case 'desague':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={item.w * 0.2}
+            fill="#f5f5f430" stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Drain circles */}
+          <circle cx={cx} cy={cy} r={Math.min(item.w, item.h) * 0.25}
+            fill="none" stroke="#78716c30" strokeWidth="3" />
+          <circle cx={cx} cy={cy} r={Math.min(item.w, item.h) * 0.1}
+            fill="#78716c25" />
+        </g>
+      )
+
+    case 'tuberia_fria':
+    case 'tuberia_caliente':
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={item.h / 2}
+            fill={item.color + '20'} stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+          {/* Flow arrows */}
+          {Array.from({ length: Math.max(2, Math.floor(item.w / 100)) }, (_, i) => (
+            <text key={i}
+              x={item.x + 30 + i * ((item.w - 60) / Math.max(1, Math.floor(item.w / 100) - 1))}
+              y={cy + 6} textAnchor="middle" fontSize="16"
+              fill={item.color + '60'} fontFamily="Arial">▶</text>
+          ))}
+        </g>
+      )
+
+    default:
+      return (
+        <g>
+          <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={6}
+            fill={item.color + '15'} stroke={selStroke} strokeWidth={selWidth} strokeDasharray={dash} />
+        </g>
+      )
+  }
+}
+
+// ── Placement cotas (dimension marks) ─────────────────────────────
+function InteriorCotas({ item, floor }: { item: InteriorItem; floor: ReturnType<typeof getFloor> }) {
+  const { cabinDepth: cd, wallThickness: wt } = floor
+  const dFromCabin = item.x - cd  // distance from cabin wall
+  const dFromLeftWall = item.y - wt  // distance from left (conductor) wall
+  const cotaColor = '#f43f5e'
+
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      {/* Horizontal cota: distance from cabin wall */}
+      <line x1={cd} y1={item.y - 25} x2={item.x} y2={item.y - 25}
+        stroke={cotaColor} strokeWidth="2" markerStart="url(#arrowL-int)" markerEnd="url(#arrowR-int)" />
+      <text x={(cd + item.x) / 2} y={item.y - 35} textAnchor="middle"
+        fontSize="36" fill={cotaColor} fontWeight="700" fontFamily="Arial">
+        {dFromCabin} mm
+      </text>
+
+      {/* Vertical cota: distance from left (conductor) wall */}
+      <line x1={item.x + item.w + 20} y1={wt} x2={item.x + item.w + 20} y2={item.y}
+        stroke={cotaColor} strokeWidth="2" markerStart="url(#arrowU-int)" markerEnd="url(#arrowD-int)" />
+      <text x={item.x + item.w + 30} y={(wt + item.y) / 2 + 10}
+        fontSize="32" fill={cotaColor} fontWeight="700" fontFamily="Arial"
+        transform={`rotate(-90 ${item.x + item.w + 30} ${(wt + item.y) / 2 + 10})`}
+        textAnchor="middle">
+        {dFromLeftWall}
+      </text>
+
+      {/* Dimensions label */}
+      <text x={item.x + item.w / 2} y={item.y + item.h + 35} textAnchor="middle"
+        fontSize="30" fill="#64748b" fontWeight="600" fontFamily="Arial">
+        {item.w}×{item.h} mm
+      </text>
+    </g>
+  )
+}
+
+// ── Arrow markers for cotas ───────────────────────────────────────
+function CotaMarkersInt() {
+  return (
+    <defs>
+      <marker id="arrowR-int" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <path d="M 0 0 L 8 3 L 0 6" fill="#f43f5e" />
+      </marker>
+      <marker id="arrowL-int" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
+        <path d="M 8 0 L 0 3 L 8 6" fill="#f43f5e" />
+      </marker>
+      <marker id="arrowU-int" markerWidth="6" markerHeight="8" refX="3" refY="0" orient="auto">
+        <path d="M 0 8 L 3 0 L 6 8" fill="#f43f5e" />
+      </marker>
+      <marker id="arrowD-int" markerWidth="6" markerHeight="8" refX="3" refY="8" orient="auto">
+        <path d="M 0 0 L 3 8 L 6 0" fill="#f43f5e" />
+      </marker>
+    </defs>
+  )
+}
+
+// ── Legend mini symbols (36×24 px) ────────────────────────────────
+function InteriorLegendMini({ type, color }: { type: string; color: string }) {
+  const w = 36, h = 24
+  switch (type) {
+    case 'cama':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={3} fill="#ede9fe" stroke="#8b5cf6" strokeWidth="1.5" />
+        <rect x={3} y={3} width={10} height={18} rx={4} fill="#c4b5fd60" stroke="#8b5cf640" strokeWidth="1" />
+      </svg>)
+    case 'cocina':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={2} fill="#fff7ed" stroke="#f97316" strokeWidth="1.5" />
+        <circle cx={12} cy={9} r={3} fill="none" stroke="#f9731660" strokeWidth="1" />
+        <circle cx={24} cy={9} r={3} fill="none" stroke="#f9731660" strokeWidth="1" />
+        <circle cx={12} cy={17} r={3} fill="none" stroke="#f9731660" strokeWidth="1" />
+        <circle cx={24} cy={17} r={3} fill="none" stroke="#f9731660" strokeWidth="1" />
+      </svg>)
+    case 'nevera':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={2} fill="#ecfeff" stroke="#06b6d4" strokeWidth="1.5" />
+        <line x1={18} y1={4} x2={18} y2={20} stroke="#06b6d440" strokeWidth="1.5" />
+        <line x1={12} y1={8} x2={24} y2={16} stroke="#06b6d440" strokeWidth="1" />
+        <line x1={24} y1={8} x2={12} y2={16} stroke="#06b6d440" strokeWidth="1" />
+      </svg>)
+    case 'armario':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={2} fill="#f3e8ff" stroke="#a855f7" strokeWidth="1.5" />
+        <line x1={18} y1={3} x2={18} y2={21} stroke="#a855f740" strokeWidth="1" />
+        <circle cx={15} cy={12} r={2} fill="#a855f750" /><circle cx={21} cy={12} r={2} fill="#a855f750" />
+      </svg>)
+    case 'bateria':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={2} fill="#fef2f2" stroke="#dc2626" strokeWidth="1.5" />
+        <text x={6} y={14} fontSize="10" fill="#dc2626" fontWeight="900">+</text>
+        <text x={27} y={14} fontSize="10" fill="#64748b" fontWeight="900">−</text>
+      </svg>)
+    case 'enchufe':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={6} fill="#eff6ff" stroke="#3b82f6" strokeWidth="1.5" />
+        <circle cx={14} cy={12} r={3} fill="#3b82f640" /><circle cx={22} cy={12} r={3} fill="#3b82f640" />
+      </svg>)
+    case 'luz':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <circle cx={18} cy={12} r={10} fill="#fefce880" stroke="#eab308" strokeWidth="1.5" />
+        {[0, 60, 120, 180, 240, 300].map(a => {
+          const rad = (a * Math.PI) / 180
+          return <line key={a} x1={18 + Math.cos(rad) * 5} y1={12 + Math.sin(rad) * 5}
+            x2={18 + Math.cos(rad) * 9} y2={12 + Math.sin(rad) * 9}
+            stroke="#eab30860" strokeWidth="1" />
+        })}
+      </svg>)
+    case 'deposito':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={4} fill="#dbeafe40" stroke={color} strokeWidth="1.5" />
+        <rect x={4} y={12} width={28} height={8} rx={3} fill={color + '20'} />
+        <path d="M 4 12 Q 12 9 18 12 Q 24 15 32 12" fill="none" stroke={color + '50'} strokeWidth="1" />
+      </svg>)
+    case 'bomba':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={2} fill="#e0f2fe40" stroke="#0ea5e9" strokeWidth="1.5" />
+        <circle cx={18} cy={12} r={6} fill="none" stroke="#0ea5e940" strokeWidth="1.5" />
+        {[0, 120, 240].map(a => {
+          const rad = (a * Math.PI) / 180
+          return <line key={a} x1={18} y1={12} x2={18 + Math.cos(rad) * 5} y2={12 + Math.sin(rad) * 5}
+            stroke="#0ea5e940" strokeWidth="1" />
+        })}
+      </svg>)
+    case 'grifo':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={4} fill="#ecfeff40" stroke="#06b6d4" strokeWidth="1.5" />
+        <path d="M 12 16 L 12 8 Q 12 5 15 5 L 22 5" fill="none" stroke="#06b6d460" strokeWidth="2" strokeLinecap="round" />
+        <circle cx={22} cy={12} r={2.5} fill="#06b6d440" />
+      </svg>)
+    case 'tuberia':
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={8} width={34} height={8} rx={4} fill={color + '30'} stroke={color} strokeWidth="1.5" />
+        <text x={12} y={15} fontSize="8" fill={color + '80'}>▶</text>
+        <text x={22} y={15} fontSize="8" fill={color + '80'}>▶</text>
+      </svg>)
+    default:
+      return (<svg width={w} height={h} viewBox="0 0 36 24">
+        <rect x={1} y={1} width={34} height={22} rx={2} fill="#f8fafc" stroke="#64748b" strokeWidth="1.5" />
+        <text x={18} y={16} textAnchor="middle" fontSize="10" fill="#64748b">?</text>
+      </svg>)
+  }
+}
+
+// ── Legend items definition ───────────────────────────────────────
+const INTERIOR_LEGEND: { type: string; label: string; desc: string; color: string; layer: DiagramLayer }[] = [
+  { type: 'cama', label: 'Cama', desc: 'Almohada + mantas', color: '#8b5cf6', layer: 'furniture' },
+  { type: 'cocina', label: 'Cocina', desc: 'Fogones + fregadero', color: '#f97316', layer: 'furniture' },
+  { type: 'nevera', label: 'Nevera', desc: 'Copo de nieve', color: '#06b6d4', layer: 'furniture' },
+  { type: 'armario', label: 'Armario', desc: 'Puertas con tiradores', color: '#a855f7', layer: 'furniture' },
+  { type: 'bateria', label: 'Batería', desc: 'Terminales +/−', color: '#dc2626', layer: 'electrical' },
+  { type: 'enchufe', label: 'Enchufe', desc: 'Orificios circulares', color: '#3b82f6', layer: 'electrical' },
+  { type: 'luz', label: 'Luz/LED', desc: 'Rayos irradiados', color: '#eab308', layer: 'electrical' },
+  { type: 'deposito', label: 'Depósito', desc: 'Olas + nivel', color: '#3b82f6', layer: 'water' },
+  { type: 'bomba', label: 'Bomba', desc: 'Aspa giratoria', color: '#0ea5e9', layer: 'water' },
+  { type: 'grifo', label: 'Grifo', desc: 'Caño + gota', color: '#06b6d4', layer: 'water' },
+  { type: 'tuberia', label: 'Tubería', desc: 'Tramo con flujo', color: '#3b82f6', layer: 'water' },
+]
+
 // ── Floor bounds clamp ────────────────────────────────────────────
 function clampFloor(x: number, y: number, w: number, h: number, floor: ReturnType<typeof getFloor>) {
   const { cabinDepth: cd, wallThickness: wt, length: fl, width: fw } = floor
@@ -353,6 +979,7 @@ export default function VanInteriorDesign() {
   const [visibleLayers, setVisibleLayers] = useState<Set<DiagramLayer>>(new Set(['furniture', 'electrical', 'water']))
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [showCotas, setShowCotas] = useState(true)
   const svgRef = useRef<SVGSVGElement>(null)
 
   // Load WO data or saved design
@@ -607,6 +1234,13 @@ export default function VanInteriorDesign() {
           ))}
         </div>
 
+        <button onClick={() => setShowCotas(!showCotas)}
+          className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all ${
+            showCotas ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-slate-50 border-slate-200 text-slate-400'
+          }`}>
+          📏 Cotas {showCotas ? 'ON' : 'OFF'}
+        </button>
+
         <div className="flex gap-2 text-xs">
           <span className="text-slate-400 self-center">Capas visibles:</span>
           {(Object.entries(LAYER_CONFIG) as [DiagramLayer, typeof LAYER_CONFIG['furniture']][]).map(([key, cfg]) => (
@@ -635,63 +1269,65 @@ export default function VanInteriorDesign() {
             onMouseLeave={handleMouseUp}
             onClick={() => setSelected(null)}
           >
+            <CotaMarkersInt />
             <VanFloorPlanSVG floor={floor} />
 
-            {/* Placed items */}
+            {/* Placed items with SVG symbols */}
             {visibleItems.map(item => {
               const isSelected = item.id === selected
               const opacity = item.layer === activeLayer ? 1 : 0.4
+              const vis = INTERIOR_VISUALS[item.type] ?? INTERIOR_VISUALS.custom
               return (
                 <g key={item.id}
                   onMouseDown={e => handleMouseDown(e, item.id)}
                   onClick={e => e.stopPropagation()}
                   style={{ cursor: 'grab', opacity }}
                 >
-                  <rect
-                    x={item.x} y={item.y} width={item.w} height={item.h}
-                    rx={6}
-                    fill={item.color + '25'}
-                    stroke={isSelected ? '#f43f5e' : item.color}
-                    strokeWidth={isSelected ? 6 : 3}
-                    strokeDasharray={isSelected ? '12,4' : item.layer === 'water' ? '8,4' : item.layer === 'electrical' ? '4,4' : 'none'}
-                  />
-                  <text
-                    x={item.x + item.w / 2}
-                    y={item.y + item.h / 2 - 15}
-                    textAnchor="middle" dominantBaseline="middle"
-                    fontSize={Math.min(50, Math.max(20, item.w / 5))}
-                    fill={item.color}
-                    fontWeight="700"
-                    fontFamily="Arial"
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    {item.icon}
+                  {/* Type-specific SVG symbol */}
+                  <InteriorItemSymbol item={item} isSelected={isSelected} />
+
+                  {/* Short type badge at top-left */}
+                  <rect x={item.x + 4} y={item.y + 4}
+                    width={Math.max(32, vis.shortLabel.length * 18 + 10)} height={26}
+                    rx={4} fill={vis.strokeStyle} fillOpacity={0.85} />
+                  <text x={item.x + 4 + Math.max(32, vis.shortLabel.length * 18 + 10) / 2}
+                    y={item.y + 22}
+                    textAnchor="middle" fontSize="18" fill="white" fontWeight="800" fontFamily="Arial"
+                    style={{ pointerEvents: 'none' }}>
+                    {vis.shortLabel}
                   </text>
+
+                  {/* Label in center */}
                   <text
                     x={item.x + item.w / 2}
-                    y={item.y + item.h / 2 + 25}
+                    y={item.y + item.h / 2 + 6}
                     textAnchor="middle" dominantBaseline="middle"
-                    fontSize={Math.min(40, Math.max(16, item.w / 7))}
-                    fill={item.color}
+                    fontSize={Math.min(38, Math.max(14, item.w / 8))}
+                    fill={vis.strokeStyle}
                     fontWeight="600"
                     fontFamily="Arial"
-                    style={{ pointerEvents: 'none' }}
+                    style={{ pointerEvents: 'none', opacity: 0.9 }}
                   >
                     {item.label}
                   </text>
-                  {item.w > 150 && (
+
+                  {/* Dimensions */}
+                  {item.w > 120 && (
                     <text
                       x={item.x + item.w / 2}
-                      y={item.y + item.h - 10}
+                      y={item.y + item.h - 8}
                       textAnchor="middle"
-                      fontSize={Math.min(30, item.w / 10)}
-                      fill={item.color}
+                      fontSize={Math.min(26, item.w / 10)}
+                      fill={vis.strokeStyle}
                       fontFamily="Arial"
                       style={{ pointerEvents: 'none', opacity: 0.5 }}
                     >
                       {item.w}×{item.h}
                     </text>
                   )}
+
+                  {/* Placement cotas */}
+                  {showCotas && isSelected && <InteriorCotas item={item} floor={floor} />}
                 </g>
               )
             })}
@@ -709,10 +1345,15 @@ export default function VanInteriorDesign() {
 
         {/* ── Sidebar ───────────────────────────────────────── */}
         <div className="space-y-4">
-          {selectedItem && (
+          {selectedItem && (() => {
+            const vis = INTERIOR_VISUALS[selectedItem.type] ?? INTERIOR_VISUALS.custom
+            const { cabinDepth: cd, wallThickness: wt } = floor
+            return (
             <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
               <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                {selectedItem.icon} {selectedItem.label}
+                <span className="inline-flex items-center justify-center w-6 h-4 rounded text-[10px] text-white font-black"
+                  style={{ backgroundColor: vis.strokeStyle }}>{vis.shortLabel}</span>
+                <span className="truncate">{selectedItem.label}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full ml-auto"
                   style={{ backgroundColor: selectedItem.color + '20', color: selectedItem.color }}>
                   {LAYER_CONFIG[selectedItem.layer].label}
@@ -758,6 +1399,11 @@ export default function VanInteriorDesign() {
                     className="w-full border rounded-lg px-2 py-1.5 text-xs font-mono" />
                 </div>
               </div>
+              {/* Distance readout */}
+              <div className="bg-rose-50 rounded-lg px-3 py-2 text-[10px] text-rose-600 font-mono">
+                <p>↔ Desde cabina: <b>{selectedItem.x - cd} mm</b></p>
+                <p>↕ Desde pared izq: <b>{selectedItem.y - wt} mm</b></p>
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 <button onClick={rotateSelected}
                   className="py-1.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-lg hover:bg-blue-100">
@@ -773,7 +1419,8 @@ export default function VanInteriorDesign() {
                 </button>
               </div>
             </div>
-          )}
+            )
+          })()}
 
           {/* Palette for active layer */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
@@ -796,7 +1443,17 @@ export default function VanInteriorDesign() {
                       {paletteItems.map((tpl, idx) => (
                         <button key={`${tpl.type}-${idx}`} onClick={() => addItem(tpl)}
                           className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all text-xs">
-                          <span className="text-base flex-shrink-0">{tpl.icon}</span>
+                          <InteriorLegendMini type={
+                            tpl.type.startsWith('cama') ? 'cama' :
+                            tpl.type.startsWith('cocina') ? 'cocina' :
+                            tpl.type.startsWith('nevera') ? 'nevera' :
+                            tpl.type.startsWith('enchufe') ? 'enchufe' :
+                            tpl.type.startsWith('luz') ? 'luz' :
+                            tpl.type.startsWith('deposito') ? 'deposito' :
+                            tpl.type.startsWith('grifo') ? 'grifo' :
+                            tpl.type.startsWith('tuberia') ? 'tuberia' :
+                            tpl.type
+                          } color={tpl.color} />
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-slate-700 truncate">{tpl.label}</p>
                             <p className="text-[10px] text-slate-400">{tpl.w}×{tpl.h} mm</p>
@@ -806,8 +1463,6 @@ export default function VanInteriorDesign() {
                               PRESU
                             </span>
                           )}
-                          <span className="w-3 h-3 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: tpl.color }} />
                         </button>
                       ))}
                     </div>
@@ -817,14 +1472,40 @@ export default function VanInteriorDesign() {
             })()}
           </div>
 
-          {/* Legend */}
+          {/* Symbol legend */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+            <h3 className="text-xs font-bold text-slate-700 mb-2">📖 Leyenda de símbolos</h3>
+            {(['furniture', 'electrical', 'water'] as DiagramLayer[]).map(layer => {
+              const cfg = LAYER_CONFIG[layer]
+              const legendItems = INTERIOR_LEGEND.filter(i => i.layer === layer)
+              if (!legendItems.length) return null
+              return (
+                <div key={layer} className="mb-2">
+                  <p className="text-[10px] font-bold text-slate-500 mb-1">{cfg.icon} {cfg.label}</p>
+                  <div className="space-y-1">
+                    {legendItems.map(item => (
+                      <div key={item.type} className="flex items-center gap-2 text-[10px]">
+                        <InteriorLegendMini type={item.type} color={item.color} />
+                        <div>
+                          <span className="font-bold text-slate-700">{item.label}</span>
+                          <span className="text-slate-400 ml-1">— {item.desc}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Instructions */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[10px] text-slate-500 space-y-1">
             <p className="font-bold text-slate-600 text-xs">💡 Instrucciones</p>
             <p>• Selecciona la capa (Muebles / Eléctrico / Agua)</p>
-            <p>• Añade elementos desde la paleta (medidas reales)</p>
+            <p>• Cada tipo tiene un <b>símbolo único</b> para identificarlo</p>
+            <p>• <span className="text-rose-500 font-bold">Cotas rojas</span> al seleccionar: distancia desde cabina y pared</p>
             <p>• Arrastra para posicionar (acotado al suelo)</p>
             <p>• Activa/desactiva capas para ver cada diagrama</p>
-            <p>• Configura el tamaño de la furgoneta con ▼ arriba</p>
           </div>
         </div>
       </div>
