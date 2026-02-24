@@ -172,6 +172,7 @@ export default function VehicleDepositReceipt({
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">🚐 Datos del vehículo</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <InfoField label="Modelo" value={lead.vehiculo} />
+              <InfoField label="Matrícula" value={lead.matricula} />
               <InfoField label="Talla" value={lead.talla} />
               <InfoField label="Tipo" value={lead.viaj_dorm} />
               <div>
@@ -367,6 +368,7 @@ export default function VehicleDepositReceipt({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px', fontSize: '10.5px' }}>
               <div><strong>Modelo:</strong> {lead.vehiculo || '-'}</div>
+              <div><strong>Matrícula:</strong> {lead.matricula || '-'}</div>
               <div><strong>Talla:</strong> {lead.talla || '-'}</div>
               <div><strong>Tipo:</strong> {lead.viaj_dorm || '-'}</div>
               <div><strong>Kilometraje:</strong> {mileage || '-'} km</div>

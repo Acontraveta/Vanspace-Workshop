@@ -53,6 +53,7 @@ export interface Lead {
   // Vehículo / proyecto
   origen?: string         // canal de captación
   vehiculo?: string
+  matricula?: string
   talla?: string
   viaj_dorm?: string      // viajero/dormitorio
   linea_negocio?: string

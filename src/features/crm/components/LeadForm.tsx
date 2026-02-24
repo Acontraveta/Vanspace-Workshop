@@ -300,6 +300,9 @@ export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
                 <Field label="Vehículo">
                   <input value={form.vehiculo ?? ''} onChange={e => set('vehiculo', e.target.value)} className={inputCls} placeholder="Marca y modelo" />
                 </Field>
+                <Field label="Matrícula">
+                  <input value={form.matricula ?? ''} onChange={e => set('matricula', e.target.value.toUpperCase())} className={inputCls} placeholder="1234 ABC" />
+                </Field>
                 <Field label="Talla">
                   <input value={form.talla ?? ''} onChange={e => set('talla', e.target.value)} className={inputCls} placeholder="XL, L..." />
                 </Field>
