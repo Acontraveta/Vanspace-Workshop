@@ -69,13 +69,19 @@ export default function FurnitureDesignList() {
             Órdenes de trabajo y biblioteca de diseños reutilizables
           </p>
         </div>
+        <div className="flex gap-2">
         <button
-          onClick={() => navigate('/furniture-design/new')}
+          onClick={() => navigate('/design')}
+          className="px-4 py-2.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-200 transition-all"
+        >
+          ← Diseño
+        </button>
+        <button
+          onClick={() => navigate('/design/furniture/new')}
           className="px-5 py-2.5 bg-amber-600 text-white text-xs font-black uppercase rounded-xl shadow-lg shadow-amber-200 hover:bg-amber-700 transition-all"
         >
           + Nuevo diseño libre
-        </button>
-      </div>
+        </button>        </div>      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
@@ -117,7 +123,7 @@ export default function FurnitureDesignList() {
               return (
                 <div
                   key={wo.id}
-                  onClick={() => navigate(`/furniture-design/${wo.id}`)}
+                  onClick={() => navigate(`/design/furniture/${wo.id}`)}
                   className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center gap-4 shadow-sm hover:shadow-md hover:border-amber-300 cursor-pointer transition-all"
                 >
                   <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-2xl flex-shrink-0">
@@ -164,7 +170,7 @@ export default function FurnitureDesignList() {
               Crea diseños libres para reutilizar en futuros proyectos
             </p>
             <button
-              onClick={() => navigate('/furniture-design/new')}
+              onClick={() => navigate('/design/furniture/new')}
               className="mt-4 px-5 py-2.5 bg-amber-600 text-white text-xs font-black uppercase rounded-xl hover:bg-amber-700 transition-all"
             >
               + Crear primer diseño
@@ -206,7 +212,7 @@ export default function FurnitureDesignList() {
 
                   <div className="flex gap-2 mt-auto pt-2">
                     <button
-                      onClick={() => navigate(`/furniture-design/edit/${d.id}`)}
+                      onClick={() => navigate(`/design/furniture/edit/${d.id}`)}
                       className="flex-1 py-2 bg-blue-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-blue-700 transition-all"
                     >
                       ✏️ Editar

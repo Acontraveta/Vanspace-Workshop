@@ -318,7 +318,7 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
               {d.work_order_id && (
                 <button
                   onClick={async () => {
-                    navigate(`/furniture-design/${d.work_order_id}`)
+                    navigate(`/design/furniture/${d.work_order_id}`)
                   }}
                   className="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-all shrink-0"
                 >

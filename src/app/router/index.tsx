@@ -34,7 +34,9 @@ const CRMDashboard = lazyRetry(() => import('@/features/crm/components/CRMDashbo
 const FurnitureWorkOrderPage = lazyRetry(() => import('@/features/design/pages/FurnitureWorkOrderPage'))
 const FurnitureDesignList = lazyRetry(() => import('@/features/design/pages/FurnitureDesignList'))
 const FurnitureStandaloneEditor = lazyRetry(() => import('@/features/design/pages/FurnitureStandaloneEditor'))
-
+const DesignHub = lazyRetry(() => import('@/features/design/pages/DesignHub'))
+const VanExteriorDesign = lazyRetry(() => import('@/features/design/pages/VanExteriorDesign'))
+const VanInteriorDesign = lazyRetry(() => import('@/features/design/pages/VanInteriorDesign'))
 // Dashboards
 const AdminDashboard = lazyRetry(() => import('@/features/dashboards/AdminDashboard'))
 const EncargadoDashboard = lazyRetry(() => import('@/features/dashboards/EncargadoDashboard'))
@@ -214,7 +216,17 @@ export const router = createBrowserRouter([
         )
       },
       {
-        path: 'furniture-design',
+        path: 'design',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <DesignHub />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/furniture',
         element: (
           <Suspense fallback={<PageLoading />}>
             <PermissionGuard module="quotes">
@@ -224,7 +236,7 @@ export const router = createBrowserRouter([
         )
       },
       {
-        path: 'furniture-design/new',
+        path: 'design/furniture/new',
         element: (
           <Suspense fallback={<PageLoading />}>
             <PermissionGuard module="quotes">
@@ -234,7 +246,7 @@ export const router = createBrowserRouter([
         )
       },
       {
-        path: 'furniture-design/edit/:designId',
+        path: 'design/furniture/edit/:designId',
         element: (
           <Suspense fallback={<PageLoading />}>
             <PermissionGuard module="quotes">
@@ -242,6 +254,69 @@ export const router = createBrowserRouter([
             </PermissionGuard>
           </Suspense>
         )
+      },
+      {
+        path: 'design/furniture/:workOrderId',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <FurnitureWorkOrderPage />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/exterior',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <VanExteriorDesign />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/exterior/:projectId',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <VanExteriorDesign />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/interior',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <VanInteriorDesign />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'design/interior/:projectId',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="quotes">
+              <VanInteriorDesign />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      // Legacy /furniture-design redirects
+      {
+        path: 'furniture-design',
+        element: <Navigate to="/design/furniture" replace />
+      },
+      {
+        path: 'furniture-design/new',
+        element: <Navigate to="/design/furniture/new" replace />
+      },
+      {
+        path: 'furniture-design/edit/:designId',
+        element: <Navigate to="/design/furniture" replace />
       },
       {
         path: 'furniture-design/:workOrderId',

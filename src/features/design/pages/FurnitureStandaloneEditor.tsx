@@ -7,8 +7,8 @@ import toast from 'react-hot-toast'
 
 /**
  * Standalone furniture designer — use without a work order.
- * Routes: /furniture-design/new  (create)
- *         /furniture-design/edit/:designId  (edit existing)
+ * Routes: /design/furniture/new  (create)
+ *         /design/furniture/edit/:designId  (edit existing)
  */
 export default function FurnitureStandaloneEditor() {
   const { designId } = useParams<{ designId: string }>()
@@ -21,7 +21,7 @@ export default function FurnitureStandaloneEditor() {
     ;(async () => {
       try {
         const d = await FurnitureDesignService.getById(designId)
-        if (!d) { toast.error('Diseño no encontrado'); navigate('/furniture-design'); return }
+        if (!d) { toast.error('Diseño no encontrado'); navigate('/design/furniture'); return }
         setDesign(d)
       } catch (err: any) {
         toast.error('Error cargando diseño: ' + err.message)
@@ -46,12 +46,12 @@ export default function FurnitureStandaloneEditor() {
     setDesign(saved)
     // If we were in "new" mode, update the URL to "edit" so re-saving works
     if (!designId) {
-      navigate(`/furniture-design/edit/${saved.id}`, { replace: true })
+      navigate(`/design/furniture/edit/${saved.id}`, { replace: true })
     }
   }
 
   const handleClose = () => {
-    navigate('/furniture-design')
+    navigate('/design/furniture')
   }
 
   if (loading) {

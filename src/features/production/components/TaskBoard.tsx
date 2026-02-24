@@ -481,7 +481,7 @@ export default function TaskBoard({
                 employees={employees}
                 onFurnitureDesign={
                   block.blockId === 'MUEBLES_GROUP' && block.project && furnitureWorkOrders[block.project.id]
-                    ? () => navigate(`/furniture-design/${furnitureWorkOrders[block.project!.id]}`)
+                    ? () => navigate(`/design/furniture/${furnitureWorkOrders[block.project!.id]}`)
                     : undefined
                 }
               />
@@ -513,7 +513,7 @@ export default function TaskBoard({
                 employees={employees}
                 onFurnitureDesign={
                   block.blockId === 'MUEBLES_GROUP' && block.project && furnitureWorkOrders[block.project.id]
-                    ? () => navigate(`/furniture-design/${furnitureWorkOrders[block.project!.id]}`)
+                    ? () => navigate(`/design/furniture/${furnitureWorkOrders[block.project!.id]}`)
                     : undefined
                 }
               />
@@ -542,7 +542,7 @@ export default function TaskBoard({
                 employees={employees}
                 onFurnitureDesign={
                   block.blockId === 'MUEBLES_GROUP' && block.project && furnitureWorkOrders[block.project.id]
-                    ? () => navigate(`/furniture-design/${furnitureWorkOrders[block.project!.id]}`)
+                    ? () => navigate(`/design/furniture/${furnitureWorkOrders[block.project!.id]}`)
                     : undefined
                 }
               />
