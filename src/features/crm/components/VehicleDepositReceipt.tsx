@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui
 import { LeadDocumentsService, DocCategory } from '../services/leadDocumentsService'
 import { generatePdfBlob, downloadPdf } from '@/features/quotes/services/pdfGenerator'
 import { loadCompanyInfo, LOGO_URL, type CompanyData, DEFAULT_COMPANY } from '@/shared/utils/companyInfo'
+import SignaturePad from '@/shared/components/SignaturePad'
 import type { Lead } from '../types/crm.types'
 import toast from 'react-hot-toast'
 
@@ -35,6 +36,7 @@ export default function VehicleDepositReceipt({
   const [observations, setObservations] = useState('')
   const [fuelLevel, setFuelLevel] = useState('1/2')
   const [mileage, setMileage] = useState('')
+  const [clientSignature, setClientSignature] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const printRef = useRef<HTMLDivElement>(null)
@@ -276,6 +278,13 @@ export default function VehicleDepositReceipt({
             )}
           </div>
 
+          {/* Client signature */}
+          <SignaturePad
+            label="Firma del cliente"
+            height={140}
+            onChange={setClientSignature}
+          />
+
           {/* Actions */}
           <div className="flex gap-2 pt-3 border-t">
             {!uploaded ? (
@@ -392,12 +401,18 @@ export default function VehicleDepositReceipt({
           {/* Signatures */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16mm' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ width: '200px', borderTop: '1px solid #333', marginTop: '40px', paddingTop: '4px', fontSize: '10px', color: '#666' }}>
+              {clientSignature ? (
+                <img src={clientSignature} alt="Firma cliente" style={{ width: '200px', height: '80px', objectFit: 'contain' }} />
+              ) : (
+                <div style={{ width: '200px', height: '80px' }} />
+              )}
+              <div style={{ width: '200px', borderTop: '1px solid #333', paddingTop: '4px', fontSize: '10px', color: '#666' }}>
                 Firma del cliente
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ width: '200px', borderTop: '1px solid #333', marginTop: '40px', paddingTop: '4px', fontSize: '10px', color: '#666' }}>
+              <div style={{ width: '200px', height: '80px' }} />
+              <div style={{ width: '200px', borderTop: '1px solid #333', paddingTop: '4px', fontSize: '10px', color: '#666' }}>
                 Firma del taller
               </div>
             </div>
