@@ -45,6 +45,20 @@ export default function PurchaseList() {
   const [groupByProvider, setGroupByProvider] = useState(false)
   const [expandedStockFamily, setExpandedStockFamily] = useState<string | null>(null)
   const [expandedStockCategory, setExpandedStockCategory] = useState<string | null>(null)
+  const [showNewProductModal, setShowNewProductModal] = useState(false)
+  const [newProductForm, setNewProductForm] = useState({
+    referencia: '',
+    familia: '',
+    categoria: '',
+    articulo: '',
+    descripcion: '',
+    cantidad: 0,
+    stockMinimo: 0,
+    unidad: 'ud',
+    costeIva: 0,
+    ubicacion: '',
+    proveedor: '',
+  })
 
   // Validar si una ubicación existe realmente en alguna estantería
   const isValidLocation = (ubicacion?: string) => {
@@ -195,6 +209,60 @@ export default function PurchaseList() {
     toast.success('Pedido creado correctamente')
     setNewPurchaseForm({ materialName: '', quantity: 1, unit: 'ud', provider: '', priority: 5, referencia: '', projectNumber: '', notes: '' })
     setShowNewPurchaseModal(false)
+    refreshData()
+  }
+
+  // Crear pedido desde item de stock (click en fila)
+  const handleOrderFromStock = (item: StockItem) => {
+    setNewPurchaseForm({
+      materialName: item.ARTICULO,
+      quantity: 1,
+      unit: item.UNIDAD || 'ud',
+      provider: item.PROVEEDOR || '',
+      priority: item.STOCK_MINIMO && item.CANTIDAD < item.STOCK_MINIMO ? 7 : 5,
+      referencia: item.REFERENCIA,
+      projectNumber: '',
+      notes: '',
+    })
+    setShowNewPurchaseModal(true)
+  }
+
+  // Añadir nuevo producto al inventario
+  const handleCreateNewProduct = async () => {
+    if (!newProductForm.articulo.trim()) {
+      toast.error('El nombre del artículo es obligatorio')
+      return
+    }
+    if (!newProductForm.referencia.trim()) {
+      toast.error('La referencia es obligatoria')
+      return
+    }
+    // Comprobar si ya existe
+    const existing = stock.find(s => s.REFERENCIA === newProductForm.referencia.trim())
+    if (existing) {
+      toast.error('Ya existe un producto con esa referencia')
+      return
+    }
+    const { error } = await supabase.from('stock_items').insert({
+      referencia: newProductForm.referencia.trim(),
+      familia: newProductForm.familia.trim() || 'GENERAL',
+      categoria: newProductForm.categoria.trim() || 'SIN CATEGORÍA',
+      articulo: newProductForm.articulo.trim(),
+      descripcion: newProductForm.descripcion.trim() || null,
+      cantidad: newProductForm.cantidad,
+      stock_minimo: newProductForm.stockMinimo || null,
+      unidad: newProductForm.unidad || 'ud',
+      coste_iva_incluido: newProductForm.costeIva || null,
+      ubicacion: newProductForm.ubicacion.trim() || null,
+      proveedor: newProductForm.proveedor.trim() || null,
+    })
+    if (error) {
+      toast.error('Error añadiendo producto: ' + error.message)
+      return
+    }
+    toast.success('Producto añadido al inventario ✅')
+    setNewProductForm({ referencia: '', familia: '', categoria: '', articulo: '', descripcion: '', cantidad: 0, stockMinimo: 0, unidad: 'ud', costeIva: 0, ubicacion: '', proveedor: '' })
+    setShowNewProductModal(false)
     refreshData()
   }
 
@@ -619,7 +687,13 @@ export default function PurchaseList() {
         title="Pedidos y Stock"
         description="Gestión de compras y control de inventario"
         action={{ label: '➕ Nuevo pedido', onClick: () => setShowNewPurchaseModal(true) }}
-      />
+      >
+        {selectedTab === 'stock' && (
+          <Button variant="outline" size="sm" onClick={() => setShowNewProductModal(true)}>
+            📦 Añadir producto
+          </Button>
+        )}
+      </Header>
 
       <div className="p-4 md:p-8 space-y-4 md:space-y-6">
         {showQR && (
@@ -916,14 +990,18 @@ export default function PurchaseList() {
                                           {categoryItems.map((item, index) => {
                                             const isLowStock = item.STOCK_MINIMO && item.CANTIDAD < item.STOCK_MINIMO
                                             return (
-                                              <tr key={`${item.REFERENCIA}-${index}`} className={`hover:bg-gray-50 ${isLowStock ? 'bg-orange-50' : ''}`}>
+                                              <tr key={`${item.REFERENCIA}-${index}`} 
+                                                className={`hover:bg-blue-50 cursor-pointer transition ${isLowStock ? 'bg-orange-50' : ''}`}
+                                                onClick={() => handleOrderFromStock(item)}
+                                                title="Clic para crear pedido de este producto"
+                                              >
                                                 <td className="px-4 py-3 max-w-0 overflow-hidden">
                                                   <div className="text-sm font-medium text-gray-900 truncate" title={item.ARTICULO}>{item.ARTICULO}</div>
                                                 </td>
                                                 <td className="px-4 py-3 max-w-0 overflow-hidden text-sm text-gray-500">
                                                   <span className="truncate block" title={item.REFERENCIA}>{item.REFERENCIA}</span>
                                                 </td>
-                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                <td className="px-4 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                                                   {editingQty?.ref === item.REFERENCIA ? (
                                                     <div className="flex items-center gap-1">
                                                       <input
@@ -954,7 +1032,7 @@ export default function PurchaseList() {
                                                   )}
                                                   {item.STOCK_MINIMO && <div className="text-xs text-gray-500">Min: {item.STOCK_MINIMO}</div>}
                                                 </td>
-                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                <td className="px-4 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                                                   {isValidLocation(item.UBICACION) ? (
                                                     <button onClick={() => handleGoToLocation(item.UBICACION!)}
                                                       className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition text-sm font-medium"
@@ -1177,6 +1255,169 @@ export default function PurchaseList() {
                     ✅ Crear pedido
                   </Button>
                   <Button variant="outline" onClick={() => setShowNewPurchaseModal(false)} className="flex-1">
+                    Cancelar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Modal Nuevo Producto */}
+        {showNewProductModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowNewProductModal(false)}>
+            <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between">
+                  <span>📦 Añadir producto al inventario</span>
+                  <button onClick={() => setShowNewProductModal(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">✕</button>
+                </CardTitle>
+                <p className="text-sm text-gray-500">Añade un nuevo producto a la lista de inventario</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Artículo */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Artículo <span className="text-red-500">*</span></label>
+                  <Input
+                    placeholder="Nombre del producto"
+                    value={newProductForm.articulo}
+                    onChange={e => setNewProductForm(f => ({ ...f, articulo: e.target.value }))}
+                    autoFocus
+                  />
+                </div>
+
+                {/* Referencia */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Referencia <span className="text-red-500">*</span></label>
+                  <Input
+                    placeholder="Código único / SKU"
+                    value={newProductForm.referencia}
+                    onChange={e => setNewProductForm(f => ({ ...f, referencia: e.target.value.toUpperCase() }))}
+                  />
+                </div>
+
+                {/* Familia + Categoría */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Familia</label>
+                    <Input
+                      list="familias-existentes"
+                      placeholder="Ej: Electricidad"
+                      value={newProductForm.familia}
+                      onChange={e => setNewProductForm(f => ({ ...f, familia: e.target.value }))}
+                    />
+                    <datalist id="familias-existentes">
+                      {[...new Set(stock.map(s => s.FAMILIA).filter(Boolean))].sort().map(f => (
+                        <option key={f} value={f} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                    <Input
+                      list="categorias-existentes"
+                      placeholder="Ej: Cables"
+                      value={newProductForm.categoria}
+                      onChange={e => setNewProductForm(f => ({ ...f, categoria: e.target.value }))}
+                    />
+                    <datalist id="categorias-existentes">
+                      {[...new Set(stock.filter(s => !newProductForm.familia || s.FAMILIA === newProductForm.familia).map(s => s.CATEGORIA).filter(Boolean))].sort().map(c => (
+                        <option key={c} value={c} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+
+                {/* Descripción */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción <span className="text-gray-400 font-normal">(opcional)</span></label>
+                  <textarea
+                    rows={2}
+                    placeholder="Detalles adicionales del producto..."
+                    value={newProductForm.descripcion}
+                    onChange={e => setNewProductForm(f => ({ ...f, descripcion: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 resize-none"
+                  />
+                </div>
+
+                {/* Cantidad + Unidad */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad inicial</label>
+                    <Input
+                      type="number" min={0} step="0.01"
+                      value={newProductForm.cantidad}
+                      onChange={e => setNewProductForm(f => ({ ...f, cantidad: parseFloat(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
+                    <select
+                      value={newProductForm.unidad}
+                      onChange={e => setNewProductForm(f => ({ ...f, unidad: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500"
+                    >
+                      {['ud','uds','m','m²','m³','kg','g','l','ml','caja','rollo','paquete'].map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Stock mínimo + Coste */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock mínimo</label>
+                    <Input
+                      type="number" min={0} step="0.01"
+                      placeholder="0"
+                      value={newProductForm.stockMinimo}
+                      onChange={e => setNewProductForm(f => ({ ...f, stockMinimo: parseFloat(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Coste (IVA incl.) €</label>
+                    <Input
+                      type="number" min={0} step="0.01"
+                      placeholder="0.00"
+                      value={newProductForm.costeIva}
+                      onChange={e => setNewProductForm(f => ({ ...f, costeIva: parseFloat(e.target.value) || 0 }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Proveedor + Ubicación */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
+                    <Input
+                      list="proveedores-existentes"
+                      placeholder="Nombre del proveedor"
+                      value={newProductForm.proveedor}
+                      onChange={e => setNewProductForm(f => ({ ...f, proveedor: e.target.value }))}
+                    />
+                    <datalist id="proveedores-existentes">
+                      {[...new Set(stock.map(s => s.PROVEEDOR).filter(Boolean))].sort().map(p => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
+                    <Input
+                      placeholder="Ej: 123"
+                      value={newProductForm.ubicacion}
+                      onChange={e => setNewProductForm(f => ({ ...f, ubicacion: e.target.value.toUpperCase() }))}
+                      className="font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <Button onClick={handleCreateNewProduct} className="flex-1">
+                    ✅ Añadir producto
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowNewProductModal(false)} className="flex-1">
                     Cancelar
                   </Button>
                 </div>

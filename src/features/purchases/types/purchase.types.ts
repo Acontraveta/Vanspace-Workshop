@@ -10,6 +10,7 @@ export interface StockItem {
   UNIDAD: string
   COSTE_IVA_INCLUIDO?: number
   UBICACION?: string  // NUEVO: formato "123" = estantería 1, nivel 2, hueco 3
+  PROVEEDOR?: string
 }
 
 // Item de pedido generado automáticamente
