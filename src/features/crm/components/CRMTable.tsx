@@ -159,7 +159,7 @@ export function CRMTable({ leads, isLoading }: CRMTableProps) {
                 const statusCfg = getStatusConfig(lead.estado)
                 const quoteStatus = quoteStatusByLead.get(lead.id)
                 return (
-                  <tr key={lead.id} className="hover:bg-blue-50/30 transition">
+                  <tr key={lead.id} onClick={() => openForm(lead)} className="hover:bg-blue-50/30 transition cursor-pointer">
                     <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">
                       {formatDate(lead.fecha)}
                     </td>
@@ -202,7 +202,7 @@ export function CRMTable({ leads, isLoading }: CRMTableProps) {
                         <div className="text-xs text-orange-500">{formatDate(lead.fecha_accion)}</div>
                       )}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
                         {lead.telefono && (
                           <button
