@@ -14,6 +14,7 @@ import { LeadDocumentsService, DocCategory } from '../services/leadDocumentsServ
 import { generatePdfBlob, downloadPdf } from '@/features/quotes/services/pdfGenerator'
 import { loadCompanyInfo, LOGO_URL, type CompanyData, DEFAULT_COMPANY } from '@/shared/utils/companyInfo'
 import SignaturePad from '@/shared/components/SignaturePad'
+import WorkshopStamp from '@/shared/components/WorkshopStamp'
 import type { Lead } from '../types/crm.types'
 import toast from 'react-hot-toast'
 
@@ -413,8 +414,8 @@ export default function VehicleDepositReceipt({
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ width: '200px', height: '80px' }} />
-              <div style={{ width: '200px', borderTop: '1px solid #333', paddingTop: '4px', fontSize: '10px', color: '#666' }}>
+              <WorkshopStamp company={company} date={formatDate(receptionDate)} width={200} />
+              <div style={{ width: '200px', borderTop: '1px solid #333', paddingTop: '4px', marginTop: '4px', fontSize: '10px', color: '#666' }}>
                 Firma del taller
               </div>
             </div>
