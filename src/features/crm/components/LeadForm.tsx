@@ -9,6 +9,9 @@ import { LeadDocuments } from './LeadDocuments'
 import ScheduleReceptionModal from './ScheduleReceptionModal'
 import VehicleDepositReceipt from './VehicleDepositReceipt'
 import { openWhatsApp } from '../utils/whatsappHelper'
+import { UnifiedCalendarService } from '@/features/calendar/services/calendarService'
+import type { CalendarEventForm } from '@/features/calendar/types/calendar.types'
+import toast from 'react-hot-toast'
 
 interface LeadFormProps {
   lead?: Lead | null    // If provided → edit mode; else → create mode
@@ -79,11 +82,43 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
     setSaving(true)
     setError(null)
     try {
+      let savedLead: Lead
       if (lead) {
-        await updateLead(lead.id, form)
+        savedLead = await updateLead(lead.id, form)
       } else {
-        await createLead(form)
+        savedLead = await createLead(form)
       }
+
+      // Auto-create calendar event when próxima acción + fecha are set/changed
+      const actionChanged = form.proxima_accion && form.fecha_accion &&
+        (form.proxima_accion !== (lead?.proxima_accion ?? '') ||
+         form.fecha_accion !== (lead?.fecha_accion ?? ''))
+
+      if (actionChanged) {
+        try {
+          const evtForm: CalendarEventForm = {
+            title: `📌 ${form.proxima_accion} — ${form.cliente}`,
+            description: `Acción CRM: ${form.proxima_accion}\nCliente: ${form.cliente}${form.vehiculo ? `\nVehículo: ${form.vehiculo}` : ''}${form.notas ? `\nNotas: ${form.notas}` : ''}`,
+            date: form.fecha_accion!,
+            endDate: '',
+            time: '',
+            branch: 'crm',
+            eventType: 'RECORDATORIO',
+            clientName: form.cliente,
+            vehicleModel: form.vehiculo ?? '',
+            plate: '',
+            projectNumber: '',
+            leadId: savedLead.id,
+            visibleRoles: ['admin', 'encargado', 'compras'],
+          }
+          await UnifiedCalendarService.createEvent(evtForm)
+          toast.success(`📅 Acción "${form.proxima_accion}" añadida al calendario`)
+        } catch {
+          // Non-blocking — lead was saved successfully
+          console.warn('No se pudo crear evento de calendario para la acción CRM')
+        }
+      }
+
       onClose()
     } catch (err: any) {
       setError(err?.message ?? 'Error guardando')
