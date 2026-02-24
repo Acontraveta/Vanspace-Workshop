@@ -680,6 +680,7 @@ export default function VanExteriorDesign() {
               return (
                 <g key={el.id}
                   onMouseDown={e => handleMouseDown(e, el.id)}
+                  onClick={e => e.stopPropagation()}
                   style={{ cursor: 'grab' }}
                 >
                   <rect

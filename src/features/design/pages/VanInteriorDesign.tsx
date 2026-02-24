@@ -644,6 +644,7 @@ export default function VanInteriorDesign() {
               return (
                 <g key={item.id}
                   onMouseDown={e => handleMouseDown(e, item.id)}
+                  onClick={e => e.stopPropagation()}
                   style={{ cursor: 'grab', opacity }}
                 >
                   <rect
