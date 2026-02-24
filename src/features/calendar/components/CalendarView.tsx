@@ -62,6 +62,9 @@ export default function CalendarView({
   const [newEventDate, setNewEventDate] = useState<string>('')
   const [showModal, setShowModal] = useState(false)
 
+  // Day detail modal (all events for a day)
+  const [dayDetailDate, setDayDetailDate] = useState<Date | null>(null)
+
   // Drag for production
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null)
   // Prevent onClick from firing after a drag completes
@@ -100,6 +103,13 @@ export default function CalendarView({
 
   const handleDayClick = (day: Date) => {
     if (wasDragging.current) { wasDragging.current = false; return }
+    const dayEvents = getEventsForDay(day)
+    // If the day has events, show day detail modal
+    if (dayEvents.length > 0) {
+      setDayDetailDate(day)
+      return
+    }
+    // Otherwise, create a new event (if allowed)
     if (!canCreate) return
     if (isWeekend(day)) return
     if (!isSameMonth(day, currentMonth)) return
@@ -321,9 +331,13 @@ export default function CalendarView({
                       )
                     })}
                     {dayEvents.length > 3 && (
-                      <div className="text-[9px] text-gray-500 pl-1 font-medium">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setDayDetailDate(day) }}
+                        className="text-[9px] text-blue-600 pl-1 font-medium hover:underline cursor-pointer"
+                      >
                         +{dayEvents.length - 3} más
-                      </div>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -355,6 +369,30 @@ export default function CalendarView({
         </CardContent>
       </Card>
 
+      {/* Day detail modal — all events for a day */}
+      {dayDetailDate && (
+        <DayDetailModal
+          day={dayDetailDate}
+          events={getEventsForDay(dayDetailDate)}
+          onClose={() => setDayDetailDate(null)}
+          onEventClick={(ev) => {
+            setDayDetailDate(null)
+            setSelectedEvent(ev)
+            setModalMode('view')
+            setShowModal(true)
+          }}
+          onCreateClick={() => {
+            const dateStr = format(dayDetailDate, 'yyyy-MM-dd')
+            setDayDetailDate(null)
+            setNewEventDate(dateStr)
+            setSelectedEvent(null)
+            setModalMode('create')
+            setShowModal(true)
+          }}
+          canCreate={canCreate && !isWeekend(dayDetailDate) && isSameMonth(dayDetailDate, currentMonth)}
+        />
+      )}
+
       {/* Event modal */}
       {showModal && (
         modalMode === 'view' && selectedEvent ? (
@@ -374,6 +412,86 @@ export default function CalendarView({
           />
         )
       )}
+    </div>
+  )
+}
+
+// ─── Day Detail Modal ────────────────────────────────────────
+
+interface DayDetailModalProps {
+  day: Date
+  events: CalendarEvent[]
+  onClose: () => void
+  onEventClick: (ev: CalendarEvent) => void
+  onCreateClick: () => void
+  canCreate: boolean
+}
+
+function DayDetailModal({ day, events, onClose, onEventClick, onCreateClick, canCreate }: DayDetailModalProps) {
+  const dayLabel = format(day, "EEEE d 'de' MMMM yyyy", { locale: es })
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div>
+            <h3 className="text-lg font-bold text-gray-800 capitalize">{dayLabel}</h3>
+            <p className="text-sm text-gray-500">{events.length} evento{events.length !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="flex gap-2">
+            {canCreate && (
+              <button
+                onClick={onCreateClick}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+              >
+                ＋ Nuevo
+              </button>
+            )}
+            <button onClick={onClose} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Event list */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
+          {events.length === 0 ? (
+            <p className="text-center text-gray-400 py-8">No hay eventos este día</p>
+          ) : (
+            events.map((ev) => {
+              const meta = BRANCH_META[ev.branch]
+              return (
+                <button
+                  key={ev.id}
+                  onClick={() => onEventClick(ev)}
+                  className={`w-full text-left px-4 py-3 rounded-xl border-l-4 transition
+                    hover:shadow-md hover:scale-[1.01] active:scale-[0.99]
+                    ${meta.bgClass} ${meta.textClass} ${meta.borderClass}`}
+                >
+                  <div className="flex items-center gap-2 text-[10px] opacity-60 font-semibold uppercase tracking-wide">
+                    <span>{meta.icon}</span>
+                    <span>{EVENT_TYPE_LABELS[ev.eventType] ?? meta.label}</span>
+                    {ev.time && <span className="ml-auto">{ev.time}</span>}
+                  </div>
+                  <div className="text-sm font-semibold mt-1">{ev.title}</div>
+                  {ev.description && (
+                    <div className="text-xs mt-0.5 opacity-70 line-clamp-2">{ev.description}</div>
+                  )}
+                  {(ev.metadata?.clientName || ev.metadata?.vehicleModel) && (
+                    <div className="text-[10px] mt-1 opacity-50">
+                      {[ev.metadata.clientName, ev.metadata.vehicleModel].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </button>
+              )
+            })
+          )}
+        </div>
+      </div>
     </div>
   )
 }
