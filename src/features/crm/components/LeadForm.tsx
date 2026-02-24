@@ -44,9 +44,13 @@ const EMPTY_FORM: LeadFormData = {
   resena: '',
 }
 
-export function LeadForm({ lead, onClose }: LeadFormProps) {
+export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
   const navigate = useNavigate()
-  const { createLead, updateLead } = useCRMStore()
+  const { leads, createLead, updateLead } = useCRMStore()
+
+  // Live lead from store — stays in sync after updateLead calls (e.g. reception reset)
+  const lead = leadProp ? (leads.find(l => l.id === leadProp.id) ?? leadProp) : leadProp
+
   const [form, setForm] = useState<LeadFormData>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
