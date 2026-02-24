@@ -15,6 +15,7 @@ import { Input } from '@/shared/components/ui/input'
 import { ConfigService } from '@/features/config/services/configService'
 import { QuickDocService } from '../services/quickDocService'
 import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
+import { generatePdfBlob } from '../services/pdfGenerator'
 
 // ─── Tipos ───────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ interface CompanyInfo {
   address: string
   phone: string
   email: string
+  logoUrl: string
 }
 
 export interface QuickDocInitialData {
@@ -73,6 +75,7 @@ const DEFAULT_COMPANY: CompanyInfo = {
   address: 'C/ Ejemplo 1, 28001 Madrid',
   phone: '+34 600 000 000',
   email: 'info@vanspace.es',
+  logoUrl: '/assets/logo-vanspace.jpeg',
 }
 
 function fmt(n: number) {
@@ -130,6 +133,7 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
           address: get('direccion') || DEFAULT_COMPANY.address,
           phone: get('telefono') || DEFAULT_COMPANY.phone,
           email: get('email') || DEFAULT_COMPANY.email,
+          logoUrl: get('logo_url') || DEFAULT_COMPANY.logoUrl,
         })
       })
       .catch(() => {})
@@ -178,19 +182,21 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
     })
     setSaved(true)
 
-    // Auto-attach to lead if leadId provided
+    // Auto-attach PDF to lead if leadId provided
     if (initialData?.leadId && printRef.current) {
-      const htmlContent = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>${meta.label} ${docNumber}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#fff}</style></head><body>${printRef.current.outerHTML}</body></html>`
-      const blob = new Blob([htmlContent], { type: 'text/html' })
-      const file = new File([blob], `${docNumber}.html`, { type: 'text/html' })
-      const category = type === 'FACTURA_SIMPLIFICADA' ? 'factura' : 'presupuesto'
-      LeadDocumentsService.upload(
-        initialData.leadId,
-        file,
-        category as any,
-        `Generado automáticamente — ${meta.label}`,
-        ''
-      ).catch(err => console.warn('Auto-attach quick doc failed:', err))
+      generatePdfBlob(printRef.current)
+        .then(blob => {
+          const file = new File([blob], `${docNumber}.pdf`, { type: 'application/pdf' })
+          const category = type === 'FACTURA_SIMPLIFICADA' ? 'factura' : 'presupuesto'
+          return LeadDocumentsService.upload(
+            initialData.leadId!,
+            file,
+            category as any,
+            `Generado automáticamente — ${meta.label}`,
+            ''
+          )
+        })
+        .catch(err => console.warn('Auto-attach quick doc PDF failed:', err))
     }
   }
 
@@ -419,6 +425,9 @@ ${elem.outerHTML}
             {/* ── Document header ── */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10mm', borderBottom: `3px solid ${meta.color}`, paddingBottom: '6mm' }}>
               <div>
+                {company.logoUrl && (
+                  <img src={company.logoUrl} alt="logo" style={{ height: '50px', marginBottom: '6px', display: 'block', objectFit: 'contain' }} crossOrigin="anonymous" />
+                )}
                 <div style={{ fontSize: '22px', fontWeight: 800, color: meta.color, letterSpacing: '-0.5px' }}>
                   {meta.label.toUpperCase()}
                 </div>

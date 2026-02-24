@@ -46,6 +46,7 @@ async function autoAttachQuoteToLead(quote: Quote, leadId: string): Promise<void
     address: get('direccion') || '',
     phone: get('telefono') || '',
     email: get('email') || '',
+    logoUrl: get('logo_url') || '/assets/logo-vanspace.jpeg',
   }
 
   // Use saved documentData if available (preserves manual edits)

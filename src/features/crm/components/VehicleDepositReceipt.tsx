@@ -7,10 +7,12 @@
  * que se almacenan en la carpeta de documentos del lead.
  */
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/shared/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { LeadDocumentsService, DocCategory } from '../services/leadDocumentsService'
+import { generatePdfBlob, downloadPdf } from '@/features/quotes/services/pdfGenerator'
+import { loadCompanyInfo, LOGO_URL, type CompanyData, DEFAULT_COMPANY } from '@/shared/utils/companyInfo'
 import type { Lead } from '../types/crm.types'
 import toast from 'react-hot-toast'
 
@@ -36,6 +38,13 @@ export default function VehicleDepositReceipt({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const printRef = useRef<HTMLDivElement>(null)
+  const pdfRef = useRef<HTMLDivElement>(null)
+  const [company, setCompany] = useState<CompanyData>(DEFAULT_COMPANY)
+
+  // Load company info for document header
+  useEffect(() => {
+    loadCompanyInfo().then(setCompany)
+  }, [])
 
   const handlePhotos = (files: FileList | null) => {
     if (!files) return
@@ -75,22 +84,24 @@ export default function VehicleDepositReceipt({
       }
     }
 
-    // Save receipt data as a text document
+    // Generate and upload PDF receipt
     try {
-      const receiptContent = generateReceiptText()
-      const blob = new Blob([receiptContent], { type: 'text/plain' })
-      const receiptFile = new File(
-        [blob],
-        `resguardo-deposito-${lead.cliente?.replace(/\s+/g, '_')}-${receptionDate}.txt`,
-        { type: 'text/plain' }
-      )
-      await LeadDocumentsService.upload(
-        lead.id,
-        receiptFile,
-        'contrato' as DocCategory,
-        `Resguardo de depósito — Recepción ${receptionDate}`,
-        ''
-      )
+      const pdfEl = pdfRef.current
+      if (pdfEl) {
+        const blob = await generatePdfBlob(pdfEl)
+        const receiptFile = new File(
+          [blob],
+          `resguardo-deposito-${lead.cliente?.replace(/\s+/g, '_')}-${receptionDate}.pdf`,
+          { type: 'application/pdf' }
+        )
+        await LeadDocumentsService.upload(
+          lead.id,
+          receiptFile,
+          'contrato' as DocCategory,
+          `Resguardo de depósito — Recepción ${receptionDate}`,
+          ''
+        )
+      }
     } catch {
       errors++
     }
@@ -98,131 +109,21 @@ export default function VehicleDepositReceipt({
     if (errors > 0) {
       toast.error(`${errors} archivo(s) no se pudieron subir`)
     } else {
-      toast.success('Resguardo y fotos guardados correctamente')
+      toast.success('Resguardo PDF y fotos guardados correctamente')
     }
     setUploaded(true)
     setUploading(false)
   }
 
-  const generateReceiptText = () => {
-    const lines = [
-      '═══════════════════════════════════════════════════',
-      '         RESGUARDO DE DEPÓSITO DE VEHÍCULO',
-      '               VANSPACE WORKSHOP',
-      '═══════════════════════════════════════════════════',
-      '',
-      `Fecha de recepción: ${formatDate(receptionDate)}${receptionTime ? ` a las ${receptionTime}` : ''}`,
-      '',
-      '── DATOS DEL CLIENTE ──────────────────────────────',
-      `Nombre:      ${lead.cliente || '-'}`,
-      `Teléfono:    ${lead.telefono || '-'}`,
-      `Email:       ${lead.email || '-'}`,
-      `Localidad:   ${lead.localidad || '-'}`,
-      `Provincia:   ${lead.provincia || '-'}`,
-      '',
-      '── DATOS DEL VEHÍCULO ─────────────────────────────',
-      `Modelo:      ${lead.vehiculo || '-'}`,
-      `Talla:       ${lead.talla || '-'}`,
-      `Tipo:        ${lead.viaj_dorm || '-'}`,
-      `Kilometraje: ${mileage || '-'}`,
-      `Nivel comb.: ${fuelLevel}`,
-      '',
-      '── OBSERVACIONES ──────────────────────────────────',
-      observations || '(Sin observaciones)',
-      '',
-      `Fotos adjuntas: ${photos.length}`,
-      '',
-      '══════════════════════════════════════════════════',
-      'Firma del cliente:                Firma del taller:',
-      '',
-      '',
-      '________________                  ________________',
-    ]
-    return lines.join('\n')
-  }
-
-  const handlePrint = () => {
-    const printContent = printRef.current
-    if (!printContent) return
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Resguardo de Depósito — ${lead.cliente}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 40px; color: #333; }
-            h1 { text-align: center; font-size: 20px; margin-bottom: 4px; }
-            h2 { text-align: center; font-size: 14px; color: #666; margin-top: 0; }
-            .section { margin-top: 24px; }
-            .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; color: #555; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 12px; }
-            .row { display: flex; margin-bottom: 6px; font-size: 13px; }
-            .label { width: 140px; font-weight: bold; color: #555; }
-            .value { flex: 1; }
-            .observations { margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 4px; font-size: 13px; white-space: pre-wrap; min-height: 60px; }
-            .signatures { display: flex; justify-content: space-between; margin-top: 60px; }
-            .sig-block { text-align: center; font-size: 12px; color: #666; }
-            .sig-line { width: 200px; border-top: 1px solid #333; margin-top: 40px; padding-top: 4px; }
-            .photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-            .photos img { width: 150px; height: 100px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
-            .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #999; }
-          </style>
-        </head>
-        <body>
-          <h1>🚐 Resguardo de Depósito de Vehículo</h1>
-          <h2>VanSpace Workshop</h2>
-
-          <div class="section">
-            <div class="section-title">Datos del cliente</div>
-            <div class="row"><span class="label">Nombre:</span><span class="value">${lead.cliente || '-'}</span></div>
-            <div class="row"><span class="label">Teléfono:</span><span class="value">${lead.telefono || '-'}</span></div>
-            <div class="row"><span class="label">Email:</span><span class="value">${lead.email || '-'}</span></div>
-            <div class="row"><span class="label">Localidad:</span><span class="value">${lead.localidad || '-'} ${lead.provincia ? `(${lead.provincia})` : ''}</span></div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">Datos del vehículo</div>
-            <div class="row"><span class="label">Modelo:</span><span class="value">${lead.vehiculo || '-'}</span></div>
-            <div class="row"><span class="label">Talla:</span><span class="value">${lead.talla || '-'}</span></div>
-            <div class="row"><span class="label">Tipo:</span><span class="value">${lead.viaj_dorm || '-'}</span></div>
-            <div class="row"><span class="label">Kilometraje:</span><span class="value">${mileage || '-'} km</span></div>
-            <div class="row"><span class="label">Nivel combustible:</span><span class="value">${fuelLevel}</span></div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">Fecha de recepción</div>
-            <div class="row"><span class="label">Fecha:</span><span class="value">${formatDate(receptionDate)}${receptionTime ? ` a las ${receptionTime}` : ''}</span></div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">Observaciones del estado</div>
-            <div class="observations">${observations || '(Sin observaciones)'}</div>
-          </div>
-
-          ${photos.length > 0 ? `
-          <div class="section">
-            <div class="section-title">Fotos del estado (${photos.length})</div>
-            <div class="photos">
-              ${photos.map(p => `<img src="${p.preview}" />`).join('')}
-            </div>
-          </div>
-          ` : ''}
-
-          <div class="signatures">
-            <div class="sig-block">
-              <div class="sig-line">Firma del cliente</div>
-            </div>
-            <div class="sig-block">
-              <div class="sig-line">Firma del taller</div>
-            </div>
-          </div>
-
-          <div class="footer">Documento generado el ${new Date().toLocaleDateString('es-ES')} — VanSpace Workshop</div>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.print()
+  const handleDownloadPdf = async () => {
+    const pdfEl = pdfRef.current
+    if (!pdfEl) return
+    try {
+      const filename = `resguardo-deposito-${lead.cliente?.replace(/\s+/g, '_')}-${receptionDate}.pdf`
+      await downloadPdf(filename, pdfEl)
+    } catch (err) {
+      toast.error('Error generando PDF')
+    }
   }
 
   return (
@@ -244,8 +145,8 @@ export default function VehicleDepositReceipt({
               </div>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={handlePrint} title="Imprimir">
-                🖨️
+              <Button size="sm" variant="outline" onClick={handleDownloadPdf} title="Descargar PDF">
+                📥 PDF
               </Button>
               <Button size="sm" variant="outline" onClick={onClose}>✕</Button>
             </div>
@@ -397,6 +298,118 @@ export default function VehicleDepositReceipt({
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Hidden A4 PDF template for pdf generation ── */}
+      <div style={{ position: 'fixed', left: '-9999px', top: 0 }}>
+        <div
+          ref={pdfRef}
+          style={{
+            fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif",
+            fontSize: '11px',
+            color: '#1a1a1a',
+            background: '#fff',
+            width: '210mm',
+            minHeight: '297mm',
+            padding: '14mm',
+            boxSizing: 'border-box',
+            lineHeight: 1.5,
+          }}
+        >
+          {/* Header with logo */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '3px solid #d97706', paddingBottom: '6mm', marginBottom: '8mm' }}>
+            <div>
+              {company.logoUrl && (
+                <img src={company.logoUrl} alt="logo" style={{ height: '50px', marginBottom: '4px', display: 'block', objectFit: 'contain' }} crossOrigin="anonymous" />
+              )}
+              <div style={{ fontWeight: 700, fontSize: '14px' }}>{company.name}</div>
+              {company.nif && <div style={{ color: '#555', fontSize: '10px' }}>NIF: {company.nif}</div>}
+              {company.address && <div style={{ color: '#555', fontSize: '10px' }}>{company.address}</div>}
+              {(company.phone || company.email) && (
+                <div style={{ color: '#555', fontSize: '10px' }}>{[company.phone, company.email].filter(Boolean).join(' · ')}</div>
+              )}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ background: '#d97706', color: '#fff', padding: '5px 16px', borderRadius: '5px', fontWeight: 700, fontSize: '14px', letterSpacing: '1px' }}>
+                RESGUARDO DE DEPÓSITO
+              </div>
+              <div style={{ marginTop: '4px', fontSize: '10px', color: '#6b7280' }}>
+                {formatDate(receptionDate)}{receptionTime ? ` — ${receptionTime}` : ''}
+              </div>
+            </div>
+          </div>
+
+          {/* Client data */}
+          <div style={{ marginBottom: '6mm' }}>
+            <div style={{ fontWeight: 600, fontSize: '11px', color: '#374151', marginBottom: '4px', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb', paddingBottom: '2px' }}>
+              Datos del cliente
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px', fontSize: '10.5px' }}>
+              <div><strong>Nombre:</strong> {lead.cliente || '-'}</div>
+              <div><strong>Teléfono:</strong> {lead.telefono || '-'}</div>
+              <div><strong>Email:</strong> {lead.email || '-'}</div>
+              <div><strong>Localidad:</strong> {lead.localidad || '-'} {lead.provincia ? `(${lead.provincia})` : ''}</div>
+            </div>
+          </div>
+
+          {/* Vehicle data */}
+          <div style={{ marginBottom: '6mm' }}>
+            <div style={{ fontWeight: 600, fontSize: '11px', color: '#374151', marginBottom: '4px', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb', paddingBottom: '2px' }}>
+              Datos del vehículo
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px', fontSize: '10.5px' }}>
+              <div><strong>Modelo:</strong> {lead.vehiculo || '-'}</div>
+              <div><strong>Talla:</strong> {lead.talla || '-'}</div>
+              <div><strong>Tipo:</strong> {lead.viaj_dorm || '-'}</div>
+              <div><strong>Kilometraje:</strong> {mileage || '-'} km</div>
+              <div><strong>Combustible:</strong> {fuelLevel}</div>
+            </div>
+          </div>
+
+          {/* Observations */}
+          <div style={{ marginBottom: '6mm' }}>
+            <div style={{ fontWeight: 600, fontSize: '11px', color: '#374151', marginBottom: '4px', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb', paddingBottom: '2px' }}>
+              Observaciones del estado
+            </div>
+            <div style={{ padding: '8px', background: '#f9fafb', borderRadius: '4px', fontSize: '10.5px', minHeight: '40px', whiteSpace: 'pre-wrap', border: '1px solid #e5e7eb' }}>
+              {observations || '(Sin observaciones)'}
+            </div>
+          </div>
+
+          {/* Photos */}
+          {photos.length > 0 && (
+            <div style={{ marginBottom: '6mm' }}>
+              <div style={{ fontWeight: 600, fontSize: '11px', color: '#374151', marginBottom: '4px', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb', paddingBottom: '2px' }}>
+                Fotos del estado ({photos.length})
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                {photos.map((p, i) => (
+                  <img key={i} src={p.preview} alt={`Foto ${i + 1}`} style={{ width: '120px', height: '80px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #ddd' }} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Signatures */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16mm' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ width: '200px', borderTop: '1px solid #333', marginTop: '40px', paddingTop: '4px', fontSize: '10px', color: '#666' }}>
+                Firma del cliente
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ width: '200px', borderTop: '1px solid #333', marginTop: '40px', paddingTop: '4px', fontSize: '10px', color: '#666' }}>
+                Firma del taller
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '4px', marginTop: '10mm', fontSize: '8px', color: '#9ca3af', display: 'flex', justifyContent: 'space-between' }}>
+            <span>{company.name}{company.nif ? ` · NIF ${company.nif}` : ''}</span>
+            <span>Generado el {new Date().toLocaleDateString('es-ES')}</span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

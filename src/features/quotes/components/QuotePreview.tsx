@@ -65,7 +65,7 @@ const DEFAULT_COMPANY = {
   address: 'C/ Ejemplo 1, 28001 Madrid',
   phone: '+34 600 000 000',
   email: 'info@vanspace.es',
-  logoUrl: '',
+  logoUrl: '/assets/logo-vanspace.jpeg',
 }
 
 export default function QuotePreview({ quote, type, invoiceNumber, onApprove, onSaveEdits, onClose }: QuotePreviewProps) {
@@ -101,7 +101,7 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
           address: get('direccion') || DEFAULT_COMPANY.address,
           phone: get('telefono') || DEFAULT_COMPANY.phone,
           email: get('email') || DEFAULT_COMPANY.email,
-          logoUrl: get('logo_url') || '',
+          logoUrl: get('logo_url') || '/assets/logo-vanspace.jpeg',
         })
       })
       .catch(() => {/* usar defaults */})

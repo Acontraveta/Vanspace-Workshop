@@ -3,6 +3,7 @@ import { useAuth } from '@/app/providers/AuthProvider'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Button } from '../ui/button'
 import { AlertsBell } from '@/features/alerts/components/AlertsBell'
+import { LOGO_URL } from '@/shared/utils/companyInfo'
 
 interface SidebarProps {
   open?: boolean
@@ -41,8 +42,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full shadow-sm">
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🚐</span>
+        <div className="flex items-center gap-2.5">
+          <img src={LOGO_URL} alt="VanSpace" className="h-9 w-9 rounded-lg object-contain" />
           <div>
             <h1 className="text-xl font-bold text-gray-900 leading-none">VanSpace</h1>
             <p className="text-xs text-gray-400 mt-0.5">Workshop Manager</p>

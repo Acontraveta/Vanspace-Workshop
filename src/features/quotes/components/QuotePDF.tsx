@@ -127,7 +127,7 @@ export function QuotePDF({ data }: QuotePDFProps) {
         {/* Logo / Empresa emisora */}
         <div>
           {company.logoUrl && (
-            <img src={company.logoUrl} alt="logo" style={{ height: '40px', marginBottom: '6px', display: 'block' }} />
+            <img src={company.logoUrl} alt="logo" style={{ height: '50px', marginBottom: '6px', display: 'block', objectFit: 'contain' }} crossOrigin="anonymous" />
           )}
           <div style={{ fontWeight: 700, fontSize: '15px' }}>{company.name}</div>
           <div style={{ color: '#555' }}>{company.address}</div>

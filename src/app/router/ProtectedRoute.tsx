@@ -3,6 +3,7 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../providers/AuthProvider'
 import { Sidebar } from '@/shared/components/layout/Sidebar'
 import MyHoursWidget from '@/features/timeclock/components/MyHoursWidget'
+import { LOGO_URL } from '@/shared/utils/companyInfo'
 import { useState } from 'react'
 
 export function ProtectedRoute() {
@@ -37,7 +38,7 @@ export function ProtectedRoute() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="text-xl">🚐</span>
+        <span className="text-xl"><img src={LOGO_URL} alt="VanSpace" className="h-7 w-7 rounded object-contain" /></span>
         <span className="font-bold text-gray-900 text-base">VanSpace</span>
       </div>
 
