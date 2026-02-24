@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { InteractivePiece, ModuleDimensions, Piece, PlacedPiece, ModuleType, CatalogMaterial } from '../types/furniture.types'
 import { DEFAULT_THICKNESS, BACK_THICKNESS, MATERIALS, MODULE_TYPES, PIECE_COLORS, DEFAULT_CATALOG_MATERIALS } from '../constants/furniture.constants'
-import { optimizeCutList } from '../utils/geometry'
+import { optimizeCutList, BoardDimsMap } from '../utils/geometry'
 import { FurnitureFrontView } from './FurnitureFrontView'
 import { FurnitureIsoView } from './FurnitureIsoView'
 import { FurnitureOptimizerView } from './FurnitureOptimizerView'
@@ -477,7 +477,13 @@ export function FurniturePieceEditor({
     [pieces, getMaterial, module.catalogMaterialId]
   )
 
-  const optimized = useMemo(() => optimizeCutList(cutListPieces), [cutListPieces])
+  const optimized = useMemo(() => {
+    const dims: BoardDimsMap = new Map()
+    for (const mat of catalogMaterials) {
+      dims.set(mat.id, { w: mat.board_width ?? 2440, h: mat.board_height ?? 1220 })
+    }
+    return optimizeCutList(cutListPieces, dims)
+  }, [cutListPieces, catalogMaterials])
 
   const handleSave = async () => {
     if (pieces.length < 2) { toast.error('Diseña al menos 2 piezas antes de guardar'); return }
@@ -919,7 +925,7 @@ export function FurniturePieceEditor({
         {/* ══ OPTIMIZATION TAB ════════════════════════════════════ */}
         {tab === 'optimizado' && (
           <div className="p-6 max-w-4xl mx-auto">
-            <FurnitureOptimizerView placements={optimized} />
+            <FurnitureOptimizerView placements={optimized} catalogMaterials={catalogMaterials} />
           </div>
         )}
 

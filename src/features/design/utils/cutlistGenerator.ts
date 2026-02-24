@@ -9,7 +9,7 @@
 
 import { PlacedPiece } from '../types/furniture.types'
 import { BOARD_WIDTH, BOARD_HEIGHT } from '../constants/furniture.constants'
-import { boardCount, boardWaste } from './geometry'
+import { boardCount, boardWaste, BoardDimsMap } from './geometry'
 
 const FONT = 'Arial, Helvetica, sans-serif'
 
@@ -50,6 +50,7 @@ export function generateCutlistSVG(
   placements: PlacedPiece[],
   projectInfo?: string,
   titleOverride?: string,
+  boardDims?: BoardDimsMap,
 ): string {
   if (!placements.length) return ''
 
@@ -58,8 +59,6 @@ export function generateCutlistSVG(
 
   // Layout constants — larger scale for readability
   const SCALE = 0.38          // mm → SVG units (fits ~930px wide)
-  const BOARD_SVG_W = BOARD_WIDTH * SCALE
-  const BOARD_SVG_H = BOARD_HEIGHT * SCALE
   const MARGIN = 24
   const BOARD_GAP = 22
   const HEADER_H = 34
@@ -67,16 +66,31 @@ export function generateCutlistSVG(
   const TITLE_H = 60
   const DIM_PAD = 3           // padding inside piece rect for dimension text
 
+  // Helper: resolve board dimensions for a material group
+  const getBoardDims = (matId: string) => {
+    const d = boardDims?.get(matId)
+    return { bw: d?.w ?? BOARD_WIDTH, bh: d?.h ?? BOARD_HEIGHT }
+  }
+
+  // Max board width across all groups (for SVG canvas width)
+  let maxBoardSvgW = BOARD_WIDTH * SCALE
+  for (const g of groups) {
+    const { bw } = getBoardDims(g.materialId)
+    maxBoardSvgW = Math.max(maxBoardSvgW, bw * SCALE)
+  }
+
   // Calculate total height
   let totalH = TITLE_H + MARGIN
   for (const group of groups) {
+    const { bh } = getBoardDims(group.materialId)
+    const boardSvgH = bh * SCALE
     if (groups.length > 1) totalH += HEADER_H
-    totalH += group.boards.length * (BOARD_SVG_H + BOARD_GAP + 18)
+    totalH += group.boards.length * (boardSvgH + BOARD_GAP + 18)
     totalH += GROUP_GAP
   }
   totalH += 50 // footer + piece list
 
-  const svgW = BOARD_SVG_W + MARGIN * 2
+  const svgW = maxBoardSvgW + MARGIN * 2
 
   const parts: string[] = []
 
@@ -87,21 +101,30 @@ export function generateCutlistSVG(
   const title = titleOverride || `Despiece Total — ${totalBoards} tablero${totalBoards !== 1 ? 's' : ''}`
   parts.push(`<text x="${svgW / 2}" y="26" text-anchor="middle" font-family="${FONT}" font-size="16" font-weight="700" fill="#0f172a">${esc(title)}</text>`)
   if (projectInfo) {
-    parts.push(`<text x="${svgW / 2}" y="44" text-anchor="middle" font-family="${FONT}" font-size="10" fill="#64748b">${esc(projectInfo)} · Tablero ${BOARD_WIDTH}×${BOARD_HEIGHT} mm · ${placements.length} piezas</text>`)
+    parts.push(`<text x="${svgW / 2}" y="44" text-anchor="middle" font-family="${FONT}" font-size="10" fill="#64748b">${esc(projectInfo)} · ${placements.length} piezas</text>`)
   }
 
   // Utilization summary
   const totalUsed = placements.reduce((s, p) => s + p.w * p.h, 0)
-  const totalArea = totalBoards * BOARD_WIDTH * BOARD_HEIGHT
-  const utilPct = Math.round((totalUsed / totalArea) * 100)
+  let totalArea = 0
+  for (const g of groups) {
+    const { bw, bh } = getBoardDims(g.materialId)
+    totalArea += g.boards.length * bw * bh
+  }
+  const utilPct = totalArea > 0 ? Math.round((totalUsed / totalArea) * 100) : 0
   parts.push(`<text x="${svgW - MARGIN}" y="26" text-anchor="end" font-family="${FONT}" font-size="12" font-weight="700" fill="${utilPct >= 85 ? '#059669' : '#d97706'}">${utilPct}% aprovechamiento</text>`)
 
   let curY = TITLE_H
 
   for (const group of groups) {
+    // Resolve board dimensions for this material group
+    const { bw: groupBW, bh: groupBH } = getBoardDims(group.materialId)
+    const BOARD_SVG_W = groupBW * SCALE
+    const BOARD_SVG_H = groupBH * SCALE
+
     // Material header
     if (groups.length > 1) {
-      parts.push(`<text x="${MARGIN}" y="${curY + 18}" font-family="${FONT}" font-size="12" font-weight="700" fill="#334155">${esc(group.materialName)}</text>`)
+      parts.push(`<text x="${MARGIN}" y="${curY + 18}" font-family="${FONT}" font-size="12" font-weight="700" fill="#334155">${esc(group.materialName)} — ${groupBW}×${groupBH} mm</text>`)
       parts.push(`<text x="${svgW - MARGIN}" y="${curY + 18}" text-anchor="end" font-family="${FONT}" font-size="10" fill="#94a3b8">${group.boards.length} tablero${group.boards.length !== 1 ? 's' : ''} · ${group.pieces.length} piezas</text>`)
       parts.push(`<line x1="${MARGIN}" y1="${curY + 26}" x2="${svgW - MARGIN}" y2="${curY + 26}" stroke="#cbd5e1" stroke-width="0.8"/>`)
       curY += HEADER_H
@@ -111,7 +134,7 @@ export function generateCutlistSVG(
     for (let localIdx = 0; localIdx < group.boards.length; localIdx++) {
       const bi = group.boards[localIdx]
       const boardPieces = group.pieces.filter(p => (p.board ?? 0) === bi)
-      const waste = boardWaste(boardPieces)
+      const waste = boardWaste(boardPieces, groupBW, groupBH)
 
       // Board label
       const boardLabel = groups.length > 1
@@ -128,8 +151,8 @@ export function generateCutlistSVG(
       parts.push(`<rect x="${bx}" y="${by}" width="${BOARD_SVG_W}" height="${BOARD_SVG_H}" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" rx="3"/>`)
 
       // Board overall dims
-      parts.push(`<text x="${bx + BOARD_SVG_W / 2}" y="${by - 3}" text-anchor="middle" font-family="${FONT}" font-size="8" fill="#94a3b8">${BOARD_WIDTH} mm</text>`)
-      parts.push(`<text x="${bx - 4}" y="${by + BOARD_SVG_H / 2}" text-anchor="end" font-family="${FONT}" font-size="8" fill="#94a3b8" transform="rotate(-90 ${bx - 4} ${by + BOARD_SVG_H / 2})">${BOARD_HEIGHT} mm</text>`)
+      parts.push(`<text x="${bx + BOARD_SVG_W / 2}" y="${by - 3}" text-anchor="middle" font-family="${FONT}" font-size="8" fill="#94a3b8">${groupBW} mm</text>`)
+      parts.push(`<text x="${bx - 4}" y="${by + BOARD_SVG_H / 2}" text-anchor="end" font-family="${FONT}" font-size="8" fill="#94a3b8" transform="rotate(-90 ${bx - 4} ${by + BOARD_SVG_H / 2})">${groupBH} mm</text>`)
 
       // ─── Pieces on this board ───────────────────────────────────────────
       for (let j = 0; j < boardPieces.length; j++) {
@@ -275,10 +298,11 @@ export function generateBoardCutlistSVG(
   boardIndex: number,
   boardLabel: string,
   projectInfo?: string,
+  boardDims?: BoardDimsMap,
 ): string {
   const boardPieces = allPlacements
     .filter(p => (p.board ?? 0) === boardIndex)
     .map(p => ({ ...p, board: 0 }))
   if (!boardPieces.length) return ''
-  return generateCutlistSVG(boardPieces, projectInfo, boardLabel)
+  return generateCutlistSVG(boardPieces, projectInfo, boardLabel, boardDims)
 }

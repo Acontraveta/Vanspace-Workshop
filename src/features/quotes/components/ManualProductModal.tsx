@@ -4,6 +4,8 @@ import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { CatalogProduct } from '../types/quote.types'
+import { CatalogService } from '../services/catalogService'
+import toast from 'react-hot-toast'
 
 interface ManualProductModalProps {
   onAdd: (product: CatalogProduct) => void
@@ -25,6 +27,10 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
     crearOrdenCompra: false, // Si no hay stock, crear orden
     generarTarea: true, // Generar tarea de trabajo
     instruccionesTarea: '', // Instrucciones específicas de la tarea
+    guardarEnCatalogo: false, // Guardar permanentemente en el catálogo + Excel
+    precioVenta: 0, // Precio de venta (solo si se guarda en catálogo)
+    proveedor: '', // Proveedor
+    diasEntrega: 0, // Días de entrega del proveedor
   })
 
   const [materiales, setMateriales] = useState<Array<{ nombre: string; cantidad: number; unidad: string }>>([])
@@ -113,8 +119,18 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
       FAMILIA: formData.familia || 'personalizado',
       CATEGORIA: formData.categoria || 'sin categoría',
       PRECIO_COMPRA: formData.precioCompra,
+      'PRECIO DE VENTA': formData.precioVenta || undefined,
+      PROVEEDOR: formData.proveedor || undefined,
+      DIAS_ENTREGA_PROVEEDOR: formData.diasEntrega || undefined,
       TIEMPO_TOTAL_MIN: formData.tiempoTotalMin,
       ...catalogData // Spread del catalogData construido arriba
+    }
+
+    // Guardar en catálogo permanente si el usuario lo pidió
+    if (formData.guardarEnCatalogo) {
+      CatalogService.addProduct(product)
+        .then(() => toast.success('Producto guardado en el catálogo y Excel'))
+        .catch((err: any) => toast.error('Error guardando en catálogo: ' + err.message))
     }
 
     onAdd(product)
@@ -184,7 +200,19 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Tiempo Total (minutos)</label>
+                <label className="block text-sm font-medium mb-1">Precio Venta (€)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.precioVenta}
+                  onChange={e => setFormData({ ...formData, precioVenta: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Tiempo Total (min)</label>
                 <Input
                   type="number"
                   value={formData.tiempoTotalMin}
@@ -193,6 +221,22 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
                 <p className="text-xs text-gray-500 mt-1">
                   = {(formData.tiempoTotalMin / 60).toFixed(1)} horas
                 </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Proveedor</label>
+                <Input
+                  value={formData.proveedor}
+                  onChange={e => setFormData({ ...formData, proveedor: e.target.value })}
+                  placeholder="Nombre proveedor"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Días entrega</label>
+                <Input
+                  type="number"
+                  value={formData.diasEntrega}
+                  onChange={e => setFormData({ ...formData, diasEntrega: parseInt(e.target.value) || 0 })}
+                />
               </div>
             </div>
 
@@ -424,6 +468,27 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
                     />
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Guardar en catálogo permanente */}
+            <div className="border-t pt-4 bg-blue-50 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="guardarEnCatalogo"
+                  checked={formData.guardarEnCatalogo}
+                  onChange={e => setFormData({ ...formData, guardarEnCatalogo: e.target.checked })}
+                  className="w-4 h-4 mt-1"
+                />
+                <div className="flex-1">
+                  <label htmlFor="guardarEnCatalogo" className="font-medium cursor-pointer text-sm text-blue-800">
+                    📋 Guardar en catálogo permanente
+                  </label>
+                  <p className="text-xs text-blue-600 mt-0.5">
+                    El producto quedará registrado en el catálogo de la app y en el Excel, disponible para futuros presupuestos
+                  </p>
+                </div>
               </div>
             </div>
           </div>

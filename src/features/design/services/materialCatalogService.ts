@@ -4,6 +4,72 @@ import { DEFAULT_CATALOG_MATERIALS } from '../constants/furniture.constants'
 
 const TABLE = 'material_catalog'
 
+/** Keywords in stock item names/categories that indicate board materials */
+const BOARD_KEYWORDS = [
+  'tablero', 'contrachapado', 'melamina', 'mdf', 'dm ', 'dm-',
+  'aglomerado', 'fenólico', 'hpl', 'osb', 'okume', 'okoumé',
+  'fibra', 'chopo', 'abedul', 'pino macizo', 'roble macizo',
+  'madera maciza', 'panel',
+]
+
+/** Category keywords that indicate boards */
+const BOARD_CATEGORIES = [
+  'tableros', 'madera', 'paneles', 'contrachapados', 'melaminas',
+]
+
+/** Map a stock item to CatalogMaterial format */
+function stockItemToCatalogMaterial(item: any): CatalogMaterial | null {
+  const name = (item.articulo || item.referencia || '').toLowerCase()
+  const cat  = (item.categoria || '').toLowerCase()
+  const fam  = (item.familia || '').toLowerCase()
+  const desc = (item.descripcion || '').toLowerCase()
+
+  const isBoard =
+    BOARD_KEYWORDS.some(kw => name.includes(kw) || desc.includes(kw) || fam.includes(kw)) ||
+    BOARD_CATEGORIES.some(kw => cat.includes(kw) || fam.includes(kw))
+
+  if (!isBoard) return null
+
+  // Try to detect thickness from name (e.g. "16mm", "18 mm")
+  const thickMatch = (item.articulo || item.descripcion || '').match(/(\d+)\s*mm/i)
+  const thickness = thickMatch ? parseInt(thickMatch[1]) : 16
+
+  // Try to detect board dimensions from name (e.g. "2440x1220")
+  const dimMatch = (item.articulo || item.descripcion || '').match(/(\d{3,4})\s*[xX×]\s*(\d{3,4})/)
+  const boardW = dimMatch ? parseInt(dimMatch[1]) : 2440
+  const boardH = dimMatch ? parseInt(dimMatch[2]) : 1220
+
+  // Determine category
+  let category: CatalogMaterial['category'] = 'otro'
+  if (name.includes('contrachapado') || name.includes('chopo') || name.includes('abedul') || name.includes('okume')) category = 'contrachapado'
+  else if (name.includes('melamina')) category = 'melamina'
+  else if (name.includes('mdf') || name.includes('dm ') || name.includes('dm-') || name.includes('hidrófugo')) category = 'dm'
+  else if (name.includes('hpl')) category = 'hpl'
+  else if (name.includes('pino') || name.includes('roble') || name.includes('maciz')) category = 'madera'
+
+  // Price per m² from purchase cost
+  const areaM2 = (boardW / 1000) * (boardH / 1000)
+  const pricePerM2 = item.coste_iva_incluido && areaM2 > 0
+    ? Math.round((item.coste_iva_incluido / areaM2) * 100) / 100
+    : 30
+
+  return {
+    id: `stock-${item.referencia}`,
+    name: item.articulo || item.referencia,
+    thickness,
+    price_per_m2: pricePerM2,
+    color_hex: '#c4a882',
+    texture_label: category === 'melamina' ? 'Melamina' : category === 'contrachapado' ? 'Contrachapado' : 'Tablero',
+    category,
+    in_stock: (item.cantidad ?? 0) > 0,
+    stock_quantity: item.cantidad ?? 0,
+    stock_min: item.stock_minimo ?? 0,
+    supplier: '',
+    board_width: boardW,
+    board_height: boardH,
+  }
+}
+
 /**
  * Service for managing the material catalog.
  * Falls back to hardcoded defaults when the DB table doesn't exist.
@@ -11,11 +77,13 @@ const TABLE = 'material_catalog'
 export class MaterialCatalogService {
   private static cache: CatalogMaterial[] | null = null
 
-  /** Get all catalog materials, ordered by category + name */
+  /** Get all catalog materials, ordered by category + name.
+   *  Merges: material_catalog DB → stock_items (board-type) → hardcoded defaults */
   static async getAll(): Promise<CatalogMaterial[]> {
     if (this.cache) return this.cache
 
     try {
+      // 1. Load from material_catalog table
       const { data, error } = await supabase
         .from(TABLE)
         .select('*')
@@ -24,17 +92,32 @@ export class MaterialCatalogService {
 
       if (error) throw error
       const rows = (data ?? []) as CatalogMaterial[]
-      // If the DB table is empty, fall back to defaults so the designer
-      // always has materials available.
-      if (rows.length === 0) {
-        console.warn('[MaterialCatalog] Tabla vacía — usando catálogo por defecto')
+
+      // 2. Load board-type materials from general stock
+      let stockMaterials: CatalogMaterial[] = []
+      try {
+        const { data: stockData } = await supabase
+          .from('stock_items')
+          .select('*')
+        if (stockData) {
+          stockMaterials = stockData
+            .map(stockItemToCatalogMaterial)
+            .filter((m): m is CatalogMaterial => m !== null)
+        }
+      } catch { /* stock table may not exist */ }
+
+      // 3. Merge: material_catalog rows first, then stock items, then defaults
+      //    Skip any whose id is already present (deduplication)
+      const ids = new Set(rows.map(r => r.id))
+      const fromStock = stockMaterials.filter(m => !ids.has(m.id))
+      fromStock.forEach(m => ids.add(m.id))
+      const extras = DEFAULT_CATALOG_MATERIALS.filter(d => !ids.has(d.id))
+
+      if (rows.length === 0 && fromStock.length === 0) {
+        console.warn('[MaterialCatalog] Tabla vacía y sin stock — usando catálogo por defecto')
         this.cache = DEFAULT_CATALOG_MATERIALS
       } else {
-        // Merge: Supabase rows first, then any defaults whose id is not
-        // already present (handles mixed-ID situations).
-        const ids = new Set(rows.map(r => r.id))
-        const extras = DEFAULT_CATALOG_MATERIALS.filter(d => !ids.has(d.id))
-        this.cache = [...rows, ...extras]
+        this.cache = [...rows, ...fromStock, ...extras]
       }
       return this.cache
     } catch {

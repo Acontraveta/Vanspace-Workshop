@@ -4,6 +4,9 @@ import { BOARD_WIDTH, BOARD_HEIGHT } from '../constants/furniture.constants'
 // ─── Kerf (blade width) ──────────────────────────────────────────────────────
 const KERF = 4 // mm – material lost per cut
 
+/** Per-material board dimensions map (materialId → {w,h}) */
+export type BoardDimsMap = Map<string, { w: number; h: number }>
+
 // ─── Internal rectangle type ─────────────────────────────────────────────────
 interface Rect { x: number; y: number; w: number; h: number }
 
@@ -160,8 +163,11 @@ class GuillotineBin {
  * Groups pieces by materialId first – each material gets its own boards.
  * Within each material group, runs packing in both board orientations
  * (W×H and H×W) and keeps the better result.
+ *
+ * @param boardDims  Optional map of materialId → {w,h} for per-material board sizes.
+ *                   Falls back to BOARD_WIDTH×BOARD_HEIGHT for materials not in the map.
  */
-export function optimizeCutList(pieces: Piece[]): PlacedPiece[] {
+export function optimizeCutList(pieces: Piece[], boardDims?: BoardDimsMap): PlacedPiece[] {
   if (!pieces.length) return []
 
   // ── Group pieces by material ──────────────────────────────────────────────
@@ -179,12 +185,17 @@ export function optimizeCutList(pieces: Piece[]): PlacedPiece[] {
   const allPlacements: PlacedPiece[] = []
   let globalBoardOffset = 0
 
-  for (const [, groupPieces] of groups) {
+  for (const [matKey, groupPieces] of groups) {
     // First Fit Decreasing – sort by area descending (critical for good packing)
     const sorted = [...groupPieces].sort((a, b) => (b.w * b.h) - (a.w * a.h))
 
-    const resultA = packAll(sorted, BOARD_WIDTH, BOARD_HEIGHT)
-    const resultB = packAll(sorted, BOARD_HEIGHT, BOARD_WIDTH)
+    // Use per-material dimensions if available, else use global defaults
+    const dims = boardDims?.get(matKey) ?? { w: BOARD_WIDTH, h: BOARD_HEIGHT }
+    const bw = dims.w
+    const bh = dims.h
+
+    const resultA = packAll(sorted, bw, bh)
+    const resultB = packAll(sorted, bh, bw)
 
     const best = resultB.boards < resultA.boards
       ? resultB

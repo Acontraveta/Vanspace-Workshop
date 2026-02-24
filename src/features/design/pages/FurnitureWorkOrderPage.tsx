@@ -18,7 +18,7 @@ import { FurniturePieceEditor } from '../components/FurniturePieceEditor'
 import { FurnitureOptimizerView } from '../components/FurnitureOptimizerView'
 import { FurnitureStickersView } from '../components/FurnitureStickersView'
 import { MaterialCatalogService } from '../services/materialCatalogService'
-import { optimizeCutList } from '../utils/geometry'
+import { optimizeCutList, BoardDimsMap } from '../utils/geometry'
 import { generateBlueprintSVG } from '../utils/blueprintGenerator'
 import { generateCutlistSVG, generateBoardCutlistSVG, enumerateBoards } from '../utils/cutlistGenerator'
 import { processStockConsumption } from '@/features/production/services/stockConsumption'
@@ -82,6 +82,11 @@ export default function FurnitureWorkOrderPage() {
   /** All optimised cuts merged from all designed pieces (for combined cut list) */
   const allCuts = useMemo((): PlacedPiece[] => {
     const matNameMap = new Map(catalogMaterials.map(m => [m.id, m.name]))
+    // Build per-material board dimensions from catalog
+    const boardDims: BoardDimsMap = new Map()
+    for (const mat of catalogMaterials) {
+      boardDims.set(mat.id, { w: mat.board_width ?? 2440, h: mat.board_height ?? 1220 })
+    }
     const allPieces: Piece[] = designs.flatMap(d =>
       (d.pieces as InteractivePiece[])
         .filter(p => p.type !== 'trasera')
@@ -100,7 +105,7 @@ export default function FurnitureWorkOrderPage() {
           }
         })
     )
-    return optimizeCutList(allPieces)
+    return optimizeCutList(allPieces, boardDims)
   }, [designs, catalogMaterials])
 
   const allDesigned = wo?.items.every(i => i.designStatus !== 'pending') ?? false
@@ -240,7 +245,18 @@ export default function FurnitureWorkOrderPage() {
         )
         console.log('🧩 Piezas totales:', allPieces.length, 'con material:', allPieces.filter(p => p.materialName && p.materialName !== 'Tablero').length)
 
-        const optimized = optimizeCutList(allPieces)
+        // Build per-material board dimensions map
+        const approvalBoardDims: BoardDimsMap = new Map()
+        for (const mat of catalogMaterials) {
+          approvalBoardDims.set(mat.id, { w: mat.board_width ?? 2440, h: mat.board_height ?? 1220 })
+        }
+        for (const dm of DEFAULT_CATALOG_MATERIALS) {
+          if (!approvalBoardDims.has(dm.id)) {
+            approvalBoardDims.set(dm.id, { w: dm.board_width ?? 2440, h: dm.board_height ?? 1220 })
+          }
+        }
+
+        const optimized = optimizeCutList(allPieces, approvalBoardDims)
         const boardInfos = enumerateBoards(optimized)
         const totalBoardCount = boardInfos.length
         console.log('📋 Tableros optimizados:', totalBoardCount, 'piezas colocadas:', optimized.length)
@@ -249,7 +265,9 @@ export default function FurnitureWorkOrderPage() {
         try {
           const cutlistSvg = generateCutlistSVG(
             optimized,
-            `${wo.quote_number} · ${wo.client_name}`
+            `${wo.quote_number} · ${wo.client_name}`,
+            undefined,
+            approvalBoardDims,
           )
           // Generate individual SVG for each board
           const boardCutlistSvgs = boardInfos.map((bi, idx) =>
@@ -258,6 +276,7 @@ export default function FurnitureWorkOrderPage() {
               bi.boardIndex,
               `Tablero ${idx + 1} — ${bi.materialName}`,
               `${wo.quote_number} · ${wo.client_name}`,
+              approvalBoardDims,
             )
           )
           console.log('📋 Cutlist SVGs generados:', cutlistSvg.length, 'bytes total,', boardCutlistSvgs.length, 'tableros')
@@ -508,7 +527,7 @@ export default function FurnitureWorkOrderPage() {
           <button onClick={() => setPageView('list')} className="text-sm text-blue-600 underline">← Volver</button>
           <h2 className="text-lg font-black text-slate-900">Despiece conjunto — {wo.quote_number}</h2>
         </div>
-        <FurnitureOptimizerView placements={allCuts} />
+        <FurnitureOptimizerView placements={allCuts} catalogMaterials={catalogMaterials} />
       </div>
     )
   }

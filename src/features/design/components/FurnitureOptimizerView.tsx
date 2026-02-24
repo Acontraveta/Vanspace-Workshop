@@ -1,10 +1,11 @@
-import { PlacedPiece } from '../types/furniture.types'
+import { PlacedPiece, CatalogMaterial } from '../types/furniture.types'
 import { BOARD_WIDTH, BOARD_HEIGHT } from '../constants/furniture.constants'
 import { boardCount, boardWaste } from '../utils/geometry'
 import { useMemo } from 'react'
 
 interface FurnitureOptimizerViewProps {
   placements: PlacedPiece[]
+  catalogMaterials?: CatalogMaterial[]
 }
 
 /** Group boards by material for display */
@@ -15,11 +16,23 @@ interface MaterialGroup {
   pieces: PlacedPiece[]
 }
 
-export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewProps) {
-  const containerW   = 760
-  const scale        = containerW / BOARD_WIDTH
-  const containerH   = BOARD_HEIGHT * scale
+export function FurnitureOptimizerView({ placements, catalogMaterials }: FurnitureOptimizerViewProps) {
   const boards       = boardCount(placements)
+
+  // Build per-material board dimensions lookup
+  const matDims = useMemo(() => {
+    const map = new Map<string, { w: number; h: number }>()
+    if (catalogMaterials) {
+      for (const m of catalogMaterials) {
+        map.set(m.id, { w: m.board_width ?? BOARD_WIDTH, h: m.board_height ?? BOARD_HEIGHT })
+      }
+    }
+    return map
+  }, [catalogMaterials])
+  const getBoardDims = (matId: string) => {
+    const d = matDims.get(matId)
+    return { bw: d?.w ?? BOARD_WIDTH, bh: d?.h ?? BOARD_HEIGHT }
+  }
 
   // Group placements by material
   const materialGroups = useMemo((): MaterialGroup[] => {
@@ -54,8 +67,12 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
   }
 
   const totalUsed = placements.reduce((s, p) => s + p.w * p.h, 0)
-  const totalArea = boards * BOARD_WIDTH * BOARD_HEIGHT
-  const totalWaste = Math.round((1 - totalUsed / totalArea) * 100)
+  let totalArea = 0
+  for (const g of materialGroups) {
+    const { bw, bh } = getBoardDims(g.materialId)
+    totalArea += g.boards.length * bw * bh
+  }
+  const totalWaste = totalArea > 0 ? Math.round((1 - totalUsed / totalArea) * 100) : 0
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 overflow-x-auto">
@@ -63,7 +80,7 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
         <div>
           <h3 className="text-base font-bold text-slate-800">Optimización de Corte</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Tablero estándar {BOARD_WIDTH} × {BOARD_HEIGHT} mm · {boards} tablero{boards !== 1 ? 's' : ''}
+            {boards} tablero{boards !== 1 ? 's' : ''}
             {materialGroups.length > 1 ? ` · ${materialGroups.length} materiales` : ''}
             {' · '}
             <span className={totalWaste > 30 ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold'}>
@@ -92,14 +109,18 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
           {/* Boards in this material group */}
           {group.boards.map((bi, localIdx) => {
             const boardPieces = group.pieces.filter(p => (p.board ?? 0) === bi)
-            const waste = boardWaste(boardPieces)
+            const { bw: groupBW, bh: groupBH } = getBoardDims(group.materialId)
+            const waste = boardWaste(boardPieces, groupBW, groupBH)
+            const containerW = 760
+            const groupScale = containerW / groupBW
+            const containerH = groupBH * groupScale
 
             return (
               <div key={bi} className={localIdx > 0 ? 'mt-4' : ''}>
                 <div className="flex items-center gap-3 mb-1">
                   <p className="text-[10px] font-bold text-slate-400 uppercase">
                     {materialGroups.length > 1
-                      ? `Tablero ${localIdx + 1}`
+                      ? `Tablero ${localIdx + 1} — ${groupBW}×${groupBH} mm`
                       : (boards > 1 ? `Tablero ${bi + 1}` : '')}
                   </p>
                   <p className="text-[10px] font-medium ml-auto"
@@ -109,7 +130,7 @@ export function FurnitureOptimizerView({ placements }: FurnitureOptimizerViewPro
                 </div>
                 <div className="relative border-4 border-slate-300 rounded-lg bg-slate-50 overflow-hidden"
                   style={{ width: containerW, height: containerH }}>
-                  <svg width="100%" height="100%" viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`}>
+                  <svg width="100%" height="100%" viewBox={`0 0 ${groupBW} ${groupBH}`}>
                     <defs>
                       {boardPieces.map((p, i) => (
                         <clipPath key={`clip-${bi}-${i}`} id={`clip-${bi}-${i}`}>
