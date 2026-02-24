@@ -70,6 +70,11 @@ export interface Lead {
   incidencias?: string
   resena?: string
 
+  // Recepción del vehículo
+  fecha_recepcion?: string | null   // DATE — scheduled reception
+  hora_recepcion?: string | null     // TIME — scheduled reception
+  recepcion_confirmada?: boolean     // true after the vehicle is actually received
+
   // Oportunidades (historical commercial states)
   oportunidades?: LeadOpportunity[]
 

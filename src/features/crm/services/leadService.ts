@@ -57,7 +57,7 @@ export async function getLeadsByAsignado(asignado: string): Promise<Lead[]> {
 // Converts empty-string date fields to null before sending to Supabase
 function sanitizeDates(obj: Record<string, any>): Record<string, any> {
   const result = { ...obj }
-  for (const field of ['fecha', 'fecha_accion', 'fecha_entrega']) {
+  for (const field of ['fecha', 'fecha_accion', 'fecha_entrega', 'fecha_recepcion']) {
     if (result[field] === '') result[field] = null
   }
   return result

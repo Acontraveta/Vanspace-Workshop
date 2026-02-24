@@ -7,6 +7,7 @@ import { QuoteService } from '@/features/quotes/services/quoteService'
 import { LeadProductionPanel } from './LeadProductionPanel'
 import { LeadDocuments } from './LeadDocuments'
 import ScheduleReceptionModal from './ScheduleReceptionModal'
+import VehicleDepositReceipt from './VehicleDepositReceipt'
 import { openWhatsApp } from '../utils/whatsappHelper'
 
 interface LeadFormProps {
@@ -47,6 +48,7 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showReceptionModal, setShowReceptionModal] = useState(false)
+  const [showDepositReceipt, setShowDepositReceipt] = useState(false)
   const [editingOppId, setEditingOppId] = useState<string | null>(null)
   const [oppForm, setOppForm] = useState<Partial<LeadOpportunity>>({})
 
@@ -558,7 +560,7 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-2 ml-auto">
             {/* Crear presupuesto desde este lead (solo en modo edición) */}
-            {lead && (
+            {lead && !lead.recepcion_confirmada && !lead.fecha_recepcion && (
               <button
                 type="button"
                 onClick={() => setShowReceptionModal(true)}
@@ -566,6 +568,30 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
               >
                 🚐 Programar recepción
               </button>
+            )}
+            {lead && lead.fecha_recepcion && !lead.recepcion_confirmada && (
+              <button
+                type="button"
+                onClick={() => setShowDepositReceipt(true)}
+                className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium animate-pulse"
+              >
+                ✅ Confirmar recepción ({lead.fecha_recepcion})
+              </button>
+            )}
+            {lead && lead.fecha_recepcion && !lead.recepcion_confirmada && (
+              <button
+                type="button"
+                onClick={() => setShowReceptionModal(true)}
+                className="px-3 py-2 text-sm border border-amber-400 text-amber-700 rounded-lg hover:bg-amber-50 transition"
+                title="Cambiar fecha programada"
+              >
+                📅
+              </button>
+            )}
+            {lead && lead.recepcion_confirmada && (
+              <span className="px-4 py-2 text-sm bg-green-100 text-green-800 rounded-lg font-medium border border-green-300">
+                ✅ Vehículo recibido
+              </span>
             )}
             {lead && (
               <button
@@ -613,6 +639,23 @@ export function LeadForm({ lead, onClose }: LeadFormProps) {
       <ScheduleReceptionModal
         lead={lead}
         onClose={() => setShowReceptionModal(false)}
+      />
+    )}
+
+    {/* Deposit receipt (confirmar recepción) */}
+    {showDepositReceipt && lead && (
+      <VehicleDepositReceipt
+        lead={lead}
+        receptionDate={lead.fecha_recepcion ?? ''}
+        receptionTime={lead.hora_recepcion ?? undefined}
+        onClose={async () => {
+          // Mark reception as confirmed on the lead
+          try {
+            await updateLead(lead.id, { recepcion_confirmada: true } as any)
+          } catch { /* silent */ }
+          setShowDepositReceipt(false)
+          onClose()
+        }}
       />
     )}
     </>

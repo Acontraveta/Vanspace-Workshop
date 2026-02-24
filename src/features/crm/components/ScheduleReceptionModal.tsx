@@ -13,7 +13,7 @@ import { Input } from '@/shared/components/ui/input'
 import { UnifiedCalendarService } from '@/features/calendar/services/calendarService'
 import type { CalendarEventForm } from '@/features/calendar/types/calendar.types'
 import type { Lead } from '../types/crm.types'
-import VehicleDepositReceipt from './VehicleDepositReceipt'
+import { useCRMStore } from '../store/crmStore'
 import toast from 'react-hot-toast'
 
 interface ScheduleReceptionModalProps {
@@ -22,13 +22,11 @@ interface ScheduleReceptionModalProps {
 }
 
 export default function ScheduleReceptionModal({ lead, onClose }: ScheduleReceptionModalProps) {
-  const [date, setDate] = useState('')
-  const [time, setTime] = useState('')
+  const [date, setDate] = useState(lead.fecha_recepcion ?? '')
+  const [time, setTime] = useState(lead.hora_recepcion ?? '')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
-  const [showReceipt, setShowReceipt] = useState(false)
-  const [savedDate, setSavedDate] = useState('')
-  const [savedTime, setSavedTime] = useState('')
+  const { updateLead } = useCRMStore()
 
   const handleCreate = async () => {
     if (!date) {
@@ -55,27 +53,20 @@ export default function ScheduleReceptionModal({ lead, onClose }: ScheduleRecept
       }
 
       await UnifiedCalendarService.createEvent(form)
-      toast.success('Evento de recepción creado en el calendario')
-      setSavedDate(date)
-      setSavedTime(time)
-      setShowReceipt(true)
+
+      // Persist scheduled date on the lead itself
+      await updateLead(lead.id, {
+        fecha_recepcion: date,
+        hora_recepcion: time || null,
+      } as any)
+
+      toast.success('Recepción programada — aparecerá en el calendario')
+      onClose()
     } catch (err: any) {
       toast.error(err?.message ?? 'Error creando el evento')
     } finally {
       setSaving(false)
     }
-  }
-
-  // After creating the event, show the deposit receipt
-  if (showReceipt) {
-    return (
-      <VehicleDepositReceipt
-        lead={lead}
-        receptionDate={savedDate}
-        receptionTime={savedTime}
-        onClose={onClose}
-      />
-    )
   }
 
   return (
@@ -164,7 +155,7 @@ export default function ScheduleReceptionModal({ lead, onClose }: ScheduleRecept
               disabled={saving || !date}
               className="flex-1"
             >
-              {saving ? '⏳ Creando...' : '✅ Crear evento y generar resguardo'}
+              {saving ? '⏳ Guardando...' : '📅 Programar recepción'}
             </Button>
             <Button variant="outline" onClick={onClose}>Cancelar</Button>
           </div>
