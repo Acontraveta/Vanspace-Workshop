@@ -250,22 +250,21 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
     await new Promise(r => setTimeout(r, 100))
     try {
       const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode')
-      const container = document.getElementById(warehouseScannerContainerId)
-      const containerWidth = container?.clientWidth || 300
-      const qrboxSize = Math.min(220, Math.floor(containerWidth * 0.65))
 
       const scanner = new Html5Qrcode(warehouseScannerContainerId, {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         experimentalFeatures: { useBarCodeDetectorIfSupported: false },
+        verbose: false,
       })
       warehouseScannerRef.current = scanner
       await scanner.start(
         { facingMode: 'environment' },
         {
           fps: 15,
-          qrbox: { width: qrboxSize, height: qrboxSize },
+          disableFlip: true,
         },
         (decodedText) => {
+          console.log('[QR-Warehouse] Decoded:', decodedText)
           handleQRScan(decodedText)
           stopWarehouseCamera()
         },

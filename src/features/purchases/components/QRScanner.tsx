@@ -26,6 +26,8 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   const [qrPreviewItem, setQrPreviewItem] = useState<StockItem | null>(null)
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
+  const processCodeRef = useRef(processCode)
+  processCodeRef.current = processCode
   const scannerContainerId = 'qr-reader-container'
 
   const processCode = useCallback((code: string) => {
@@ -68,16 +70,14 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
     setCameraActive(true)
 
     // Wait for React to render the visible container
-    await new Promise(r => setTimeout(r, 100))
+    await new Promise(r => setTimeout(r, 150))
 
     try {
-      const container = document.getElementById(scannerContainerId)
-      const containerWidth = container?.clientWidth || 300
-      const qrboxSize = Math.min(250, Math.floor(containerWidth * 0.7))
 
       const scanner = new Html5Qrcode(scannerContainerId, {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         experimentalFeatures: { useBarCodeDetectorIfSupported: false },
+        verbose: false,
       })
       scannerRef.current = scanner
 
@@ -85,10 +85,11 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
         { facingMode: 'environment' },
         {
           fps: 15,
-          qrbox: { width: qrboxSize, height: qrboxSize },
+          disableFlip: true,
         },
         (decodedText) => {
-          processCode(decodedText)
+          console.log('[QR] Decoded:', decodedText)
+          processCodeRef.current(decodedText)
           stopCamera()
         },
         () => {
