@@ -108,12 +108,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       }))
     : TARIFAS_FALLBACK
   
-  useEffect(() => {
-    console.log('🔍 QuoteGenerator - Estado del catálogo:')
-    console.log('  products.length:', products.length)
-    console.log('  catalogLoaded:', catalogLoaded)
-    console.log('  loading:', loading)
-  }, [products, catalogLoaded, loading])
+  
   const [selectedTarifa, setSelectedTarifa] = useState<Tarifa>(TARIFAS_FALLBACK[0])
   const [items, setItems] = useState<QuoteItem[]>([])
 
@@ -157,9 +152,6 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
 
   const families = catalogLoaded ? CatalogService.getFamilies() : []
-  console.log('🏷️ Families encontradas:', families)
-  console.log('📦 Products disponibles:', products.length)
-  console.log('🔍 catalogLoaded:', catalogLoaded)
   
   // Agrupar productos por familia y categoría
   const productsByFamily = families.reduce((acc, family) => {
@@ -173,8 +165,6 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
     
     return acc
   }, {} as Record<string, Record<string, CatalogProduct[]>>)
-
-  console.log('📊 productsByFamily:', productsByFamily)
 
   // Cargar presupuesto si hay quoteId
   useEffect(() => {
@@ -634,7 +624,6 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
               {/* Botón para añadir producto manual */}
               <Button
                 onClick={() => {
-                  console.log('🔴 Abriendo modal manual')
                   setShowManualProductModal(true)
                 }}
                 disabled={currentQuote?.status === 'APPROVED'}
@@ -652,18 +641,72 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                   {/* Búsqueda */}
                   <div className="mb-4">
                     <Input
-                      placeholder="🔍 Buscar producto..."
+                      placeholder="🔍 Buscar producto por nombre o referencia..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
 
-                  {/* Acordeones por Familia */}
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-600 mb-4">
-                      Debug: {families.length} familias | {products.length} productos | Loaded: {catalogLoaded ? 'Sí' : 'No'}
-                    </p>
+                  {/* ── Search results (flat list) ── */}
+                  {searchTerm.trim() ? (() => {
+                    const term = searchTerm.toLowerCase()
+                    const filtered = products.filter(p =>
+                      p.NOMBRE?.toLowerCase().includes(term) ||
+                      p.SKU?.toLowerCase().includes(term) ||
+                      p.FAMILIA?.toLowerCase().includes(term) ||
+                      p.CATEGORIA?.toLowerCase().includes(term)
+                    )
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-500 mb-2">
+                          {filtered.length} resultado{filtered.length !== 1 ? 's' : ''} para "{searchTerm}"
+                        </p>
+                        {filtered.length === 0 && (
+                          <div className="p-6 text-center text-gray-400">
+                            <p className="text-2xl mb-2">🔍</p>
+                            <p>No se encontraron productos</p>
+                          </div>
+                        )}
+                        {filtered.map((product) => (
+                          <div
+                            key={product.SKU}
+                            className="bg-white border rounded p-3 hover:shadow-md transition"
+                          >
+                            <div className="flex items-start justify-between mb-1">
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-sm">{product.NOMBRE}</h4>
+                                <p className="text-xs text-gray-500">{product.SKU}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {product.FAMILIA && <span className="capitalize">{product.FAMILIA}</span>}
+                                  {product.CATEGORIA && <span> › {product.CATEGORIA}</span>}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 ml-2 shrink-0">
+                                <div className="text-right text-sm">
+                                  <p className="text-gray-700 font-semibold">
+                                    {product.PRECIO_COMPRA?.toFixed(2) || '0.00'}€
+                                  </p>
+                                  <p className="text-gray-500 text-xs">
+                                    ⏱️ {((product.TIEMPO_TOTAL_MIN || 0) / 60).toFixed(1)}h
+                                  </p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => tryAddProduct(product)}
+                                  disabled={currentQuote?.status === 'APPROVED'}
+                                >
+                                  ➕
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })() : (
 
+                  /* ── Accordion view (no search) ── */
+                  <div className="space-y-2">
                     {families.length === 0 && catalogLoaded && (
                       <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
                         <p className="text-yellow-800">
@@ -707,14 +750,6 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                             <div className="p-2 space-y-2">
                               {Object.entries(productsByFamily[family] || {}).map(([category, categoryProducts]) => {
                                 const isCategoryExpanded = expandedCategory === category
-                                const filteredCategoryProducts = searchTerm
-                                  ? categoryProducts.filter(p =>
-                                      p.NOMBRE?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                      p.SKU?.toLowerCase().includes(searchTerm.toLowerCase())
-                                    )
-                                  : categoryProducts
-
-                                if (searchTerm && filteredCategoryProducts.length === 0) return null
 
                                 return (
                                   <div key={category} className="border rounded">
@@ -728,7 +763,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                                       <div className="flex items-center gap-2">
                                         <span className="text-sm font-medium">{category}</span>
                                         <Badge variant="outline" className="text-xs">
-                                          {filteredCategoryProducts.length}
+                                          {categoryProducts.length}
                                         </Badge>
                                       </div>
                                       <span className="text-gray-400 text-sm">
@@ -739,7 +774,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                                     {/* Productos (desplegable) */}
                                     {isCategoryExpanded && (
                                       <div className="p-2 space-y-2 bg-gray-50">
-                                        {filteredCategoryProducts.map((product) => (
+                                        {categoryProducts.map((product) => (
                                           <div
                                             key={product.SKU}
                                             className="bg-white border rounded p-3 hover:shadow-md transition"
@@ -780,6 +815,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                       )
                     })}
                   </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -1006,7 +1042,6 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       {/* Modal producto manual */}
       {showManualProductModal && (
         <>
-          {console.log('🟢 Renderizando ManualProductModal')}
           <ManualProductModal
             onAdd={(product) => {
               addProduct(product)
