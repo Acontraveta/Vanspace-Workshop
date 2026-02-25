@@ -42,6 +42,9 @@ export interface PurchaseItem {
   // Notas
   notes?: string
   createdAt: Date
+  
+  // Documentación adjunta (albaranes, facturas, etc.)
+  attachments?: string[] // URLs en Supabase Storage
 }
 
 // Agrupación de pedidos por proveedor

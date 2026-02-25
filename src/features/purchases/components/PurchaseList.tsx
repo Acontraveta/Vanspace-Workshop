@@ -897,61 +897,100 @@ export default function PurchaseList() {
       )
     }
 
-    // ── RECEIVED / default card ──
+    // ── RECEIVED — rendered as list row, not card ──
+    return null // Received items use ReceivedRow instead
+  }
+
+  // Row component for received items (list view grouped by date)
+  const ReceivedRow = ({ item }: { item: PurchaseItem }) => {
+    const fileInputId = `attach-${item.id}`
+    const hasAttachments = item.attachments && item.attachments.length > 0
+
+    const handleAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      try {
+        toast.loading('Subiendo documento...', { id: 'upload' })
+        await PurchaseService.uploadAttachment(item.id, file)
+        toast.success('📎 Documento adjuntado', { id: 'upload' })
+        refreshData()
+      } catch (err) {
+        console.error(err)
+        toast.error('Error al subir documento', { id: 'upload' })
+      }
+      e.target.value = ''
+    }
+
+    const handleRemoveAttach = async (url: string) => {
+      if (!confirm('¿Eliminar este documento?')) return
+      try {
+        await PurchaseService.removeAttachment(item.id, url)
+        toast.success('Documento eliminado')
+        refreshData()
+      } catch { toast.error('Error eliminando') }
+    }
+
     return (
-      <div className={`bg-white rounded-xl border border-gray-100 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow flex flex-col`}>
-        <div className="p-4 flex flex-col flex-1">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="min-w-0 flex-1">
-              <h3 className="font-semibold text-gray-900 leading-tight truncate" title={item.materialName}>
-                {item.materialName}
-              </h3>
-              {item.productName && (
-                <p className="text-xs text-gray-500 mt-0.5 truncate">Para: {item.productName}</p>
-              )}
-            </div>
-            <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${priorityBadge}`}>
-              {priorityLabel}
+      <div className="bg-white border border-gray-100 rounded-lg px-4 py-3 hover:bg-gray-50 transition">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Material name */}
+          <div className="flex-1 min-w-0">
+            <span className="font-medium text-gray-900 truncate block" title={item.materialName}>
+              {item.materialName}
             </span>
+            <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
+              {item.productName && <span>Para: {item.productName}</span>}
+              {item.provider && <span className="bg-gray-100 px-1.5 py-0.5 rounded">🏭 {item.provider}</span>}
+              {item.projectNumber && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">📋 {item.projectNumber}</span>}
+            </div>
           </div>
 
-          {/* Tags */}
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {item.projectNumber ? (
-              <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
-                📋 {item.projectNumber}
-              </span>
-            ) : isLowStockReplenishment ? (
-              <span className="inline-flex items-center gap-1 text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full">
-                ⚠️ Reposición stock
-              </span>
-            ) : null}
-            {item.provider && (
-              <span className="inline-flex items-center gap-1 text-xs bg-gray-50 text-gray-600 px-2 py-0.5 rounded-full border border-gray-200">
-                🏭 {item.provider}
-              </span>
-            )}
-          </div>
+          {/* Quantity */}
+          <span className="text-sm font-semibold text-gray-700 whitespace-nowrap">{item.quantity} {item.unit}</span>
 
-          {/* Info */}
-          <div className="flex items-center gap-3 text-sm mb-3">
-            <span className="font-semibold text-gray-900">{item.quantity} {item.unit}</span>
-          </div>
-
-          {item.notes && (
-            <p className="text-xs bg-amber-50 text-amber-800 border border-amber-100 rounded px-2 py-1.5 mb-3 line-clamp-2">
-              {item.notes}
-            </p>
+          {/* Attachments indicator */}
+          {hasAttachments && (
+            <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-medium">
+              📎 {item.attachments!.length}
+            </span>
           )}
 
-          {/* Action */}
-          <div className="mt-auto">
-            <div className="w-full py-2 rounded-lg bg-gray-50 text-gray-500 text-sm font-medium text-center border border-gray-200">
-              ✅ Recibido · {item.receivedAt ? new Date(item.receivedAt).toLocaleDateString('es-ES') : ''}
-            </div>
-          </div>
+          {/* Attach button */}
+          <label htmlFor={fileInputId} className="cursor-pointer px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-sm text-gray-600 hover:text-blue-600 transition flex items-center gap-1" title="Adjuntar albarán o documento">
+            📷 Adjuntar
+          </label>
+          <input id={fileInputId} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic" capture="environment" className="hidden" onChange={handleAttach} />
         </div>
+
+        {/* Attached documents */}
+        {hasAttachments && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {item.attachments!.map((url, i) => {
+              const isImage = /\.(jpg|jpeg|png|gif|webp|heic)/i.test(url)
+              const fileName = url.split('/').pop()?.split('?')[0] || `doc_${i + 1}`
+              return (
+                <div key={i} className="group relative">
+                  {isImage ? (
+                    <a href={url} target="_blank" rel="noreferrer" className="block w-16 h-16 rounded-lg overflow-hidden border border-gray-200 hover:border-blue-400 transition">
+                      <img src={url} alt={fileName} className="w-full h-full object-cover" />
+                    </a>
+                  ) : (
+                    <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-400 text-xs text-gray-700 hover:text-blue-600 transition">
+                      📄 {fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName}
+                    </a>
+                  )}
+                  <button
+                    onClick={() => handleRemoveAttach(url)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                    title="Eliminar"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     )
   }
@@ -1774,6 +1813,50 @@ export default function PurchaseList() {
                   )
                 })}
               </div>
+            ) : selectedTab === 'received' ? (
+              // ── RECEIVED: date-grouped list view ──
+              (() => {
+                const dateGroups: Record<string, PurchaseItem[]> = {}
+                filteredPurchases.forEach(item => {
+                  const dateKey = item.receivedAt
+                    ? new Date(item.receivedAt).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                    : 'Sin fecha'
+                  if (!dateGroups[dateKey]) dateGroups[dateKey] = []
+                  dateGroups[dateKey].push(item)
+                })
+                // Sort by date descending (most recent first) — already sorted by createdAt desc from filter
+                const sortedDates = Object.entries(dateGroups).sort(([, a], [, b]) => {
+                  const da = a[0]?.receivedAt ? new Date(a[0].receivedAt).getTime() : 0
+                  const db = b[0]?.receivedAt ? new Date(b[0].receivedAt).getTime() : 0
+                  return db - da
+                })
+                return (
+                  <div className="space-y-6">
+                    {sortedDates.map(([dateLabel, items]) => {
+                      const totalDocs = items.reduce((s, i) => s + (i.attachments?.length || 0), 0)
+                      return (
+                        <div key={dateLabel}>
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="text-sm font-bold text-gray-800 capitalize">📅 {dateLabel}</span>
+                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
+                              {items.length} {items.length === 1 ? 'recepción' : 'recepciones'}
+                            </span>
+                            {totalDocs > 0 && (
+                              <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                                📎 {totalDocs} doc{totalDocs > 1 ? 's' : ''}
+                              </span>
+                            )}
+                            <div className="flex-1 h-px bg-gray-200" />
+                          </div>
+                          <div className="space-y-2">
+                            {items.map(item => <ReceivedRow key={item.id} item={item} />)}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filteredPurchases.map(item => (

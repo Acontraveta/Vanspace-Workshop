@@ -23,6 +23,7 @@ function toDb(item: PurchaseItem): Record<string, any> {
     ordered_at:     item.orderedAt instanceof Date ? item.orderedAt.toISOString() : (item.orderedAt ?? null),
     received_at:    item.receivedAt instanceof Date ? item.receivedAt.toISOString() : (item.receivedAt ?? null),
     notes:          item.notes ?? null,
+    attachments:    item.attachments && item.attachments.length > 0 ? JSON.stringify(item.attachments) : null,
     created_at:     item.createdAt instanceof Date ? item.createdAt.toISOString() : new Date().toISOString(),
   }
 }
@@ -45,6 +46,7 @@ function fromDb(row: any): PurchaseItem {
     orderedAt:     row.ordered_at ? new Date(row.ordered_at) : undefined,
     receivedAt:    row.received_at ? new Date(row.received_at) : undefined,
     notes:         row.notes ?? undefined,
+    attachments:   row.attachments ? (typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments) : undefined,
     createdAt:     new Date(row.created_at ?? Date.now()),
   }
 }
@@ -208,5 +210,69 @@ export class PurchaseService {
   // Pendientes ordenados por prioridad
   static async getPendingByPriority(): Promise<PurchaseItem[]> {
     return this.getByStatus('PENDING')
+  }
+
+  // Subir documento adjunto (albarán, factura, etc.)
+  static async uploadAttachment(itemId: string, file: File): Promise<string> {
+    const ext = file.name.split('.').pop() || 'bin'
+    const ts = Date.now()
+    const path = `purchases/${itemId}/${ts}.${ext}`
+
+    // Subir a Storage
+    const { error: uploadErr } = await supabase.storage
+      .from('excel-files')
+      .upload(path, file, { cacheControl: '3600', upsert: true })
+    if (uploadErr) throw uploadErr
+
+    // Obtener URL pública
+    const { data: urlData } = supabase.storage
+      .from('excel-files')
+      .getPublicUrl(path)
+
+    const url = urlData.publicUrl
+
+    // Añadir al array de attachments del pedido
+    const { data: row } = await supabase
+      .from('purchase_items')
+      .select('attachments')
+      .eq('id', itemId)
+      .single()
+
+    const existing: string[] = row?.attachments
+      ? (typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments)
+      : []
+    existing.push(url)
+
+    await supabase
+      .from('purchase_items')
+      .update({ attachments: JSON.stringify(existing) })
+      .eq('id', itemId)
+
+    return url
+  }
+
+  // Eliminar documento adjunto
+  static async removeAttachment(itemId: string, url: string): Promise<void> {
+    // Extraer path desde URL
+    const match = url.match(/\/excel-files\/(.+)$/)
+    if (match) {
+      await supabase.storage.from('excel-files').remove([match[1]])
+    }
+
+    const { data: row } = await supabase
+      .from('purchase_items')
+      .select('attachments')
+      .eq('id', itemId)
+      .single()
+
+    const existing: string[] = row?.attachments
+      ? (typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments)
+      : []
+    const updated = existing.filter(a => a !== url)
+
+    await supabase
+      .from('purchase_items')
+      .update({ attachments: JSON.stringify(updated) })
+      .eq('id', itemId)
   }
 }
