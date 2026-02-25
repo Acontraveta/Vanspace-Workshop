@@ -261,9 +261,8 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       // If it EXACTLY matches a stock item by name, no resolution needed
       if (hasExactStockMatch(name)) continue
       const matches = findCatalogMatches(name)
-      if (matches.length > 0) {
-        unresolved.push({ index: i, genericName: name, quantity, unit, matches, selectedSKU: matches[0].SKU, skipped: false })
-      }
+      // Always include — even with 0 matches the user can search the full catalog in the modal
+      unresolved.push({ index: i, genericName: name, quantity, unit, matches, selectedSKU: matches[0]?.SKU ?? '', skipped: false })
     }
 
     // Check materials (MATERIAL_1 to MATERIAL_5) — same logic
@@ -274,10 +273,8 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       const unit: string = (product as any)[`MATERIAL_${i}_UNIDAD`] || 'ud'
       if (hasExactStockMatch(name)) continue
       const matches = findCatalogMatches(name)
-      if (matches.length > 0) {
-        // Use index 100+ to distinguish from consumables
-        unresolved.push({ index: 100 + i, genericName: name, quantity, unit, matches, selectedSKU: matches[0].SKU, skipped: false })
-      }
+      // Use index 100+ to distinguish from consumables
+      unresolved.push({ index: 100 + i, genericName: name, quantity, unit, matches, selectedSKU: matches[0]?.SKU ?? '', skipped: false })
     }
 
     return unresolved
@@ -1048,6 +1045,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
         <ConsumableResolverModal
           productName={consumableResolver.product.NOMBRE}
           unresolved={consumableResolver.unresolved}
+          allProducts={products}
           onConfirm={handleConsumableResolution}
           onSkipAll={() => {
             addProduct(consumableResolver.product)

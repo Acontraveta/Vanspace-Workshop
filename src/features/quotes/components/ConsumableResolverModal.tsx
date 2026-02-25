@@ -35,6 +35,8 @@ interface ConsumableResolverModalProps {
   /** Product being added */
   productName: string
   unresolved: UnresolvedConsumable[]
+  /** Full product catalog — used for searching when pre-matched list is empty */
+  allProducts: CatalogProduct[]
   onConfirm: (resolved: UnresolvedConsumable[]) => void
   onSkipAll: () => void
   onCancel: () => void
@@ -45,6 +47,7 @@ interface ConsumableResolverModalProps {
 export default function ConsumableResolverModal({
   productName,
   unresolved: initial,
+  allProducts,
   onConfirm,
   onSkipAll,
   onCancel,
@@ -86,14 +89,17 @@ export default function ConsumableResolverModal({
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {items.map(c => {
             const searchTerm = searchTerms[c.index] ?? ''
+            const hasPreMatches = c.matches.length > 0
+            // If no pre-matched results, search the FULL catalog when user types
+            const searchPool = hasPreMatches ? c.matches : allProducts
             const filtered = searchTerm
-              ? c.matches.filter(m =>
+              ? searchPool.filter(m =>
                   m.NOMBRE.toLowerCase().includes(searchTerm.toLowerCase()) ||
                   m.SKU.toLowerCase().includes(searchTerm.toLowerCase())
                 )
-              : c.matches
+              : c.matches  // default view: only show pre-matched items (empty if none)
 
-            const selectedProduct = c.matches.find(m => m.SKU === c.selectedSKU)
+            const selectedProduct = [...c.matches, ...allProducts].find(m => m.SKU === c.selectedSKU)
 
             return (
               <div
@@ -108,7 +114,12 @@ export default function ConsumableResolverModal({
                       "{c.genericName}"
                       <span className="text-gray-500 font-normal ml-1">× {c.quantity} {c.unit}</span>
                     </p>
-                    <p className="text-xs text-gray-500">{c.matches.length} coincidencias en catálogo</p>
+                    <p className="text-xs text-gray-500">
+                      {c.matches.length > 0
+                        ? `${c.matches.length} coincidencias en catálogo`
+                        : '⚠️ Sin coincidencias — busca en el catálogo completo'
+                      }
+                    </p>
                   </div>
                   <button
                     onClick={() => toggleSkip(c.index)}
@@ -124,13 +135,14 @@ export default function ConsumableResolverModal({
 
                 {!c.skipped && (
                   <>
-                    {/* Search within matches */}
-                    {c.matches.length > 5 && (
+                    {/* Search — always show when no pre-matches, or when >5 pre-matches */}
+                    {(c.matches.length === 0 || c.matches.length > 5) && (
                       <Input
-                        placeholder="🔍 Filtrar variantes..."
+                        placeholder={c.matches.length === 0 ? '🔍 Buscar en catálogo completo...' : '🔍 Filtrar variantes...'}
                         value={searchTerm}
                         onChange={e => setSearch(c.index, e.target.value)}
                         className="mb-2 h-7 text-xs"
+                        autoFocus={c.matches.length === 0}
                       />
                     )}
 
@@ -163,7 +175,12 @@ export default function ConsumableResolverModal({
                         </label>
                       ))}
                       {filtered.length === 0 && (
-                        <p className="text-xs text-gray-400 text-center py-2">Sin resultados</p>
+                        <p className="text-xs text-gray-400 text-center py-2">
+                          {!hasPreMatches && !searchTerm
+                            ? 'Escribe para buscar en el catálogo completo'
+                            : 'Sin resultados'
+                          }
+                        </p>
                       )}
                     </div>
 
