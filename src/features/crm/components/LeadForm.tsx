@@ -312,7 +312,13 @@ export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
               </Row>
               <Row>
                 <Field label="Línea de negocio">
-                  <input value={form.linea_negocio ?? ''} onChange={e => set('linea_negocio', e.target.value)} className={inputCls} />
+                  <select value={form.linea_negocio ?? ''} onChange={e => set('linea_negocio', e.target.value)} className={inputCls}>
+                    <option value="">— Seleccionar —</option>
+                    <option value="Camperización">Camperización</option>
+                    <option value="Reparación">Reparación</option>
+                    <option value="Otros servicios">Otros servicios</option>
+                    <option value="Alquiler">Alquiler</option>
+                  </select>
                 </Field>
                 <Field label="Origen">
                   <input value={form.origen ?? ''} onChange={e => set('origen', e.target.value)} className={inputCls} placeholder="Web, Instagram..." />
