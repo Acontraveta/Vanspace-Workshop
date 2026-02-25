@@ -246,23 +246,37 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
   }
 
   const startWarehouseCamera = useCallback(async () => {
+    setWarehouseCameraActive(true)
+    await new Promise(r => setTimeout(r, 100))
     try {
       const { Html5Qrcode } = await import('html5-qrcode')
+      const container = document.getElementById(warehouseScannerContainerId)
+      const containerWidth = container?.clientWidth || 300
+      const qrboxSize = Math.min(220, Math.floor(containerWidth * 0.65))
+
       const scanner = new Html5Qrcode(warehouseScannerContainerId)
       warehouseScannerRef.current = scanner
       await scanner.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
+        {
+          fps: 10,
+          qrbox: { width: qrboxSize, height: qrboxSize },
+          videoConstraints: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        },
         (decodedText) => {
           handleQRScan(decodedText)
           stopWarehouseCamera()
         },
         () => {}
       )
-      setWarehouseCameraActive(true)
     } catch (err: any) {
       toast.error('No se pudo iniciar la cámara')
       console.error(err)
+      setWarehouseCameraActive(false)
     }
   }, [])
 
@@ -910,8 +924,13 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
               {/* Camera scanner */}
               <div
                 id={warehouseScannerContainerId}
-                className={`rounded-lg overflow-hidden mb-3 ${warehouseCameraActive ? 'border-2 border-emerald-400' : 'hidden'}`}
-                style={{ minHeight: warehouseCameraActive ? 260 : 0 }}
+                className={`rounded-lg overflow-hidden mb-3 ${warehouseCameraActive ? 'border-2 border-emerald-400' : ''}`}
+                style={{
+                  minHeight: warehouseCameraActive ? 260 : 0,
+                  height: warehouseCameraActive ? 'auto' : 0,
+                  overflow: 'hidden',
+                  opacity: warehouseCameraActive ? 1 : 0,
+                }}
               />
 
               {/* QR Scanner */}

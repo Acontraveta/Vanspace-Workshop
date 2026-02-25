@@ -63,7 +63,18 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
 
   const startCamera = useCallback(async () => {
     setCameraError(null)
+    // IMPORTANT: set active FIRST so the container is visible in the DOM
+    // html5-qrcode cannot render into a hidden/zero-size element
+    setCameraActive(true)
+
+    // Wait for React to render the visible container
+    await new Promise(r => setTimeout(r, 100))
+
     try {
+      const container = document.getElementById(scannerContainerId)
+      const containerWidth = container?.clientWidth || 300
+      const qrboxSize = Math.min(250, Math.floor(containerWidth * 0.7))
+
       const scanner = new Html5Qrcode(scannerContainerId)
       scannerRef.current = scanner
 
@@ -71,11 +82,14 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
         { facingMode: 'environment' },
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
+          qrbox: { width: qrboxSize, height: qrboxSize },
+          videoConstraints: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
         },
         (decodedText) => {
-          // On successful scan, process and stop
           processCode(decodedText)
           stopCamera()
         },
@@ -83,14 +97,13 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
           // Ignore scan failure (scanning in progress)
         }
       )
-      setCameraActive(true)
     } catch (err: any) {
       console.error('Error starting camera:', err)
       const msg = err?.message || String(err)
       if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
         setCameraError('Permiso de cámara denegado. Permite el acceso en la configuración del navegador.')
-      } else if (msg.includes('NotFoundError')) {
-        setCameraError('No se encontró ninguna cámara en el dispositivo.')
+      } else if (msg.includes('NotFoundError') || msg.includes('NotReadableError')) {
+        setCameraError('No se encontró ninguna cámara disponible en el dispositivo.')
       } else {
         setCameraError(`Error al iniciar la cámara: ${msg}`)
       }
@@ -297,11 +310,17 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
             </div>
           )}
 
-          {/* Camera video container */}
+          {/* Camera video container — NEVER hidden, just collapsed when inactive
+              html5-qrcode needs a visible DOM element to mount the <video> into */}
           <div
             id={scannerContainerId}
-            className={`rounded-lg overflow-hidden ${cameraActive ? 'border-2 border-emerald-400' : 'hidden'}`}
-            style={{ minHeight: cameraActive ? 300 : 0 }}
+            className={`rounded-lg overflow-hidden transition-all ${cameraActive ? 'border-2 border-emerald-400' : ''}`}
+            style={{
+              minHeight: cameraActive ? 280 : 0,
+              height: cameraActive ? 'auto' : 0,
+              overflow: 'hidden',
+              opacity: cameraActive ? 1 : 0,
+            }}
           />
 
           {!cameraActive && !cameraError && (
