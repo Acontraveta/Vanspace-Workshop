@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Html5Qrcode } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -75,13 +75,16 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
       const containerWidth = container?.clientWidth || 300
       const qrboxSize = Math.min(250, Math.floor(containerWidth * 0.7))
 
-      const scanner = new Html5Qrcode(scannerContainerId)
+      const scanner = new Html5Qrcode(scannerContainerId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        experimentalFeatures: { useBarCodeDetectorIfSupported: false },
+      })
       scannerRef.current = scanner
 
       await scanner.start(
         { facingMode: 'environment' },
         {
-          fps: 10,
+          fps: 15,
           qrbox: { width: qrboxSize, height: qrboxSize },
         },
         (decodedText) => {
