@@ -101,15 +101,16 @@ export function getStatusConfig(estado?: string): StatusConfig {
 export function computeCRMStats(leads: Lead[]): CRMStats {
   const aprobados = leads.filter(l => l.estado === 'Aprobado' || l.estado === 'Entregado')
   const perdidos = leads.filter(l => l.estado === 'Perdido')
+  const nuevos = leads.filter(l => l.estado === 'Nuevo' || !l.estado)
   const enProceso = leads.filter(l =>
-    l.estado !== 'Aprobado' && l.estado !== 'Entregado' && l.estado !== 'Perdido'
+    l.estado && l.estado !== 'Nuevo' && l.estado !== 'Aprobado' && l.estado !== 'Entregado' && l.estado !== 'Perdido'
   )
   const importeTotal = leads.reduce((sum, l) => sum + (l.importe ?? 0), 0)
   const importeAprobado = aprobados.reduce((sum, l) => sum + (l.importe ?? 0), 0)
 
   return {
     total: leads.length,
-    nuevos: leads.filter(l => l.estado === 'Nuevo' || !l.estado).length,
+    nuevos: nuevos.length,
     aprobados: aprobados.length,
     perdidos: perdidos.length,
     enProceso: enProceso.length,

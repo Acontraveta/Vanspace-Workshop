@@ -768,7 +768,7 @@ function BlockCard({
   return (
     <Card className={`border-2 ${borderColor} ${bgColor} transition-all`}>
       <CardContent className="p-0">
-        <div className="flex items-center gap-4 p-4 cursor-pointer select-none" onClick={onToggle}>
+        <div className="flex flex-wrap items-center gap-4 p-4 cursor-pointer select-none" onClick={onToggle}>
           <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-lg ${
             block.status === 'in_progress' ? 'bg-blue-100' :
             block.status === 'completed' ? 'bg-green-100' : 'bg-gray-100'
@@ -809,7 +809,7 @@ function BlockCard({
               </span>
             </div>
           </div>
-          <div className="flex-shrink-0 flex gap-2" onClick={e => e.stopPropagation()}>
+          <div className="w-full sm:w-auto flex-shrink-0 flex flex-wrap gap-2" onClick={e => e.stopPropagation()}>
             {onFurnitureDesign && (
               <Button onClick={onFurnitureDesign} size="sm" className="bg-amber-600 hover:bg-amber-700">
                 🪑 Diseñar muebles

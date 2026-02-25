@@ -26,8 +26,6 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   const [qrPreviewItem, setQrPreviewItem] = useState<StockItem | null>(null)
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
-  const processCodeRef = useRef(processCode)
-  processCodeRef.current = processCode
   const scannerContainerId = 'qr-reader-container'
 
   const processCode = useCallback((code: string) => {
@@ -60,8 +58,11 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
       toast.success(`Producto encontrado: ${item.ARTICULO}`)
     } else {
       toast.error(`Producto no encontrado: ${referencia}`)
-    }
-  }, [stock])
+    }  }, [stock])
+
+  // Ref always points to latest processCode (for scanner callback closure)
+  const processCodeRef = useRef(processCode)
+  useEffect(() => { processCodeRef.current = processCode }, [processCode])
 
   const startCamera = useCallback(async () => {
     setCameraError(null)

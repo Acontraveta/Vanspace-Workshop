@@ -80,12 +80,12 @@ export function CRMTable({ leads, isLoading }: CRMTableProps) {
           placeholder="🔍 Buscar cliente, teléfono, vehículo..."
           value={filters.search ?? ''}
           onChange={e => setFilters({ ...filters, search: e.target.value || undefined })}
-          className="flex-1 min-w-48 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full sm:flex-1 sm:min-w-48 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
         <select
           value={filters.estado ?? ''}
           onChange={e => setFilters({ ...filters, estado: e.target.value || undefined })}
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+          className="w-[calc(50%-0.25rem)] sm:w-auto px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Todos los estados</option>
           {ALL_STATUSES.map(s => (
@@ -97,12 +97,12 @@ export function CRMTable({ leads, isLoading }: CRMTableProps) {
           placeholder="Asignado"
           value={filters.asignado ?? ''}
           onChange={e => setFilters({ ...filters, asignado: e.target.value || undefined })}
-          className="w-32 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+          className="w-[calc(50%-0.25rem)] sm:w-32 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
         />
         <select
           value={filters.linea_negocio ?? ''}
           onChange={e => setFilters({ ...filters, linea_negocio: e.target.value || undefined })}
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+          className="w-[calc(50%-0.25rem)] sm:w-auto px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Línea de negocio</option>
           <option value="Camperización">Camperización</option>
@@ -116,7 +116,7 @@ export function CRMTable({ leads, isLoading }: CRMTableProps) {
           placeholder="Mes (ej. Enero)"
           value={filters.mes ?? ''}
           onChange={e => setFilters({ ...filters, mes: e.target.value || undefined })}
-          className="w-36 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+          className="w-[calc(50%-0.25rem)] sm:w-36 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
         />
         {Object.values(filters).some(Boolean) && (
           <button

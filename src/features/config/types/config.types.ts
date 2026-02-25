@@ -107,6 +107,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, { label: string; icon: string; 
 export interface Tarifa {
   id: string
   nombre_tarifa: string
+  linea_negocio?: string
   tarifa_hora_eur: number
   margen_materiales_pct: number
   urgencia?: string
@@ -116,6 +117,9 @@ export interface Tarifa {
   created_at?: string
   updated_at?: string
 }
+
+// Alias for BusinessLinesConfig component
+export type BusinessLine = Tarifa
 
 export interface SimpleEmployeeRecord {
   id: string

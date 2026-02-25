@@ -153,15 +153,16 @@ export class PurchaseService {
 
       // 2. Generar QR
       const qrDataURL = await QRCode.toDataURL(
-        JSON.stringify({ type: 'warehouse_product', referencia: referenciaFinal, materialName: item.materialName, quantity: item.quantity, unit: item.unit }),
+        JSON.stringify({ type: 'warehouse_product', referencia: referenciaFinal, nombre: item.materialName, quantity: item.quantity, unit: item.unit }),
         { width: 300, margin: 2 }
       )
 
       // 3. Marcar pedido como recibido
-      await supabase
+      const { error: statusErr } = await supabase
         .from('purchase_items')
         .update({ status: 'RECEIVED', received_at: new Date().toISOString() })
         .eq('id', itemId)
+      if (statusErr) throw statusErr
 
       // 4. Re-exportar stock.xlsx en Storage (no-blocking)
       import('@/lib/excelSync')

@@ -335,11 +335,12 @@ export class QuoteAutomation {
         console.log(`\n  Material ${matIdx + 1}:`, material.name, '-', material.quantity)
           
           // VERIFICAR STOCK DISPONIBLE (desde Supabase)
-          const { data: stockRow } = await supabase
+          const { data: stockRows } = await supabase
             .from('stock_items')
             .select('cantidad, articulo, unidad')
             .or(`articulo.ilike.%${material.name}%,referencia.ilike.%${material.name}%`)
-            .maybeSingle()
+            .limit(1)
+          const stockRow = stockRows?.[0] ?? null
           console.log(`  Stock encontrado:`, stockRow ? `${stockRow.articulo} (${stockRow.cantidad} ${stockRow.unidad})` : '❌ NO ENCONTRADO')
           
           const stockDisponible = (stockRow?.cantidad as number) || 0

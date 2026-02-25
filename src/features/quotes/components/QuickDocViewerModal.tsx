@@ -8,7 +8,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { Button } from '@/shared/components/ui/button'
 import { QuickDocRecord } from '../services/quickDocService'
-import { generatePdfBlob, downloadPdf } from '../services/pdfGenerator'
+import { generatePdfBlob } from '../services/pdfGenerator'
 import { loadCompanyInfo, LOGO_URL } from '@/shared/utils/companyInfo'
 
 // ─── Types ───────────────────────────────────────────────────
@@ -109,7 +109,14 @@ ${elem.outerHTML}
     setGenerating(true)
     try {
       const blob = await generatePdfBlob(elem)
-      downloadPdf(blob, `${doc.docNumber}.pdf`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${doc.docNumber}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
     } catch (err) {
       console.error('PDF generation failed:', err)
     } finally {

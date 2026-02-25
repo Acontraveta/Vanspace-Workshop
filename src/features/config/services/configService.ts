@@ -52,6 +52,11 @@ export class ConfigService {
     if (error) throw error
   }
 
+  // Aliases para BusinessLinesConfig
+  static getBusinessLines = ConfigService.getTarifas
+  static updateBusinessLine = ConfigService.updateTarifa
+  static createBusinessLine = ConfigService.createTarifa as (data: any) => Promise<void>
+
   // ============================================
   // EMPLEADOS
   // ============================================
