@@ -66,7 +66,7 @@ export default function PurchaseList() {
     requiereDiseno: false,
     tipoDiseno: '',
     instruccionesDiseno: '',
-    guardarEnCatalogo: true,
+
   })
   const [newProductMaterials, setNewProductMaterials] = useState<Array<{ nombre: string; cantidad: number; unidad: string }>>([])
   const [newProductConsumables, setNewProductConsumables] = useState<Array<{ nombre: string; cantidad: number; unidad: string }>>([])
@@ -240,7 +240,7 @@ export default function PurchaseList() {
     setShowNewPurchaseModal(true)
   }
 
-  // Añadir nuevo producto completo (catálogo + inventario)
+  // Añadir nuevo producto al catálogo (y opcionalmente al stock si tiene cantidad)
   const handleCreateNewProduct = async () => {
     if (!newProductForm.articulo.trim()) {
       toast.error('El nombre del artículo es obligatorio')
@@ -250,86 +250,85 @@ export default function PurchaseList() {
       toast.error('La referencia es obligatoria')
       return
     }
-    // Comprobar si ya existe en stock
-    const existing = stock.find(s => s.REFERENCIA === newProductForm.referencia.trim())
-    if (existing) {
-      toast.error('Ya existe un producto con esa referencia')
+    // Comprobar si ya existe en catálogo
+    const existingCatalog = CatalogService.getProducts().find(p => p.SKU?.toUpperCase() === newProductForm.referencia.trim().toUpperCase())
+    if (existingCatalog) {
+      toast.error('Ya existe un producto con esa referencia en el catálogo')
       return
     }
 
     try {
-      // 1. Guardar en catálogo si procede
-      if (newProductForm.guardarEnCatalogo) {
-        const catalogData: any = {}
-        // Materiales
-        newProductMaterials.forEach((mat, idx) => {
-          if (mat.nombre) {
-            catalogData[`MATERIAL_${idx + 1}`] = mat.nombre
-            catalogData[`MATERIAL_${idx + 1}_CANT`] = mat.cantidad
-            catalogData[`MATERIAL_${idx + 1}_UNIDAD`] = mat.unidad
-          }
-        })
-        // Consumibles
-        newProductConsumables.forEach((cons, idx) => {
-          if (cons.nombre) {
-            catalogData[`CONSUMIBLE_${idx + 1}`] = cons.nombre
-            catalogData[`CONSUMIBLE_${idx + 1}_CANT`] = cons.cantidad
-            catalogData[`CONSUMIBLE_${idx + 1}_UNIDAD`] = cons.unidad
-          }
-        })
-        // Tareas
-        newProductTasks.forEach((task, idx) => {
-          if (task.nombre) {
-            catalogData[`TAREA_${idx + 1}_NOMBRE`] = task.nombre
-            catalogData[`TAREA_${idx + 1}_DURACION`] = task.duracion
-            catalogData[`TAREA_${idx + 1}_REQUIERE_MATERIAL`] = task.requiereMaterial ? 'SÍ' : 'NO'
-            catalogData[`TAREA_${idx + 1}_REQUIERE_DISEÑO`] = task.requiereDiseno ? 'SÍ' : 'NO'
-          }
-        })
-
-        const product: CatalogProduct = {
-          SKU: newProductForm.referencia.trim(),
-          NOMBRE: newProductForm.articulo.trim(),
-          FAMILIA: newProductForm.familia.trim() || 'GENERAL',
-          CATEGORIA: newProductForm.categoria.trim() || 'SIN CATEGORÍA',
-          DESCRIPCION: newProductForm.descripcion.trim() || undefined,
-          PRECIO_COMPRA: newProductForm.costeIva || 0,
-          'PRECIO DE VENTA': newProductForm.precioVenta || undefined,
-          PROVEEDOR: newProductForm.proveedor.trim() || undefined,
-          DIAS_ENTREGA_PROVEEDOR: newProductForm.diasEntrega || undefined,
-          TIEMPO_TOTAL_MIN: newProductForm.tiempoTotalMin || 0,
-          REQUIERE_DISEÑO: newProductForm.requiereDiseno ? 'SÍ' : 'NO',
-          TIPO_DISEÑO: newProductForm.requiereDiseno ? newProductForm.tipoDiseno : undefined,
-          INSTRUCCIONES_DISEÑO: newProductForm.requiereDiseno ? newProductForm.instruccionesDiseno : undefined,
-          ...catalogData,
+      // 1. Siempre guardar en catálogo
+      const catalogData: any = {}
+      // Materiales
+      newProductMaterials.forEach((mat, idx) => {
+        if (mat.nombre) {
+          catalogData[`MATERIAL_${idx + 1}`] = mat.nombre
+          catalogData[`MATERIAL_${idx + 1}_CANT`] = mat.cantidad
+          catalogData[`MATERIAL_${idx + 1}_UNIDAD`] = mat.unidad
         }
-        await CatalogService.addProduct(product)
-      }
-
-      // 2. Guardar en stock_items
-      const { error } = await supabase.from('stock_items').insert({
-        referencia: newProductForm.referencia.trim(),
-        familia: newProductForm.familia.trim() || 'GENERAL',
-        categoria: newProductForm.categoria.trim() || 'SIN CATEGORÍA',
-        articulo: newProductForm.articulo.trim(),
-        descripcion: newProductForm.descripcion.trim() || null,
-        cantidad: newProductForm.cantidad,
-        stock_minimo: newProductForm.stockMinimo || null,
-        unidad: newProductForm.unidad || 'ud',
-        coste_iva_incluido: newProductForm.costeIva || null,
-        ubicacion: newProductForm.ubicacion.trim() || null,
-        proveedor: newProductForm.proveedor.trim() || null,
       })
-      if (error) {
-        toast.error('Error añadiendo al inventario: ' + error.message)
-        return
+      // Consumibles
+      newProductConsumables.forEach((cons, idx) => {
+        if (cons.nombre) {
+          catalogData[`CONSUMIBLE_${idx + 1}`] = cons.nombre
+          catalogData[`CONSUMIBLE_${idx + 1}_CANT`] = cons.cantidad
+          catalogData[`CONSUMIBLE_${idx + 1}_UNIDAD`] = cons.unidad
+        }
+      })
+      // Tareas
+      newProductTasks.forEach((task, idx) => {
+        if (task.nombre) {
+          catalogData[`TAREA_${idx + 1}_NOMBRE`] = task.nombre
+          catalogData[`TAREA_${idx + 1}_DURACION`] = task.duracion
+          catalogData[`TAREA_${idx + 1}_REQUIERE_MATERIAL`] = task.requiereMaterial ? 'SÍ' : 'NO'
+          catalogData[`TAREA_${idx + 1}_REQUIERE_DISEÑO`] = task.requiereDiseno ? 'SÍ' : 'NO'
+        }
+      })
+
+      const product: CatalogProduct = {
+        SKU: newProductForm.referencia.trim(),
+        NOMBRE: newProductForm.articulo.trim(),
+        FAMILIA: newProductForm.familia.trim() || 'GENERAL',
+        CATEGORIA: newProductForm.categoria.trim() || 'SIN CATEGORÍA',
+        DESCRIPCION: newProductForm.descripcion.trim() || undefined,
+        PRECIO_COMPRA: newProductForm.costeIva || 0,
+        'PRECIO DE VENTA': newProductForm.precioVenta || undefined,
+        PROVEEDOR: newProductForm.proveedor.trim() || undefined,
+        DIAS_ENTREGA_PROVEEDOR: newProductForm.diasEntrega || undefined,
+        TIEMPO_TOTAL_MIN: newProductForm.tiempoTotalMin || 0,
+        REQUIERE_DISEÑO: newProductForm.requiereDiseno ? 'SÍ' : 'NO',
+        TIPO_DISEÑO: newProductForm.requiereDiseno ? newProductForm.tipoDiseno : undefined,
+        INSTRUCCIONES_DISEÑO: newProductForm.requiereDiseno ? newProductForm.instruccionesDiseno : undefined,
+        ...catalogData,
+      }
+      await CatalogService.addProduct(product)
+
+      // 2. Solo guardar en stock_items si tiene cantidad en stock
+      if (newProductForm.cantidad > 0) {
+        const { error } = await supabase.from('stock_items').insert({
+          referencia: newProductForm.referencia.trim(),
+          familia: newProductForm.familia.trim() || 'GENERAL',
+          categoria: newProductForm.categoria.trim() || 'SIN CATEGORÍA',
+          articulo: newProductForm.articulo.trim(),
+          descripcion: newProductForm.descripcion.trim() || null,
+          cantidad: newProductForm.cantidad,
+          stock_minimo: newProductForm.stockMinimo || null,
+          unidad: newProductForm.unidad || 'ud',
+          coste_iva_incluido: newProductForm.costeIva || null,
+          ubicacion: newProductForm.ubicacion.trim() || null,
+          proveedor: newProductForm.proveedor.trim() || null,
+        })
+        if (error) {
+          toast.error('Error añadiendo al inventario: ' + error.message)
+          return
+        }
+        toast.success('Producto añadido al catálogo y al inventario ✅')
+      } else {
+        toast.success('Producto añadido al catálogo ✅')
       }
 
-      toast.success(newProductForm.guardarEnCatalogo
-        ? 'Producto añadido al inventario y catálogo ✅'
-        : 'Producto añadido al inventario ✅'
-      )
-      setNewProductForm({ articulo: '', referencia: '', familia: '', categoria: '', descripcion: '', cantidad: 0, stockMinimo: 0, unidad: 'ud', costeIva: 0, precioVenta: 0, ubicacion: '', proveedor: '', diasEntrega: 0, tiempoTotalMin: 0, requiereDiseno: false, tipoDiseno: '', instruccionesDiseno: '', guardarEnCatalogo: true })
+      setNewProductForm({ articulo: '', referencia: '', familia: '', categoria: '', descripcion: '', cantidad: 0, stockMinimo: 0, unidad: 'ud', costeIva: 0, precioVenta: 0, ubicacion: '', proveedor: '', diasEntrega: 0, tiempoTotalMin: 0, requiereDiseno: false, tipoDiseno: '', instruccionesDiseno: '' })
       setNewProductMaterials([])
       setNewProductConsumables([])
       setNewProductTasks([])
@@ -764,7 +763,7 @@ export default function PurchaseList() {
       >
         {selectedTab === 'stock' && (
           <Button variant="outline" size="sm" onClick={() => setShowNewProductModal(true)}>
-            📦 Añadir producto
+            � Nuevo producto
           </Button>
         )}
       </Header>
@@ -1343,10 +1342,10 @@ export default function PurchaseList() {
             <Card className="w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
               <CardHeader className="pb-3 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shrink-0">
                 <CardTitle className="flex items-center justify-between">
-                  <span>📦 Añadir producto al inventario</span>
+                  <span>� Nuevo producto</span>
                   <button onClick={() => setShowNewProductModal(false)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
                 </CardTitle>
-                <p className="text-sm text-emerald-100">Añade un nuevo producto con toda la información necesaria</p>
+                <p className="text-sm text-emerald-100">Crea un producto para el catálogo de presupuestos. Si indicas cantidad, también se añadirá al stock.</p>
               </CardHeader>
               <CardContent className="space-y-4 overflow-y-auto p-5">
                 {/* ─── Datos básicos ─── */}
@@ -1392,9 +1391,9 @@ export default function PurchaseList() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-emerald-500 resize-none" />
                 </div>
 
-                {/* ─── Inventario ─── */}
+                {/* ─── Stock (opcional) ─── */}
                 <div className="border-t pt-3">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-2">📊 Inventario</h4>
+                  <h4 className="text-sm font-semibold text-gray-800 mb-2">📊 Stock <span className="font-normal text-gray-500">(opcional — solo si es un item físico)</span></h4>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad inicial</label>
@@ -1597,25 +1596,9 @@ export default function PurchaseList() {
                   )}
                 </div>
 
-                {/* ─── Guardar en catálogo ─── */}
-                <div className="border-t pt-3 bg-blue-50 rounded-lg p-3 -mx-1">
-                  <div className="flex items-start gap-2">
-                    <input type="checkbox" id="np-guardarCatalogo" checked={newProductForm.guardarEnCatalogo} className="w-4 h-4 mt-0.5"
-                      onChange={e => setNewProductForm(f => ({ ...f, guardarEnCatalogo: e.target.checked }))} />
-                    <div>
-                      <label htmlFor="np-guardarCatalogo" className="font-medium text-sm text-blue-800 cursor-pointer">
-                        📋 Guardar también en catálogo de productos
-                      </label>
-                      <p className="text-xs text-blue-600 mt-0.5">
-                        El producto quedará disponible para presupuestos con materiales, consumibles y tareas
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 <div className="flex gap-3 pt-2">
                   <Button onClick={handleCreateNewProduct} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                    ✅ Añadir producto
+                    ✅ Crear producto
                   </Button>
                   <Button variant="outline" onClick={() => setShowNewProductModal(false)} className="flex-1">
                     Cancelar
