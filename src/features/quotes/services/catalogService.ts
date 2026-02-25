@@ -196,17 +196,30 @@ export class CatalogService {
     this.reExportExcel().catch(err => console.warn('Re-export Excel failed:', err))
   }
 
-  /** Re-genera el Excel de catálogo desde la BD y lo sube a Storage */
+  /** Re-genera el Excel de catálogo fusionando el Excel existente con los productos de la BD */
   private static async reExportExcel(): Promise<void> {
-    const { data: products } = await supabase
+    // 1. Load existing products from the current Excel in Storage
+    let existingProducts: CatalogProduct[] = []
+    try {
+      const blob = await downloadExcel(this.EXCEL_PATH)
+      const arrayBuffer = await blob.arrayBuffer()
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+      const sheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[sheetName]
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: null })
+      existingProducts = jsonData.map((row: any) => this.parseProduct(row)).filter(p => p.SKU && p.NOMBRE)
+    } catch {
+      // If Excel doesn't exist yet, start from empty
+    }
+
+    // 2. Load products from the DB table (only ones added via addProduct)
+    const { data: dbRows } = await supabase
       .from('catalog_products')
       .select('*')
       .order('sku')
 
-    if (!products || products.length === 0) return
-
-    const rows = products.map((p: any) => {
-      const row: any = {
+    const dbProducts: CatalogProduct[] = (dbRows || []).map((p: any) => {
+      const product: any = {
         SKU: p.sku,
         FAMILIA: p.familia,
         CATEGORIA: p.categoria,
@@ -217,31 +230,76 @@ export class CatalogService {
         PROVEEDOR: p.proveedor,
         DIAS_ENTREGA_PROVEEDOR: p.dias_entrega_proveedor,
         TIEMPO_TOTAL_MIN: p.tiempo_total_min,
-        'REQUIERE_DISEÑO': p.requiere_diseno,
-        'TIPO_DISEÑO': p.tipo_diseno,
-        'INSTRUCCIONES_DISEÑO': p.instrucciones_diseno,
+        REQUIERE_DISEÑO: p.requiere_diseno,
+        TIPO_DISEÑO: p.tipo_diseno,
+        INSTRUCCIONES_DISEÑO: p.instrucciones_diseno,
       }
       const materiales = p.materiales || []
       for (let i = 0; i < 5; i++) {
         const mat = materiales[i] || {}
-        row[`MATERIAL_${i + 1}`]        = mat.nombre || ''
-        row[`MATERIAL_${i + 1}_CANT`]   = mat.cantidad || 0
-        row[`MATERIAL_${i + 1}_UNIDAD`] = mat.unidad || ''
+        product[`MATERIAL_${i + 1}`]        = mat.nombre || ''
+        product[`MATERIAL_${i + 1}_CANT`]   = mat.cantidad || 0
+        product[`MATERIAL_${i + 1}_UNIDAD`] = mat.unidad || ''
       }
       const consumibles = p.consumibles || []
       for (let i = 0; i < 10; i++) {
         const cons = consumibles[i] || {}
-        row[`CONSUMIBLE_${i + 1}`]        = cons.nombre || ''
-        row[`CONSUMIBLE_${i + 1}_CANT`]   = cons.cantidad || 0
-        row[`CONSUMIBLE_${i + 1}_UNIDAD`] = cons.unidad || ''
+        product[`CONSUMIBLE_${i + 1}`]        = cons.nombre || ''
+        product[`CONSUMIBLE_${i + 1}_CANT`]   = cons.cantidad || 0
+        product[`CONSUMIBLE_${i + 1}_UNIDAD`] = cons.unidad || ''
       }
       const tareas = p.tareas || []
       for (let i = 0; i < 12; i++) {
         const t = tareas[i] || {}
-        row[`TAREA_${i + 1}_NOMBRE`]            = t.nombre || ''
-        row[`TAREA_${i + 1}_DURACION`]           = t.duracion || 0
-        row[`TAREA_${i + 1}_REQUIERE_MATERIAL`]  = t.requiere_material || ''
-        row[`TAREA_${i + 1}_REQUIERE_DISEÑO`]    = t.requiere_diseno || ''
+        product[`TAREA_${i + 1}_NOMBRE`]            = t.nombre || ''
+        product[`TAREA_${i + 1}_DURACION`]           = t.duracion || 0
+        product[`TAREA_${i + 1}_REQUIERE_MATERIAL`]  = t.requiere_material || ''
+        product[`TAREA_${i + 1}_REQUIERE_DISEÑO`]    = t.requiere_diseno || ''
+      }
+      return product as CatalogProduct
+    })
+
+    // 3. Merge: DB products override Excel products (by SKU)
+    const dbSKUs = new Set(dbProducts.map(p => p.SKU))
+    const merged = [
+      ...existingProducts.filter(p => !dbSKUs.has(p.SKU)),  // Excel-only products
+      ...dbProducts,                                         // DB products (new/updated)
+    ]
+
+    if (merged.length === 0) return
+
+    // 4. Build Excel from merged products
+    const rows = merged.map((p: any) => {
+      const row: any = {
+        SKU: p.SKU,
+        FAMILIA: p.FAMILIA,
+        CATEGORIA: p.CATEGORIA,
+        NOMBRE: p.NOMBRE,
+        DESCRIPCION: p.DESCRIPCION,
+        PRECIO_COMPRA: p.PRECIO_COMPRA,
+        'PRECIO DE VENTA': p['PRECIO DE VENTA'],
+        PROVEEDOR: p.PROVEEDOR,
+        DIAS_ENTREGA_PROVEEDOR: p.DIAS_ENTREGA_PROVEEDOR,
+        TIEMPO_TOTAL_MIN: p.TIEMPO_TOTAL_MIN,
+        'REQUIERE_DISEÑO': p.REQUIERE_DISEÑO,
+        'TIPO_DISEÑO': p.TIPO_DISEÑO,
+        'INSTRUCCIONES_DISEÑO': p.INSTRUCCIONES_DISEÑO,
+      }
+      for (let i = 1; i <= 5; i++) {
+        row[`MATERIAL_${i}`]        = p[`MATERIAL_${i}`] || ''
+        row[`MATERIAL_${i}_CANT`]   = p[`MATERIAL_${i}_CANT`] || 0
+        row[`MATERIAL_${i}_UNIDAD`] = p[`MATERIAL_${i}_UNIDAD`] || ''
+      }
+      for (let i = 1; i <= 10; i++) {
+        row[`CONSUMIBLE_${i}`]        = p[`CONSUMIBLE_${i}`] || ''
+        row[`CONSUMIBLE_${i}_CANT`]   = p[`CONSUMIBLE_${i}_CANT`] || 0
+        row[`CONSUMIBLE_${i}_UNIDAD`] = p[`CONSUMIBLE_${i}_UNIDAD`] || ''
+      }
+      for (let i = 1; i <= 12; i++) {
+        row[`TAREA_${i}_NOMBRE`]            = p[`TAREA_${i}_NOMBRE`] || ''
+        row[`TAREA_${i}_DURACION`]           = p[`TAREA_${i}_DURACION`] || 0
+        row[`TAREA_${i}_REQUIERE_MATERIAL`]  = p[`TAREA_${i}_REQUIERE_MATERIAL`] || ''
+        row[`TAREA_${i}_REQUIERE_DISEÑO`]    = p[`TAREA_${i}_REQUIERE_DISEÑO`] || ''
       }
       return row
     })
@@ -253,7 +311,12 @@ export class CatalogService {
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const file = new File([blob], 'catalogoproductos.xlsx')
     await uploadExcel(file, 'catalogoproductos.xlsx')
-    console.log('✅ Excel de catálogo re-exportado tras añadir producto')
+
+    // Update in-memory and localStorage with merged catalog
+    this.products = merged
+    localStorage.setItem('catalog_products', JSON.stringify(merged))
+
+    console.log('✅ Excel de catálogo re-exportado:', merged.length, 'productos')
   }
 
   // Sincronizar desde Storage (llamar al cargar la app)
