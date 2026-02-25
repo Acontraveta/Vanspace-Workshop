@@ -206,6 +206,7 @@ export class QuoteAutomation {
          *  - If REQUIERE_DISEÑO='SÍ' without TIPO_DISEÑO → keyword heuristic, default furniture
          *  - If REQUIERE_DISEÑO not set → keyword heuristic still detects designable items
          *  - Returns null only when no match at all
+         *  Priority: exterior → interior → furniture (to avoid misc. items defaulting to furniture)
          */
         const classifyDesignType = (item: QuoteItem): 'furniture' | 'exterior' | 'interior' | null => {
           const reqDis = item.catalogData?.REQUIERE_DISEÑO === 'SÍ'
@@ -218,15 +219,16 @@ export class QuoteAutomation {
             if (tipo.includes('interior')) return 'interior'
           }
 
-          // 2) Keyword heuristic: works whether REQUIERE_DISEÑO is set or not
+          // 2) Keyword heuristic — check exterior/interior BEFORE furniture
+          //    to prevent exterior items (claraboya, ventana…) from defaulting to furniture
           const familia = (item.catalogData?.FAMILIA ?? '').toLowerCase()
           const sku     = (item.catalogSKU ?? '').toLowerCase()
           const name    = (item.productName ?? '').toLowerCase()
           const fields  = `${familia} ${sku} ${name}`
 
-          if (FURNITURE_WORDS.some(w => fields.includes(w)) || sku.startsWith('mue')) return 'furniture'
           if (EXTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ext')) return 'exterior'
           if (INTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ele')) return 'interior'
+          if (FURNITURE_WORDS.some(w => fields.includes(w)) || sku.startsWith('mue')) return 'furniture'
 
           // 3) REQUIERE_DISEÑO=SÍ but no keyword match → default to furniture
           if (reqDis) return 'furniture'
