@@ -1,11 +1,15 @@
 /**
  * quickDocService.ts
  *
- * Persists Facturas Simplificadas and Proformas generated via QuickDocumentModal
- * to localStorage so they can be listed and searched later.
+ * Persists Facturas Simplificadas and Proformas to:
+ *  - Supabase `quick_docs` table (primary, durable store)
+ *  - localStorage (write-through cache for instant reads)
+ *
+ * On read, data comes from Supabase (async) with localStorage fallback.
  */
 
 import { QuickDocType } from '../components/QuickDocumentModal'
+import { supabase } from '@/lib/supabase'
 
 export interface QuickDocLine {
   id: string
@@ -21,6 +25,7 @@ export interface QuickDocRecord {
   docDate: string       // ISO date string (yyyy-MM-dd)
   clientName: string
   clientNif?: string
+  leadId?: string       // Associated CRM lead
   lines: QuickDocLine[]
   vatPct: number
   discountPct: number
@@ -34,39 +39,160 @@ export interface QuickDocRecord {
 
 const STORAGE_KEY = 'quick_docs_v1'
 
+// ─── Supabase row ↔ QuickDocRecord mapping ───────────────────
+
+function rowToRecord(row: any): QuickDocRecord {
+  return {
+    id: row.id,
+    type: row.type,
+    docNumber: row.doc_number,
+    docDate: row.doc_date,
+    clientName: row.client_name,
+    clientNif: row.client_nif || undefined,
+    leadId: row.lead_id || undefined,
+    lines: row.lines ?? [],
+    vatPct: Number(row.vat_pct ?? 21),
+    discountPct: Number(row.discount_pct ?? 0),
+    subtotal: Number(row.subtotal ?? 0),
+    vatAmount: Number(row.vat_amount ?? 0),
+    total: Number(row.total ?? 0),
+    notes: row.notes ?? '',
+    companyName: row.company_name ?? '',
+    createdAt: row.created_at,
+  }
+}
+
+function recordToRow(r: QuickDocRecord) {
+  return {
+    id: r.id,
+    type: r.type,
+    doc_number: r.docNumber,
+    doc_date: r.docDate,
+    client_name: r.clientName,
+    client_nif: r.clientNif || null,
+    lead_id: r.leadId || null,
+    lines: r.lines,
+    vat_pct: r.vatPct,
+    discount_pct: r.discountPct,
+    subtotal: r.subtotal,
+    vat_amount: r.vatAmount,
+    total: r.total,
+    notes: r.notes,
+    company_name: r.companyName,
+    created_at: r.createdAt,
+  }
+}
+
+// ─── localStorage helpers (cache) ────────────────────────────
+
+function cacheGetAll(): QuickDocRecord[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')
+  } catch {
+    return []
+  }
+}
+
+function cacheSet(records: QuickDocRecord[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
+}
+
+// ─── Service ─────────────────────────────────────────────────
+
 export class QuickDocService {
+  /**
+   * Synchronous read from localStorage cache.
+   * Use `fetchAll` / `fetchByType` for fresh Supabase data.
+   */
   static getAll(): QuickDocRecord[] {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')
-    } catch {
-      return []
-    }
+    return cacheGetAll()
   }
 
   static getByType(type: QuickDocType): QuickDocRecord[] {
-    return this.getAll().filter(d => d.type === type)
+    return cacheGetAll().filter(d => d.type === type)
   }
 
+  // ── Async Supabase reads ──────────────────────────────────
+
+  /** Fetch all docs from Supabase, merge with localStorage cache, update cache */
+  static async fetchAll(): Promise<QuickDocRecord[]> {
+    const { data, error } = await supabase
+      .from('quick_docs')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.warn('⚠️ QuickDocService.fetchAll Supabase error, using cache:', error.message)
+      return cacheGetAll()
+    }
+
+    const sbRecords = (data || []).map(rowToRecord)
+
+    // Merge: Supabase is source of truth, but keep localStorage-only records
+    const sbDocNumbers = new Set(sbRecords.map(r => r.docNumber))
+    const localOnly = cacheGetAll().filter(r => !sbDocNumbers.has(r.docNumber))
+
+    // Push any localStorage-only records to Supabase (recovery)
+    for (const local of localOnly) {
+      supabase.from('quick_docs').upsert(recordToRow(local), { onConflict: 'doc_number' })
+        .then(({ error: upErr }) => {
+          if (upErr) console.warn('⚠️ Failed to sync local doc to Supabase:', local.docNumber, upErr.message)
+        })
+    }
+
+    const merged = [...sbRecords, ...localOnly]
+    cacheSet(merged)
+    return merged
+  }
+
+  static async fetchByType(type: QuickDocType): Promise<QuickDocRecord[]> {
+    const all = await this.fetchAll()
+    return all.filter(d => d.type === type)
+  }
+
+  // ── Save ──────────────────────────────────────────────────
+
   static save(doc: Omit<QuickDocRecord, 'id' | 'createdAt'>): QuickDocRecord {
-    const all = this.getAll()
+    const all = cacheGetAll()
     // Avoid duplicate by docNumber
     if (all.some(d => d.docNumber === doc.docNumber)) {
       return all.find(d => d.docNumber === doc.docNumber)!
     }
+
     const record: QuickDocRecord = {
       ...doc,
       id: `qdoc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       createdAt: new Date().toISOString(),
     }
+
+    // Update localStorage cache immediately (sync)
     all.unshift(record)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
+    cacheSet(all)
+
+    // Persist to Supabase (async, fire-and-forget with logging)
+    supabase.from('quick_docs').upsert(recordToRow(record), { onConflict: 'doc_number' })
+      .then(({ error: upErr }) => {
+        if (upErr) console.error('❌ QuickDocService: failed to save to Supabase:', upErr.message)
+        else console.log('✅ QuickDoc saved to Supabase:', record.docNumber)
+      })
+
     return record
   }
 
+  // ── Delete ────────────────────────────────────────────────
+
   static delete(id: string): void {
-    const all = this.getAll().filter(d => d.id !== id)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
+    const all = cacheGetAll().filter(d => d.id !== id)
+    cacheSet(all)
+
+    // Also delete from Supabase
+    supabase.from('quick_docs').delete().eq('id', id)
+      .then(({ error: delErr }) => {
+        if (delErr) console.warn('⚠️ QuickDocService: failed to delete from Supabase:', delErr.message)
+      })
   }
+
+  // ── Search (uses cache) ───────────────────────────────────
 
   static search(type: QuickDocType, text: string, dateFrom: string, dateTo: string): QuickDocRecord[] {
     let list = this.getByType(type)

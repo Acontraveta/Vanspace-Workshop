@@ -10,7 +10,7 @@
  * Incluye barra de búsqueda (texto + rango de fechas) en todas las pestañas.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
@@ -61,10 +61,18 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
 
   // ── Data ──────────────────────────────────────────────────
   const [refreshKey, setRefreshKey]     = useState(0)
+  const [proformas, setProformas]       = useState<QuickDocRecord[]>(() => QuickDocService.getByType('PROFORMA'))
+  const [simplificadas, setSimplificadas] = useState<QuickDocRecord[]>(() => QuickDocService.getByType('FACTURA_SIMPLIFICADA'))
 
   const allQuotes     = useMemo(() => QuoteService.getAllQuotes(), [refreshKey])
-  const proformas     = useMemo(() => QuickDocService.getByType('PROFORMA'), [refreshKey])
-  const simplificadas = useMemo(() => QuickDocService.getByType('FACTURA_SIMPLIFICADA'), [refreshKey])
+
+  // Fetch quick docs from Supabase on mount and on refresh
+  useEffect(() => {
+    QuickDocService.fetchAll().then(all => {
+      setProformas(all.filter(d => d.type === 'PROFORMA'))
+      setSimplificadas(all.filter(d => d.type === 'FACTURA_SIMPLIFICADA'))
+    })
+  }, [refreshKey])
 
   const refresh = () => setRefreshKey(k => k + 1)
 

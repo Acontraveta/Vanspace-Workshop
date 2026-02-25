@@ -231,25 +231,47 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
     toast.success(`${product.NOMBRE} añadido`)
   }
 
-  /** Returns consumables whose name is generic (not in stock) but matches catalog products */
+  /** Returns consumables AND materials whose name is generic (not in stock) but matches catalog products */
   const findUnresolvedConsumables = (product: CatalogProduct): UnresolvedConsumable[] => {
     const unresolved: UnresolvedConsumable[] = []
+
+    // Check consumables (CONSUMIBLE_1 to CONSUMIBLE_10)
     for (let i = 1; i <= 10; i++) {
       const name = (product as any)[`CONSUMIBLE_${i}`] as string | undefined
       if (!name) continue
       const quantity: number = (product as any)[`CONSUMIBLE_${i}_CANT`] || 1
       const unit: string = (product as any)[`CONSUMIBLE_${i}_UNIDAD`] || 'ud'
-      // If it already matches a stock item exactly, no resolution needed
+      // If it already matches a stock item by name, no resolution needed
       if (StockService.findItemByName(name)) continue
-      // Search catalog for products whose NOMBRE contains this generic name
+      // Search catalog for products whose NOMBRE contains this generic name (bidirectional)
+      const nameLower = name.toLowerCase()
       const matches = products.filter(p =>
-        p.NOMBRE.toLowerCase().includes(name.toLowerCase()) ||
-        name.toLowerCase().includes(p.NOMBRE.toLowerCase())
+        p.NOMBRE.toLowerCase().includes(nameLower) ||
+        nameLower.includes(p.NOMBRE.toLowerCase())
       )
       if (matches.length > 0) {
         unresolved.push({ index: i, genericName: name, quantity, unit, matches, selectedSKU: matches[0].SKU, skipped: false })
       }
     }
+
+    // Check materials (MATERIAL_1 to MATERIAL_5) — same logic
+    for (let i = 1; i <= 5; i++) {
+      const name = (product as any)[`MATERIAL_${i}`] as string | undefined
+      if (!name) continue
+      const quantity: number = (product as any)[`MATERIAL_${i}_CANT`] || 1
+      const unit: string = (product as any)[`MATERIAL_${i}_UNIDAD`] || 'ud'
+      if (StockService.findItemByName(name)) continue
+      const nameLower = name.toLowerCase()
+      const matches = products.filter(p =>
+        p.NOMBRE.toLowerCase().includes(nameLower) ||
+        nameLower.includes(p.NOMBRE.toLowerCase())
+      )
+      if (matches.length > 0) {
+        // Use index 100+ to distinguish from consumables
+        unresolved.push({ index: 100 + i, genericName: name, quantity, unit, matches, selectedSKU: matches[0].SKU, skipped: false })
+      }
+    }
+
     return unresolved
   }
 
@@ -261,7 +283,13 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       if (!c.skipped) {
         const selected = c.matches.find(m => m.SKU === c.selectedSKU)
         if (selected) {
-          ;(product as any)[`CONSUMIBLE_${c.index}`] = selected.NOMBRE
+          if (c.index >= 100) {
+            // Material resolution (index 100+ → MATERIAL_1..5)
+            ;(product as any)[`MATERIAL_${c.index - 100}`] = selected.NOMBRE
+          } else {
+            // Consumable resolution
+            ;(product as any)[`CONSUMIBLE_${c.index}`] = selected.NOMBRE
+          }
         }
       }
     }

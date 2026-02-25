@@ -165,6 +165,7 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
       docDate: docDateStr,
       clientName: clientName || (type === 'FACTURA_SIMPLIFICADA' ? 'Sin nombre' : 'Cliente'),
       clientNif: clientNif || undefined,
+      leadId: initialData?.leadId || undefined,
       lines,
       vatPct,
       discountPct,
@@ -190,7 +191,15 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
             ''
           )
         })
-        .catch(err => console.warn('Auto-attach quick doc PDF failed:', err))
+        .then(() => {
+          console.log('✅ Documento adjuntado al lead')
+        })
+        .catch(err => {
+          console.warn('Auto-attach quick doc PDF failed:', err)
+          // Don't block the user but inform about the failure
+          import('react-hot-toast').then(({ default: t }) =>
+            t.error('No se pudo adjuntar el PDF al lead automáticamente'))
+        })
     }
   }
 
