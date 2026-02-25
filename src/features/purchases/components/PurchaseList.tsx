@@ -52,6 +52,7 @@ export default function PurchaseList() {
   const [expandedStockFamily, setExpandedStockFamily] = useState<string | null>(null)
   const [expandedStockCategory, setExpandedStockCategory] = useState<string | null>(null)
   const [showNewProductModal, setShowNewProductModal] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(null)
   const [newProductForm, setNewProductForm] = useState({
     articulo: '',
     referencia: '',
@@ -260,7 +261,70 @@ export default function PurchaseList() {
     setShowNewPurchaseModal(true)
   }
 
-  // Añadir nuevo producto al catálogo (y opcionalmente al stock si tiene cantidad)
+  // Abrir modal para editar un producto existente del catálogo
+  const handleEditProduct = (product: CatalogProduct) => {
+    setEditingProduct(product)
+    // Poblar el formulario con los datos del producto
+    setNewProductForm({
+      articulo: product.NOMBRE || '',
+      referencia: product.SKU || '',
+      familia: product.FAMILIA || '',
+      categoria: product.CATEGORIA || '',
+      descripcion: product.DESCRIPCION || '',
+      cantidad: 0,
+      stockMinimo: 0,
+      unidad: 'ud',
+      costeIva: product.PRECIO_COMPRA || 0,
+      precioVenta: product['PRECIO DE VENTA'] ? Number(product['PRECIO DE VENTA']) : 0,
+      ubicacion: '',
+      proveedor: product.PROVEEDOR || '',
+      diasEntrega: product.DIAS_ENTREGA_PROVEEDOR || 0,
+      tiempoTotalMin: product.TIEMPO_TOTAL_MIN || 0,
+      requiereDiseno: product.REQUIERE_DISEÑO === 'SÍ',
+      tipoDiseno: product.TIPO_DISEÑO || '',
+      instruccionesDiseno: product.INSTRUCCIONES_DISEÑO || '',
+    })
+    // Poblar materiales
+    const mats: Array<{ nombre: string; cantidad: number; unidad: string }> = []
+    for (let i = 1; i <= 5; i++) {
+      const nombre = (product as any)[`MATERIAL_${i}`]
+      if (nombre) mats.push({ nombre, cantidad: (product as any)[`MATERIAL_${i}_CANT`] || 0, unidad: (product as any)[`MATERIAL_${i}_UNIDAD`] || 'ud' })
+    }
+    setNewProductMaterials(mats)
+    // Poblar consumibles
+    const cons: Array<{ nombre: string; cantidad: number; unidad: string }> = []
+    for (let i = 1; i <= 10; i++) {
+      const nombre = (product as any)[`CONSUMIBLE_${i}`]
+      if (nombre) cons.push({ nombre, cantidad: (product as any)[`CONSUMIBLE_${i}_CANT`] || 0, unidad: (product as any)[`CONSUMIBLE_${i}_UNIDAD`] || 'ud' })
+    }
+    setNewProductConsumables(cons)
+    // Poblar tareas
+    const tasks: Array<{ nombre: string; duracion: number; requiereMaterial: boolean; requiereDiseno: boolean }> = []
+    for (let i = 1; i <= 12; i++) {
+      const nombre = (product as any)[`TAREA_${i}_NOMBRE`]
+      if (nombre) tasks.push({
+        nombre,
+        duracion: (product as any)[`TAREA_${i}_DURACION`] || 0,
+        requiereMaterial: (product as any)[`TAREA_${i}_REQUIERE_MATERIAL`] === 'SÍ',
+        requiereDiseno: (product as any)[`TAREA_${i}_REQUIERE_DISEÑO`] === 'SÍ',
+      })
+    }
+    setNewProductTasks(tasks)
+    // Si existe en stock, cargar cantidad y ubicación
+    const stockItem = stock.find(s => s.REFERENCIA?.toUpperCase() === product.SKU?.toUpperCase())
+    if (stockItem) {
+      setNewProductForm(f => ({
+        ...f,
+        cantidad: stockItem.CANTIDAD || 0,
+        stockMinimo: stockItem.STOCK_MINIMO || 0,
+        unidad: stockItem.UNIDAD || 'ud',
+        ubicacion: stockItem.UBICACION || '',
+      }))
+    }
+    setShowNewProductModal(true)
+  }
+
+  // Crear o actualizar producto en el catálogo (y opcionalmente en stock)
   const handleCreateNewProduct = async () => {
     if (!newProductForm.articulo.trim()) {
       toast.error('El nombre del artículo es obligatorio')
@@ -270,11 +334,13 @@ export default function PurchaseList() {
       toast.error('La referencia es obligatoria')
       return
     }
-    // Comprobar si ya existe en catálogo
-    const existingCatalog = CatalogService.getProducts().find(p => p.SKU?.toUpperCase() === newProductForm.referencia.trim().toUpperCase())
-    if (existingCatalog) {
-      toast.error('Ya existe un producto con esa referencia en el catálogo')
-      return
+    // Comprobar si ya existe en catálogo (solo en modo creación)
+    if (!editingProduct) {
+      const existingCatalog = CatalogService.getProducts().find(p => p.SKU?.toUpperCase() === newProductForm.referencia.trim().toUpperCase())
+      if (existingCatalog) {
+        toast.error('Ya existe un producto con esa referencia en el catálogo')
+        return
+      }
     }
 
     try {
@@ -324,30 +390,36 @@ export default function PurchaseList() {
       }
       await CatalogService.addProduct(product)
 
-      // 2. Solo guardar en stock_items si tiene cantidad en stock
-      if (newProductForm.cantidad > 0) {
-        const { error } = await supabase.from('stock_items').insert({
-          referencia: newProductForm.referencia.trim(),
-          familia: newProductForm.familia.trim() || 'GENERAL',
-          categoria: newProductForm.categoria.trim() || 'SIN CATEGORÍA',
-          articulo: newProductForm.articulo.trim(),
-          descripcion: newProductForm.descripcion.trim() || null,
-          cantidad: newProductForm.cantidad,
-          stock_minimo: newProductForm.stockMinimo || null,
-          unidad: newProductForm.unidad || 'ud',
-          coste_iva_incluido: newProductForm.costeIva || null,
-          ubicacion: newProductForm.ubicacion.trim() || null,
-          proveedor: newProductForm.proveedor.trim() || null,
-        })
+      // 2. Gestionar stock_items
+      const stockRow = {
+        referencia: newProductForm.referencia.trim(),
+        familia: newProductForm.familia.trim() || 'GENERAL',
+        categoria: newProductForm.categoria.trim() || 'SIN CATEGORÍA',
+        articulo: newProductForm.articulo.trim(),
+        descripcion: newProductForm.descripcion.trim() || null,
+        cantidad: newProductForm.cantidad,
+        stock_minimo: newProductForm.stockMinimo || null,
+        unidad: newProductForm.unidad || 'ud',
+        coste_iva_incluido: newProductForm.costeIva || null,
+        ubicacion: newProductForm.ubicacion.trim() || null,
+        proveedor: newProductForm.proveedor.trim() || null,
+      }
+      const existsInStock = stock.some(s => s.REFERENCIA?.toUpperCase() === newProductForm.referencia.trim().toUpperCase())
+      if (existsInStock) {
+        // Actualizar stock existente
+        const { error } = await supabase.from('stock_items').update(stockRow).eq('referencia', newProductForm.referencia.trim())
+        if (error) console.warn('Error actualizando stock:', error.message)
+      } else if (newProductForm.cantidad > 0) {
+        // Crear nueva entrada de stock solo si hay cantidad
+        const { error } = await supabase.from('stock_items').insert(stockRow)
         if (error) {
           toast.error('Error añadiendo al inventario: ' + error.message)
           return
         }
-        toast.success('Producto añadido al catálogo y al inventario ✅')
-      } else {
-        toast.success('Producto añadido al catálogo ✅')
       }
+      toast.success(editingProduct ? 'Producto actualizado ✅' : 'Producto creado ✅')
 
+      setEditingProduct(null)
       setNewProductForm({ articulo: '', referencia: '', familia: '', categoria: '', descripcion: '', cantidad: 0, stockMinimo: 0, unidad: 'ud', costeIva: 0, precioVenta: 0, ubicacion: '', proveedor: '', diasEntrega: 0, tiempoTotalMin: 0, requiereDiseno: false, tipoDiseno: '', instruccionesDiseno: '' })
       setNewProductMaterials([])
       setNewProductConsumables([])
@@ -1297,7 +1369,7 @@ export default function PurchaseList() {
                     Array.from({length: 10}, (_, i) => product[`CONSUMIBLE_${i+1}` as keyof CatalogProduct]).some(Boolean)
                   const hasTasks = Array.from({length: 12}, (_, i) => product[`TAREA_${i+1}_NOMBRE` as keyof CatalogProduct]).some(Boolean)
                   return (
-                    <div key={`${product.SKU}-${idx}`} className="flex items-center gap-3 p-3 bg-white rounded-lg border hover:border-blue-300 transition">
+                    <div key={`${product.SKU}-${idx}`} className="flex items-center gap-3 p-3 bg-white rounded-lg border hover:border-blue-300 transition cursor-pointer" onClick={() => handleEditProduct(product)} title="Clic para editar">
                       <span className="text-xl">{familyIcon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-gray-900 truncate">{product.NOMBRE}</div>
@@ -1399,7 +1471,7 @@ export default function PurchaseList() {
                                             Array.from({length: 10}, (_, i) => product[`CONSUMIBLE_${i+1}` as keyof CatalogProduct]).some(Boolean)
                                           const hasTasks = Array.from({length: 12}, (_, i) => product[`TAREA_${i+1}_NOMBRE` as keyof CatalogProduct]).some(Boolean)
                                           return (
-                                            <tr key={`${product.SKU}-${index}`} className="hover:bg-blue-50 transition">
+                                            <tr key={`${product.SKU}-${index}`} className="hover:bg-blue-50 transition cursor-pointer" onClick={() => handleEditProduct(product)} title="Clic para editar">
                                               <td className="px-4 py-3 max-w-0 overflow-hidden">
                                                 <div className="text-sm font-medium text-gray-900 truncate" title={product.NOMBRE}>{product.NOMBRE}</div>
                                                 {product.DESCRIPCION && <div className="text-xs text-gray-400 truncate">{product.DESCRIPCION}</div>}
@@ -1629,10 +1701,10 @@ export default function PurchaseList() {
             <Card className="w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
               <CardHeader className="pb-3 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shrink-0">
                 <CardTitle className="flex items-center justify-between">
-                  <span>� Nuevo producto</span>
-                  <button onClick={() => setShowNewProductModal(false)} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
+                  <span>{editingProduct ? '✏️ Editar producto' : '📋 Nuevo producto'}</span>
+                  <button onClick={() => { setShowNewProductModal(false); setEditingProduct(null) }} className="text-white/70 hover:text-white text-xl leading-none">✕</button>
                 </CardTitle>
-                <p className="text-sm text-emerald-100">Crea un producto para el catálogo de presupuestos. Si indicas cantidad, también se añadirá al stock.</p>
+                <p className="text-sm text-emerald-100">{editingProduct ? 'Modifica los datos del producto. Los cambios se aplicarán al catálogo y al stock si corresponde.' : 'Crea un producto para el catálogo de presupuestos. Si indicas cantidad, también se añadirá al stock.'}</p>
               </CardHeader>
               <CardContent className="space-y-4 overflow-y-auto p-5">
                 {/* ─── Datos básicos ─── */}
@@ -1645,6 +1717,7 @@ export default function PurchaseList() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Referencia / SKU <span className="text-red-500">*</span></label>
                     <Input placeholder="Código único" value={newProductForm.referencia}
+                      readOnly={!!editingProduct}
                       onChange={e => setNewProductForm(f => ({ ...f, referencia: e.target.value.toUpperCase() }))} />
                   </div>
                   <div>
@@ -1885,9 +1958,9 @@ export default function PurchaseList() {
 
                 <div className="flex gap-3 pt-2">
                   <Button onClick={handleCreateNewProduct} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                    ✅ Crear producto
+                    {editingProduct ? '💾 Guardar cambios' : '✅ Crear producto'}
                   </Button>
-                  <Button variant="outline" onClick={() => setShowNewProductModal(false)} className="flex-1">
+                  <Button variant="outline" onClick={() => { setShowNewProductModal(false); setEditingProduct(null) }} className="flex-1">
                     Cancelar
                   </Button>
                 </div>
