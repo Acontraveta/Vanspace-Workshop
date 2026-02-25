@@ -52,15 +52,18 @@ export default function ConsumableResolverModal({
   onSkipAll,
   onCancel,
 }: ConsumableResolverModalProps) {
-  // Compute / enrich matches from the full catalog on mount
+  /** Normalize text: lowercase, trim, unify decimal separators (, → .) */
+  const norm = (s: string) => s.toLowerCase().trim().replace(/,/g, '.')
+
+  // Compute / enrich matches from the full catalog+stock on mount
   const [items, setItems] = useState<UnresolvedConsumable[]>(() =>
     initial.map(item => {
       if (item.matches.length > 0) return item
-      // Pre-computed matches were empty — compute from full catalog
-      const nameLower = item.genericName.toLowerCase().trim()
+      // Pre-computed matches were empty — compute from full pool with normalized text
+      const nameLower = norm(item.genericName)
       const nameWords = nameLower.split(/\s+/).filter(w => w.length >= 3)
       const matches = allProducts.filter(p => {
-        const pName = (p.NOMBRE || '').toLowerCase()
+        const pName = norm(p.NOMBRE || '')
         if (pName.includes(nameLower) || nameLower.includes(pName)) return true
         if (nameWords.length > 0 && nameWords.every(w => pName.includes(w))) return true
         return false
@@ -107,10 +110,11 @@ export default function ConsumableResolverModal({
             const hasPreMatches = c.matches.length > 0
             // If no pre-matched results, search the FULL catalog when user types
             const searchPool = hasPreMatches ? c.matches : allProducts
+            const searchNorm = norm(searchTerm)
             const filtered = searchTerm
               ? searchPool.filter(m =>
-                  m.NOMBRE.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  m.SKU.toLowerCase().includes(searchTerm.toLowerCase())
+                  norm(m.NOMBRE || '').includes(searchNorm) ||
+                  norm(m.SKU || '').includes(searchNorm)
                 )
               : c.matches  // default view: only show pre-matched items (empty if none)
 

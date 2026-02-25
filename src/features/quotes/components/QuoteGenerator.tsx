@@ -221,35 +221,58 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
     toast.success(`${product.NOMBRE} añadido`)
   }
 
-  /** Returns consumables AND materials whose name is generic (not in stock) but matches catalog products */
+  /** Normalize text for matching: lowercase, trim, unify decimal separators */
+  const norm = (s: string) => s.toLowerCase().trim().replace(/,/g, '.')
+
+  /** Convert stock items to CatalogProduct shape for unified display in resolver */
+  const stockAsCatalog = (): CatalogProduct[] => {
+    return StockService.getStock().map(item => ({
+      SKU: item.REFERENCIA,
+      FAMILIA: item.FAMILIA || '',
+      CATEGORIA: item.CATEGORIA || '',
+      NOMBRE: item.ARTICULO || '',
+      DESCRIPCION: item.DESCRIPCION,
+      PRECIO_COMPRA: item.COSTE_IVA_INCLUIDO,
+      TIEMPO_TOTAL_MIN: 0,
+      REQUIERE_DISEÑO: 'NO' as const,
+    }))
+  }
+
+  /** Returns consumables AND materials whose name is generic (not in stock) but matches catalog/stock products */
   const findUnresolvedConsumables = (product: CatalogProduct): UnresolvedConsumable[] => {
     const unresolved: UnresolvedConsumable[] = []
     const stockItems = StockService.getStock()
+    const stockProducts = stockAsCatalog()
 
-    /** Only consider a consumable "resolved" if a stock item name matches EXACTLY (case-insensitive) */
+    /** Only consider "resolved" if a stock item name matches EXACTLY (normalized) */
     const hasExactStockMatch = (name: string): boolean => {
-      const norm = name.toLowerCase().trim()
-      return stockItems.some(item =>
-        item.ARTICULO?.toLowerCase().trim() === norm
-      )
+      const n = norm(name)
+      return stockItems.some(item => norm(item.ARTICULO || '') === n)
     }
 
-    /**
-     * Search catalog for matches using:
-     *   1. Direct substring in either direction
-     *   2. Word-based: all significant words (≥3 chars) from the consumable name appear in the product name
-     */
-    const findCatalogMatches = (name: string): CatalogProduct[] => {
-      const nameLower = name.toLowerCase().trim()
+    /** Search catalog + stock for matches using normalized text */
+    const findAllMatches = (name: string): CatalogProduct[] => {
+      const nameLower = norm(name)
       const nameWords = nameLower.split(/\s+/).filter(w => w.length >= 3)
-      return products.filter(p => {
-        const pName = p.NOMBRE.toLowerCase()
+
+      const matchFn = (pName: string): boolean => {
+        const pNorm = norm(pName)
         // Direct substring match (either direction)
-        if (pName.includes(nameLower) || nameLower.includes(pName)) return true
+        if (pNorm.includes(nameLower) || nameLower.includes(pNorm)) return true
         // Word-based: all significant words from consumable appear in product name
-        if (nameWords.length > 0 && nameWords.every(w => pName.includes(w))) return true
+        if (nameWords.length > 0 && nameWords.every(w => pNorm.includes(w))) return true
         return false
-      })
+      }
+
+      // Merge catalog + stock matches, deduplicate by SKU
+      const catalogMatches = products.filter(p => matchFn(p.NOMBRE || ''))
+      const stockMatches = stockProducts.filter(p => matchFn(p.NOMBRE || ''))
+      const seen = new Set<string>()
+      const merged: CatalogProduct[] = []
+      for (const p of [...catalogMatches, ...stockMatches]) {
+        if (!seen.has(p.SKU)) { seen.add(p.SKU); merged.push(p) }
+      }
+      return merged
     }
 
     // Check consumables (CONSUMIBLE_1 to CONSUMIBLE_10)
@@ -258,10 +281,8 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       if (!name) continue
       const quantity: number = (product as any)[`CONSUMIBLE_${i}_CANT`] || 1
       const unit: string = (product as any)[`CONSUMIBLE_${i}_UNIDAD`] || 'ud'
-      // If it EXACTLY matches a stock item by name, no resolution needed
       if (hasExactStockMatch(name)) continue
-      const matches = findCatalogMatches(name)
-      // Always include — even with 0 matches the user can search the full catalog in the modal
+      const matches = findAllMatches(name)
       unresolved.push({ index: i, genericName: name, quantity, unit, matches, selectedSKU: matches[0]?.SKU ?? '', skipped: false })
     }
 
@@ -272,8 +293,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       const quantity: number = (product as any)[`MATERIAL_${i}_CANT`] || 1
       const unit: string = (product as any)[`MATERIAL_${i}_UNIDAD`] || 'ud'
       if (hasExactStockMatch(name)) continue
-      const matches = findCatalogMatches(name)
-      // Use index 100+ to distinguish from consumables
+      const matches = findAllMatches(name)
       unresolved.push({ index: 100 + i, genericName: name, quantity, unit, matches, selectedSKU: matches[0]?.SKU ?? '', skipped: false })
     }
 
@@ -1047,7 +1067,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
         <ConsumableResolverModal
           productName={consumableResolver.product.NOMBRE}
           unresolved={consumableResolver.unresolved}
-          allProducts={products}
+          allProducts={[...products, ...stockAsCatalog()]}
           onConfirm={handleConsumableResolution}
           onSkipAll={() => {
             addProduct(consumableResolver.product)
