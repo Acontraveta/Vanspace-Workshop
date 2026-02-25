@@ -24,6 +24,10 @@ export default function PurchaseList() {
   const [stock, setStock] = useState<StockItem[]>([])
   const [stockLoaded, setStockLoaded] = useState(false)
   const [selectedTab, setSelectedTab] = useState<'pending' | 'ordered' | 'received' | 'stock' | 'warehouse' | 'scanner'>('pending')
+  const [mainTab, setMainTab] = useState<'pedidos' | 'stock' | 'catalogo'>('pedidos')
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([])
+  const [expandedCatalogFamily, setExpandedCatalogFamily] = useState<string | null>(null)
+  const [expandedCatalogCategory, setExpandedCatalogCategory] = useState<string | null>(null)
   const [showQR, setShowQR] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedProvider, setSelectedProvider] = useState<string>('all')
@@ -123,8 +127,17 @@ export default function PurchaseList() {
     }
   }
 
+  const loadCatalog = async () => {
+    let products = CatalogService.getProducts()
+    if (products.length === 0) {
+      try { products = await CatalogService.loadFromSupabase() } catch { /* empty */ }
+    }
+    setCatalogProducts(products)
+  }
+
   useEffect(() => {
     refreshData()
+    loadCatalog()
     // Cargar estanterías para validar ubicaciones
     supabase.from('warehouse_shelves').select('code, niveles, huecos').eq('activa', true)
       .then(({ data }) => { if (data) setWarehouseShelves(data) })
@@ -133,13 +146,20 @@ export default function PurchaseList() {
   // Cambiar tab si viene por navegación
   useEffect(() => {
     if (location.state?.tab) {
-      setSelectedTab(location.state.tab)
+      if (['warehouse', 'stock', 'scanner'].includes(location.state.tab)) {
+        setMainTab('stock')
+        setSelectedTab(location.state.tab)
+      } else {
+        setMainTab('pedidos')
+        setSelectedTab(location.state.tab)
+      }
     }
   }, [location])
 
   // Función para ir a la ubicación en el almacén
   const handleGoToLocation = (ubicacion: string) => {
     const shelfCode = ubicacion.charAt(0)
+    setMainTab('stock')
     setSelectedTab('warehouse')
     // Usar replace para no acumular en history
     navigate('/purchases', {
@@ -334,6 +354,7 @@ export default function PurchaseList() {
       setNewProductTasks([])
       setShowNewProductModal(false)
       refreshData()
+      loadCatalog()
     } catch (err: any) {
       toast.error('Error: ' + err.message)
     }
@@ -544,6 +565,30 @@ export default function PurchaseList() {
   const pendingCount = purchases.filter(p => p.status === 'PENDING').length
   const orderedCount = purchases.filter(p => p.status === 'ORDERED').length
   const receivedCount = purchases.filter(p => p.status === 'RECEIVED').length
+
+  // Catalog filtering
+  const filteredCatalog = catalogProducts.filter(p => {
+    if (!searchTerm) return true
+    const q = searchTerm.toLowerCase()
+    return (
+      p.NOMBRE?.toLowerCase().includes(q) ||
+      p.SKU?.toLowerCase().includes(q) ||
+      p.FAMILIA?.toLowerCase().includes(q) ||
+      p.CATEGORIA?.toLowerCase().includes(q) ||
+      p.PROVEEDOR?.toLowerCase().includes(q) ||
+      p.DESCRIPCION?.toLowerCase().includes(q)
+    )
+  })
+  const catalogFamilies = [...new Set(filteredCatalog.map(p => p.FAMILIA || 'Sin familia'))].sort()
+  const catalogByFamily: Record<string, Record<string, CatalogProduct[]>> = {}
+  for (const family of catalogFamilies) {
+    const familyItems = filteredCatalog.filter(p => (p.FAMILIA || 'Sin familia') === family)
+    const categories = [...new Set(familyItems.map(p => p.CATEGORIA || 'Sin categoría'))].sort()
+    catalogByFamily[family] = {}
+    for (const cat of categories) {
+      catalogByFamily[family][cat] = familyItems.filter(p => (p.CATEGORIA || 'Sin categoría') === cat)
+    }
+  }
 
   const PurchaseCard = ({ item }: { item: PurchaseItem }) => {
     const borderColor = item.priority >= 8 ? 'border-l-red-500' : item.priority >= 6 ? 'border-l-amber-400' : item.priority >= 4 ? 'border-l-green-400' : 'border-l-gray-300'
@@ -758,10 +803,10 @@ export default function PurchaseList() {
     <PageLayout>
       <Header
         title="Pedidos y Stock"
-        description="Gestión de compras y control de inventario"
-        action={{ label: '➕ Nuevo pedido', onClick: () => setShowNewPurchaseModal(true) }}
+        description="Gestión de compras, inventario y catálogo de productos"
+        action={mainTab === 'pedidos' ? { label: '➕ Nuevo pedido', onClick: () => setShowNewPurchaseModal(true) } : undefined}
       >
-        {selectedTab === 'stock' && (
+        {mainTab === 'catalogo' && (
           <Button variant="outline" size="sm" onClick={() => setShowNewProductModal(true)}>
             � Nuevo producto
           </Button>
@@ -858,7 +903,7 @@ export default function PurchaseList() {
         {/* Alertas de stock bajo — banner compacto */}
         {lowStockItems.length > 0 && (
           <button
-            onClick={() => setSelectedTab('stock')}
+            onClick={() => { setMainTab('stock'); setSelectedTab('stock') }}
             className="w-full flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-xl hover:bg-orange-100 transition text-left"
           >
             <span className="text-xl">⚠️</span>
@@ -874,117 +919,177 @@ export default function PurchaseList() {
           </button>
         )}
 
-        {/* Stats bar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: 'Pendientes', value: pendingCount, icon: '⏳', bg: 'bg-blue-50 border-blue-200', text: 'text-blue-700', tab: 'pending' as const },
-            { label: 'En camino', value: orderedCount, icon: '🚚', bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', tab: 'ordered' as const },
-            { label: 'Recibidos', value: receivedCount, icon: '✅', bg: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', tab: 'received' as const },
-            { label: 'Stock bajo', value: lowStockItems.length, icon: '⚠️', bg: 'bg-red-50 border-red-200', text: 'text-red-700', tab: 'stock' as const },
-          ].map(s => (
-            <button
-              key={s.label}
-              onClick={() => setSelectedTab(s.tab)}
-              className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer hover:opacity-80 transition ${s.bg} ${selectedTab === s.tab ? 'ring-2 ring-offset-1 ring-blue-400' : ''}`}
-            >
-              <span className="text-2xl">{s.icon}</span>
-              <div className="text-left">
-                <div className={`text-2xl font-bold leading-none ${s.text}`}>{s.value}</div>
-                <div className="text-xs text-gray-500 font-medium mt-0.5">{s.label}</div>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* Tabs principales */}
-        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl overflow-x-auto">
+        {/* ═══ TABS PRINCIPALES (3 secciones) ═══ */}
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl">
           {([
-            { id: 'pending', icon: '⏳', label: 'Pendientes', count: pendingCount },
-            { id: 'ordered', icon: '🚚', label: 'En camino', count: orderedCount },
-            { id: 'received', icon: '✅', label: 'Recibidos', count: receivedCount },
-            { id: 'stock', icon: '📦', label: 'Inventario', count: stock.length },
-            { id: 'warehouse', icon: '🏭', label: 'Almacén', count: stockLoaded ? stock.filter(s => isValidLocation(s.UBICACION)).length : undefined },
-            { id: 'scanner', icon: '📷', label: 'Escanear QR', count: undefined },
-          ] as { id: typeof selectedTab; icon: string; label: string; count: number | undefined }[]).map(tab => (
+            { id: 'pedidos' as const, icon: '📋', label: 'Pedidos', count: pendingCount + orderedCount },
+            { id: 'stock' as const, icon: '📦', label: 'Stock', count: stock.length },
+            { id: 'catalogo' as const, icon: '🛒', label: 'Catálogo', count: catalogProducts.length },
+          ]).map(tab => (
             <button
               key={tab.id}
-              onClick={() => setSelectedTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-                selectedTab === tab.id
+              onClick={() => {
+                setMainTab(tab.id)
+                setSearchTerm('')
+                if (tab.id === 'pedidos') setSelectedTab('pending')
+                if (tab.id === 'stock') setSelectedTab('stock')
+              }}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
+                mainTab === tab.id
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
               }`}
             >
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
-              {tab.count !== undefined && (
-                <span className={`min-w-[1.25rem] text-center text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                  selectedTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {tab.count}
-                </span>
-              )}
+              <span className={`min-w-[1.5rem] text-center text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                mainTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
+              }`}>
+                {tab.count}
+              </span>
             </button>
           ))}
         </div>
 
-        {/* Filtros */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Input
-            placeholder="🔍 Buscar material, proyecto, proveedor..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1"
-          />
-          {selectedTab === 'stock' && estanterias.length > 0 && (
-            <select
-              value={selectedEstanteria}
-              onChange={(e) => setSelectedEstanteria(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
-            >
-              <option value="all">Todas las estanterías</option>
-              {estanterias.map(est => (
-                <option key={est} value={est}>Estantería {est}</option>
+        {/* ═══ SECCIÓN PEDIDOS ═══ */}
+        {mainTab === 'pedidos' && (
+          <>
+            {/* Stats bar */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Pendientes', value: pendingCount, icon: '⏳', bg: 'bg-blue-50 border-blue-200', text: 'text-blue-700', tab: 'pending' as const },
+                { label: 'En camino', value: orderedCount, icon: '🚚', bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', tab: 'ordered' as const },
+                { label: 'Recibidos', value: receivedCount, icon: '✅', bg: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', tab: 'received' as const },
+              ].map(s => (
+                <button
+                  key={s.label}
+                  onClick={() => setSelectedTab(s.tab)}
+                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer hover:opacity-80 transition ${s.bg} ${selectedTab === s.tab ? 'ring-2 ring-offset-1 ring-blue-400' : ''}`}
+                >
+                  <span className="text-2xl">{s.icon}</span>
+                  <div className="text-left">
+                    <div className={`text-2xl font-bold leading-none ${s.text}`}>{s.value}</div>
+                    <div className="text-xs text-gray-500 font-medium mt-0.5">{s.label}</div>
+                  </div>
+                </button>
               ))}
-            </select>
-          )}
-          {['pending','ordered','received'].includes(selectedTab) && providers.length > 0 && (
-            <select
-              value={selectedProvider}
-              onChange={(e) => setSelectedProvider(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
-            >
-              <option value="all">Todos los proveedores</option>
-              {providers.map(provider => (
-                <option key={provider} value={provider}>{provider}</option>
+            </div>
+
+            {/* Filtros pedidos */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                placeholder="🔍 Buscar material, proyecto, proveedor..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="flex-1"
+              />
+              {providers.length > 0 && (
+                <select
+                  value={selectedProvider}
+                  onChange={(e) => setSelectedProvider(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                >
+                  <option value="all">Todos los proveedores</option>
+                  {providers.map(provider => (
+                    <option key={provider} value={provider}>{provider}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => setGroupByProvider(g => !g)}
+                className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
+                  groupByProvider
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                🏭 Por proveedor
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ═══ SECCIÓN STOCK ═══ */}
+        {mainTab === 'stock' && (
+          <>
+            {/* Sub-tabs stock */}
+            <div className="flex gap-1 p-1 bg-gray-50 rounded-lg overflow-x-auto">
+              {([
+                { id: 'stock' as const, icon: '📦', label: 'Inventario', count: stock.length },
+                { id: 'warehouse' as const, icon: '🏭', label: 'Almacén', count: stockLoaded ? stock.filter(s => isValidLocation(s.UBICACION)).length : undefined },
+                { id: 'scanner' as const, icon: '📷', label: 'Escanear QR', count: undefined },
+              ]).map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSelectedTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                    selectedTab === tab.id
+                      ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                  {tab.count !== undefined && (
+                    <span className={`min-w-[1.25rem] text-center text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                      selectedTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
               ))}
-            </select>
-          )}
-          {['pending','ordered','received'].includes(selectedTab) && (
-            <button
-              onClick={() => setGroupByProvider(g => !g)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
-                groupByProvider
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              🏭 Por proveedor
-            </button>
-          )}
-        </div>
+            </div>
+
+            {/* Filtros stock */}
+            {selectedTab === 'stock' && (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="🔍 Buscar por artículo, referencia, familia..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="flex-1"
+                />
+                {estanterias.length > 0 && (
+                  <select
+                    value={selectedEstanteria}
+                    onChange={(e) => setSelectedEstanteria(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                  >
+                    <option value="all">Todas las estanterías</option>
+                    {estanterias.map(est => (
+                      <option key={est} value={est}>Estantería {est}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ═══ SECCIÓN CATÁLOGO ═══ */}
+        {mainTab === 'catalogo' && (
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              placeholder="🔍 Buscar producto por nombre, SKU, familia..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1"
+            />
+          </div>
+        )}
 
         {/* Contenido según tab */}
-        {selectedTab === 'warehouse' ? (
+        {mainTab === 'stock' && selectedTab === 'warehouse' ? (
           <WarehouseView
             stock={stock}
             onRefresh={refreshData}
             initialSelectedShelf={location.state?.selectedShelf}
             highlightLocation={location.state?.highlightLocation}
           />
-        ) : selectedTab === 'scanner' ? (
+        ) : mainTab === 'stock' && selectedTab === 'scanner' ? (
           <QRScanner stock={stock} onRefresh={refreshData} />
-        ) : selectedTab === 'stock' ? (
+        ) : mainTab === 'stock' && selectedTab === 'stock' ? (
           // Vista de inventario agrupada por familias
           <div>
             {stockLoaded ? (
@@ -1157,7 +1262,189 @@ export default function PurchaseList() {
               </Card>
             )}
           </div>
-        ) : (
+        ) : mainTab === 'catalogo' ? (
+          // Vista de catálogo de productos
+          <div>
+            {filteredCatalog.length === 0 ? (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <p className="text-gray-500 text-lg mb-2">
+                    {searchTerm ? 'No se encontraron productos' : 'El catálogo está vacío'}
+                  </p>
+                  <p className="text-sm text-gray-400 mb-4">
+                    {searchTerm ? 'Prueba con otro término de búsqueda' : 'Añade productos para que aparezcan en presupuestos'}
+                  </p>
+                  {!searchTerm && (
+                    <Button onClick={() => setShowNewProductModal(true)} className="gap-2">
+                      📋 Nuevo producto
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ) : searchTerm ? (
+              // Flat search results
+              <div className="space-y-2">
+                {filteredCatalog.map((product, idx) => {
+                  const familyIcon =
+                    product.FAMILIA?.toLowerCase().includes('electric') ? '⚡' :
+                    product.FAMILIA?.toLowerCase().includes('fontan') ? '🚰' :
+                    product.FAMILIA?.toLowerCase().includes('mueble') ? '🪑' :
+                    product.FAMILIA?.toLowerCase().includes('ventana') ? '🪟' :
+                    product.FAMILIA?.toLowerCase().includes('tornill') || product.FAMILIA?.toLowerCase().includes('ferret') ? '🔩' :
+                    product.FAMILIA?.toLowerCase().includes('pintu') ? '🎨' :
+                    product.FAMILIA?.toLowerCase().includes('aisla') ? '🧊' : '📦'
+                  const hasRecipe = Array.from({length: 5}, (_, i) => product[`MATERIAL_${i+1}` as keyof CatalogProduct]).some(Boolean) ||
+                    Array.from({length: 10}, (_, i) => product[`CONSUMIBLE_${i+1}` as keyof CatalogProduct]).some(Boolean)
+                  const hasTasks = Array.from({length: 12}, (_, i) => product[`TAREA_${i+1}_NOMBRE` as keyof CatalogProduct]).some(Boolean)
+                  return (
+                    <div key={`${product.SKU}-${idx}`} className="flex items-center gap-3 p-3 bg-white rounded-lg border hover:border-blue-300 transition">
+                      <span className="text-xl">{familyIcon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 truncate">{product.NOMBRE}</div>
+                        <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+                          <span className="font-mono">{product.SKU}</span>
+                          <span>·</span>
+                          <span className="capitalize">{product.FAMILIA}</span>
+                          {product.CATEGORIA && <><span>·</span><span>{product.CATEGORIA}</span></>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 text-sm">
+                        {product['PRECIO DE VENTA'] ? (
+                          <span className="font-semibold text-emerald-700">{Number(product['PRECIO DE VENTA']).toFixed(2)}€</span>
+                        ) : product.PRECIO_COMPRA ? (
+                          <span className="text-gray-500">{product.PRECIO_COMPRA.toFixed(2)}€ coste</span>
+                        ) : null}
+                        {hasRecipe && <span title="Tiene materiales/consumibles">🔩</span>}
+                        {hasTasks && <span title="Tiene tareas de producción">⚙️</span>}
+                        {product.REQUIERE_DISEÑO === 'SÍ' && <span title="Requiere diseño">📐</span>}
+                        {product.TIEMPO_TOTAL_MIN > 0 && (
+                          <span className="text-xs text-gray-400">{product.TIEMPO_TOTAL_MIN}min</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              // Grouped by family → category
+              <div className="space-y-2">
+                {catalogFamilies.map(family => {
+                  const familyCategories = catalogByFamily[family] || {}
+                  const familyItemCount = Object.values(familyCategories).reduce((s, arr) => s + arr.length, 0)
+                  const familyExpanded = expandedCatalogFamily === family
+                  const familyIcon =
+                    family.toLowerCase().includes('electric') ? '⚡' :
+                    family.toLowerCase().includes('fontan') ? '🚰' :
+                    family.toLowerCase().includes('mueble') ? '🪑' :
+                    family.toLowerCase().includes('ventana') ? '🪟' :
+                    family.toLowerCase().includes('tornill') || family.toLowerCase().includes('ferret') ? '🔩' :
+                    family.toLowerCase().includes('pintu') ? '🎨' :
+                    family.toLowerCase().includes('aisla') ? '🧊' : '📦'
+
+                  return (
+                    <Card key={family}>
+                      <button
+                        onClick={() => {
+                          setExpandedCatalogFamily(familyExpanded ? null : family)
+                          setExpandedCatalogCategory(null)
+                        }}
+                        className={`w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition rounded-t-lg ${
+                          familyExpanded ? 'bg-gray-50 border-b' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{familyIcon}</span>
+                          <span className="font-medium capitalize text-gray-800">{family}</span>
+                          <Badge variant="secondary" className="text-xs">{familyItemCount}</Badge>
+                        </div>
+                        <span className="text-gray-400">{familyExpanded ? '▼' : '▶'}</span>
+                      </button>
+
+                      {familyExpanded && (
+                        <CardContent className="p-2 space-y-2">
+                          {Object.entries(familyCategories).map(([categoryName, categoryItems]) => {
+                            const catExpanded = expandedCatalogCategory === `${family}::${categoryName}`
+                            return (
+                              <div key={categoryName} className="border rounded">
+                                <button
+                                  onClick={() => setExpandedCatalogCategory(catExpanded ? null : `${family}::${categoryName}`)}
+                                  className={`w-full px-4 py-2 flex items-center justify-between hover:bg-gray-50 transition text-left ${
+                                    catExpanded ? 'bg-gray-50 border-b' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-gray-700">{categoryName}</span>
+                                    <Badge variant="outline" className="text-xs">{categoryItems.length}</Badge>
+                                  </div>
+                                  <span className="text-gray-400 text-sm">{catExpanded ? '▼' : '▶'}</span>
+                                </button>
+
+                                {catExpanded && (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full divide-y divide-gray-200 table-fixed">
+                                      <thead className="bg-gray-50">
+                                        <tr>
+                                          <th className="w-[30%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
+                                          <th className="w-[12%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
+                                          <th className="w-[12%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">PVP</th>
+                                          <th className="w-[12%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Coste</th>
+                                          <th className="w-[10%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tiempo</th>
+                                          <th className="w-[12%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Proveedor</th>
+                                          <th className="w-[12%] px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Info</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="bg-white divide-y divide-gray-200">
+                                        {categoryItems.map((product, index) => {
+                                          const hasRecipe = Array.from({length: 5}, (_, i) => product[`MATERIAL_${i+1}` as keyof CatalogProduct]).some(Boolean) ||
+                                            Array.from({length: 10}, (_, i) => product[`CONSUMIBLE_${i+1}` as keyof CatalogProduct]).some(Boolean)
+                                          const hasTasks = Array.from({length: 12}, (_, i) => product[`TAREA_${i+1}_NOMBRE` as keyof CatalogProduct]).some(Boolean)
+                                          return (
+                                            <tr key={`${product.SKU}-${index}`} className="hover:bg-blue-50 transition">
+                                              <td className="px-4 py-3 max-w-0 overflow-hidden">
+                                                <div className="text-sm font-medium text-gray-900 truncate" title={product.NOMBRE}>{product.NOMBRE}</div>
+                                                {product.DESCRIPCION && <div className="text-xs text-gray-400 truncate">{product.DESCRIPCION}</div>}
+                                              </td>
+                                              <td className="px-4 py-3 text-sm text-gray-500 font-mono">{product.SKU}</td>
+                                              <td className="px-4 py-3 text-sm">
+                                                {product['PRECIO DE VENTA'] ? (
+                                                  <span className="font-semibold text-emerald-700">{Number(product['PRECIO DE VENTA']).toFixed(2)}€</span>
+                                                ) : <span className="text-gray-300">-</span>}
+                                              </td>
+                                              <td className="px-4 py-3 text-sm text-gray-500">
+                                                {product.PRECIO_COMPRA ? `${product.PRECIO_COMPRA.toFixed(2)}€` : '-'}
+                                              </td>
+                                              <td className="px-4 py-3 text-sm text-gray-500">
+                                                {product.TIEMPO_TOTAL_MIN > 0 ? `${product.TIEMPO_TOTAL_MIN}min` : '-'}
+                                              </td>
+                                              <td className="px-4 py-3 text-sm text-gray-500 max-w-0 overflow-hidden">
+                                                <span className="truncate block">{product.PROVEEDOR || '-'}</span>
+                                              </td>
+                                              <td className="px-4 py-3 text-center">
+                                                <div className="flex items-center justify-center gap-1">
+                                                  {hasRecipe && <span title="Materiales/consumibles">🔩</span>}
+                                                  {hasTasks && <span title="Tareas producción">⚙️</span>}
+                                                  {product.REQUIERE_DISEÑO === 'SÍ' && <span title="Requiere diseño">📐</span>}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          )
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </CardContent>
+                      )}
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : mainTab === 'pedidos' ? (
           // Vista de pedidos
           <div>
             {filteredPurchases.length === 0 ? (
@@ -1206,7 +1493,7 @@ export default function PurchaseList() {
               </div>
             )}
           </div>
-        )}
+        ) : null}
 
         {/* Modal Nuevo Pedido Manual */}
         {showNewPurchaseModal && (
@@ -1664,6 +1951,7 @@ export default function PurchaseList() {
                   <button
                     onClick={() => {
                       setShowAssignModal(false)
+                      setMainTab('stock')
                       setSelectedTab('warehouse')
                     }}
                     className="text-blue-600 hover:underline font-medium"
