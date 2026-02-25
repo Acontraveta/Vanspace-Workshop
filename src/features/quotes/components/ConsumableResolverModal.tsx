@@ -62,10 +62,15 @@ export default function ConsumableResolverModal({
       // Pre-computed matches were empty — compute from full pool with normalized text
       const nameLower = norm(item.genericName)
       const nameWords = nameLower.split(/\s+/).filter(w => w.length >= 3)
+      const sigWords = nameWords.filter(w => w.length >= 4)
       const matches = allProducts.filter(p => {
         const pName = norm(p.NOMBRE || '')
         if (pName.includes(nameLower) || nameLower.includes(pName)) return true
         if (nameWords.length > 0 && nameWords.every(w => pName.includes(w))) return true
+        if (sigWords.length > 0) {
+          const hits = sigWords.filter(w => pName.includes(w)).length
+          if (hits >= Math.ceil(sigWords.length / 2)) return true
+        }
         return false
       })
       return { ...item, matches, selectedSKU: matches[0]?.SKU ?? '' }
@@ -128,7 +133,9 @@ export default function ConsumableResolverModal({
                 {/* Consumable header */}
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <span className="text-xs text-gray-400 font-mono">CONSUMIBLE_{c.index}</span>
+                    <span className="text-xs text-gray-400 font-mono">
+                      {c.index >= 100 ? `MATERIAL_${c.index - 100}` : `CONSUMIBLE_${c.index}`}
+                    </span>
                     <p className="font-semibold text-sm">
                       "{c.genericName}"
                       <span className="text-gray-500 font-normal ml-1">× {c.quantity} {c.unit}</span>

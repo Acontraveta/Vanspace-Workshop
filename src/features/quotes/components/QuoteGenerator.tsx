@@ -254,13 +254,20 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
     const findAllMatches = (name: string): CatalogProduct[] => {
       const nameLower = norm(name)
       const nameWords = nameLower.split(/\s+/).filter(w => w.length >= 3)
+      // "Significant" words (≥4 chars) — brand names, specific terms
+      const sigWords = nameWords.filter(w => w.length >= 4)
 
       const matchFn = (pName: string): boolean => {
         const pNorm = norm(pName)
         // Direct substring match (either direction)
         if (pNorm.includes(nameLower) || nameLower.includes(pNorm)) return true
-        // Word-based: all significant words from consumable appear in product name
+        // Word-based: ALL short words match (tight match)
         if (nameWords.length > 0 && nameWords.every(w => pNorm.includes(w))) return true
+        // Relaxed: at least HALF of significant words match (rounded up)
+        if (sigWords.length > 0) {
+          const hits = sigWords.filter(w => pNorm.includes(w)).length
+          if (hits >= Math.ceil(sigWords.length / 2)) return true
+        }
         return false
       }
 
