@@ -17,6 +17,8 @@ import {
 } from '../constants/vanPresets'
 import { CatalogService } from '@/features/quotes/services/catalogService'
 import type { CatalogProduct } from '@/features/quotes/types/quote.types'
+import { ProductionService } from '@/features/calendar/services/productionService'
+import type { ProductionProject } from '@/features/calendar/types/production.types'
 
 // ── Catalog element types ─────────────────────────────────────────
 export interface ExteriorElement {
@@ -782,6 +784,11 @@ export default function VanExteriorDesign() {
   const [linkedWO, setLinkedWO] = useState<FurnitureWorkOrder | null>(null)
   const [availableWOs, setAvailableWOs] = useState<FurnitureWorkOrder[]>([])
   const [showWOSelector, setShowWOSelector] = useState(false)
+  const [linkTab, setLinkTab] = useState<'design' | 'production'>('design')
+
+  // ── Production project linking ─────────────────────────────────
+  const [linkedPP, setLinkedPP] = useState<ProductionProject | null>(null)
+  const [availablePPs, setAvailablePPs] = useState<ProductionProject[]>([])
 
   // Load catalog products for free mode palette
   useEffect(() => {
@@ -810,13 +817,17 @@ export default function VanExteriorDesign() {
     })()
   }, [isWoMode])
 
-  // Load available WOs for linking (free mode only)
+  // Load available WOs + production projects for linking (free mode only)
   useEffect(() => {
     if (isWoMode) return
     ;(async () => {
       try {
         const wos = await FurnitureWorkOrderService.getAllByType('exterior')
         setAvailableWOs(wos)
+      } catch { /* ignore */ }
+      try {
+        const pps = await ProductionService.getProjects()
+        setAvailablePPs(pps)
       } catch { /* ignore */ }
     })()
   }, [isWoMode])
@@ -973,7 +984,7 @@ export default function VanExteriorDesign() {
 
   const save = async () => {
     const effectiveWoId = workOrderId || linkedWO?.id
-    if (!effectiveWoId && !projectId) {
+    if (!effectiveWoId && !projectId && !linkedPP) {
       toast.error('Vincula una orden de trabajo o guarda desde un proyecto')
       return
     }
@@ -1003,6 +1014,22 @@ export default function VanExteriorDesign() {
             designStatus: elements.some(el => el.fromQuote) ? 'designed' as const : item.designStatus,
           }))
           await FurnitureWorkOrderService.updateItems(wo.id, updatedItems)
+        }
+      } else if (linkedPP) {
+        const { data: existing } = await supabase
+          .from('exterior_designs')
+          .select('id')
+          .eq('production_project_id', linkedPP.id)
+          .maybeSingle()
+        if (existing) {
+          await supabase
+            .from('exterior_designs')
+            .update({ elements, updated_at: new Date().toISOString() })
+            .eq('id', existing.id)
+        } else {
+          await supabase
+            .from('exterior_designs')
+            .insert({ production_project_id: linkedPP.id, elements })
         }
       } else {
         await supabase
@@ -1041,7 +1068,11 @@ export default function VanExteriorDesign() {
               </p>
             ) : linkedWO ? (
               <p className="text-xs text-slate-500 mt-0.5">
-                🔗 {linkedWO.quote_number} · {linkedWO.client_name}
+                🔗 OT: {linkedWO.quote_number} · {linkedWO.client_name}
+              </p>
+            ) : linkedPP ? (
+              <p className="text-xs text-slate-500 mt-0.5">
+                🏭 Producción: {linkedPP.quote_number} · {linkedPP.client_name}
               </p>
             ) : (
               <p className="text-xs text-slate-500 mt-0.5">
@@ -1056,39 +1087,63 @@ export default function VanExteriorDesign() {
             <div className="relative">
               <button onClick={() => setShowWOSelector(!showWOSelector)}
                 className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all ${
-                  linkedWO
+                  linkedWO || linkedPP
                     ? 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
                     : 'bg-orange-50 border-orange-300 text-orange-700 hover:bg-orange-100'
                 }`}>
-                {linkedWO ? `🔗 ${linkedWO.quote_number}` : '📋 Vincular OT'}
+                {linkedWO ? `🔗 ${linkedWO.quote_number}` : linkedPP ? `🏭 ${linkedPP.quote_number}` : '📋 Vincular'}
               </button>
               {showWOSelector && (
-                <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
-                  <div className="p-2 border-b border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">Órdenes de trabajo — Exterior</p>
+                <div className="absolute right-0 top-full mt-1 w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-72 overflow-hidden flex flex-col">
+                  {/* Tabs */}
+                  <div className="flex border-b border-slate-100">
+                    <button onClick={() => setLinkTab('design')}
+                      className={`flex-1 px-3 py-2 text-[10px] font-bold uppercase ${linkTab === 'design' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>
+                      📋 OT Diseño
+                    </button>
+                    <button onClick={() => setLinkTab('production')}
+                      className={`flex-1 px-3 py-2 text-[10px] font-bold uppercase ${linkTab === 'production' ? 'text-violet-600 border-b-2 border-violet-600' : 'text-slate-400'}`}>
+                      🏭 Producción
+                    </button>
                   </div>
-                  {linkedWO && (
-                    <button onClick={() => { setLinkedWO(null); setShowWOSelector(false) }}
+                  {(linkedWO || linkedPP) && (
+                    <button onClick={() => { setLinkedWO(null); setLinkedPP(null); setShowWOSelector(false) }}
                       className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 border-b border-slate-100">
                       ✕ Desvincular
                     </button>
                   )}
-                  {availableWOs.length === 0 ? (
-                    <p className="text-xs text-slate-400 text-center py-4">No hay órdenes de exterior</p>
-                  ) : (
-                    availableWOs.map(wo => (
-                      <button key={wo.id} onClick={() => { setLinkedWO(wo); setShowWOSelector(false); toast.success(`Vinculado a ${wo.quote_number}`) }}
-                        className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-50 ${linkedWO?.id === wo.id ? 'bg-green-50' : ''}`}>
-                        <p className="font-bold text-slate-700">{wo.quote_number}</p>
-                        <p className="text-[10px] text-slate-400">{wo.client_name} · {(wo.items ?? []).length} items</p>
-                      </button>
-                    ))
-                  )}
+                  <div className="overflow-y-auto max-h-52">
+                    {linkTab === 'design' ? (
+                      availableWOs.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-4">No hay órdenes de diseño exterior</p>
+                      ) : (
+                        availableWOs.map(wo => (
+                          <button key={wo.id} onClick={() => { setLinkedWO(wo); setLinkedPP(null); setShowWOSelector(false); toast.success(`Vinculado a OT ${wo.quote_number}`) }}
+                            className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-50 ${linkedWO?.id === wo.id ? 'bg-green-50' : ''}`}>
+                            <p className="font-bold text-slate-700">{wo.quote_number}</p>
+                            <p className="text-[10px] text-slate-400">{wo.client_name} · {(wo.items ?? []).length} items</p>
+                          </button>
+                        ))
+                      )
+                    ) : (
+                      availablePPs.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-4">No hay proyectos de producción</p>
+                      ) : (
+                        availablePPs.map(pp => (
+                          <button key={pp.id} onClick={() => { setLinkedPP(pp); setLinkedWO(null); setShowWOSelector(false); toast.success(`Vinculado a producción ${pp.quote_number}`) }}
+                            className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-50 ${linkedPP?.id === pp.id ? 'bg-violet-50' : ''}`}>
+                            <p className="font-bold text-slate-700">{pp.quote_number}</p>
+                            <p className="text-[10px] text-slate-400">{pp.client_name} · {pp.status}</p>
+                          </button>
+                        ))
+                      )
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           )}
-          {(workOrderId || projectId || linkedWO) && (
+          {(workOrderId || projectId || linkedWO || linkedPP) && (
             <button onClick={save} disabled={saving}
               className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
               {saving ? '⏳ Guardando…' : '💾 Guardar'}
