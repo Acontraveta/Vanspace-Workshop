@@ -1035,10 +1035,9 @@ export default function VanInteriorDesign() {
     if (isWoMode) return
     ;(async () => {
       try {
-        let products = CatalogService.getProducts()
-        if (products.length === 0) {
-          products = await CatalogService.loadFromSupabase()
-        }
+        // Siempre cargar fresco desde Supabase para sincronizar entre dispositivos
+        let products = await CatalogService.loadFromSupabase()
+        if (products.length === 0) products = CatalogService.getProducts()
         const grouped: Record<DiagramLayer, PaletteItem[]> = {
           furniture: [], electrical: [], water: []
         }

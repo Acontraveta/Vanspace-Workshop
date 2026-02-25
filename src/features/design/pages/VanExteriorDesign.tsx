@@ -795,10 +795,9 @@ export default function VanExteriorDesign() {
     if (isWoMode) return
     ;(async () => {
       try {
-        let products = CatalogService.getProducts()
-        if (products.length === 0) {
-          products = await CatalogService.loadFromSupabase()
-        }
+        // Siempre cargar fresco desde Supabase para sincronizar entre dispositivos
+        let products = await CatalogService.loadFromSupabase()
+        if (products.length === 0) products = CatalogService.getProducts()
         const mapped: ExteriorElement[] = []
         const seen = new Set<string>()
         products.forEach((p, idx) => {

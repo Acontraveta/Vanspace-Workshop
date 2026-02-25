@@ -129,11 +129,14 @@ export default function PurchaseList() {
   }
 
   const loadCatalog = async () => {
-    let products = CatalogService.getProducts()
-    if (products.length === 0) {
-      try { products = await CatalogService.loadFromSupabase() } catch { /* empty */ }
-    }
-    setCatalogProducts(products)
+    // Mostrar caché inmediatamente para UX rápida
+    const cached = CatalogService.getProducts()
+    if (cached.length > 0) setCatalogProducts(cached)
+    // Siempre descargar fresco desde Supabase para sincronizar entre dispositivos
+    try {
+      const fresh = await CatalogService.loadFromSupabase()
+      setCatalogProducts(fresh)
+    } catch { /* mantener caché */ }
   }
 
   useEffect(() => {
