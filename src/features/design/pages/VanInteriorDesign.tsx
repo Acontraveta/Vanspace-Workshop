@@ -20,6 +20,8 @@ import {
   VanConfig, VAN_PRESETS, DEFAULT_VAN, DEFAULT_PRESET,
   findPreset, saveVanConfig, loadVanConfig,
 } from '../constants/vanPresets'
+import { CatalogService } from '@/features/quotes/services/catalogService'
+import type { CatalogProduct } from '@/features/quotes/types/quote.types'
 
 // ── Floor dimensions derived from van config ─────────────────────
 function getFloor(van: VanConfig) {
@@ -178,6 +180,34 @@ function quoteItemToInteriorPalette(item: FurnitureWorkOrderItem, idx: number): 
     layer: 'furniture',
     fromQuote: true,
   }
+}
+
+// ── Map catalog product → PaletteItem (for free mode) ────────────
+function catalogToInteriorPalette(p: CatalogProduct): PaletteItem | null {
+  const nameLower = (p.NOMBRE || '').toLowerCase()
+  const famLower = (p.FAMILIA || '').toLowerCase()
+  const catLower = (p.CATEGORIA || '').toLowerCase()
+  const all = `${nameLower} ${famLower} ${catLower}`
+
+  // Attempt dimension extraction from name
+  const dimMatch = nameLower.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})/)
+  const parsedW = dimMatch ? parseInt(dimMatch[1]) : undefined
+  const parsedH = dimMatch ? parseInt(dimMatch[2]) : undefined
+
+  for (const mapping of INTERIOR_TYPE_MAP) {
+    if (mapping.keywords.some(k => all.includes(k))) {
+      return {
+        type: mapping.type,
+        label: p.NOMBRE,
+        w: parsedW ?? mapping.defaultW,
+        h: parsedH ?? mapping.defaultH,
+        color: mapping.color,
+        icon: mapping.icon,
+        layer: mapping.layer,
+      }
+    }
+  }
+  return null // product doesn't match any interior type → skip
 }
 
 // ── SVG Symbol visuals per type ───────────────────────────────────
@@ -982,6 +1012,57 @@ export default function VanInteriorDesign() {
   const [showCotas, setShowCotas] = useState(true)
   const svgRef = useRef<SVGSVGElement>(null)
 
+  // ── Catalog-based palettes for free mode ───────────────────────
+  const [catalogPalettes, setCatalogPalettes] = useState<Record<DiagramLayer, PaletteItem[]>>({
+    furniture: [], electrical: [], water: []
+  })
+  const [catalogLoaded, setCatalogLoaded] = useState(false)
+
+  // ── WO linking for free mode ───────────────────────────────────
+  const [linkedWO, setLinkedWO] = useState<FurnitureWorkOrder | null>(null)
+  const [availableWOs, setAvailableWOs] = useState<FurnitureWorkOrder[]>([])
+  const [showWOSelector, setShowWOSelector] = useState(false)
+
+  // Load catalog products for free mode palette
+  useEffect(() => {
+    if (isWoMode) return
+    ;(async () => {
+      try {
+        let products = CatalogService.getProducts()
+        if (products.length === 0) {
+          products = await CatalogService.loadFromSupabase()
+        }
+        const grouped: Record<DiagramLayer, PaletteItem[]> = {
+          furniture: [], electrical: [], water: []
+        }
+        const seen = new Set<string>()
+        for (const p of products) {
+          const item = catalogToInteriorPalette(p)
+          if (item) {
+            const key = `${item.type}-${item.label}`
+            if (!seen.has(key)) {
+              seen.add(key)
+              grouped[item.layer].push(item)
+            }
+          }
+        }
+        setCatalogPalettes(grouped)
+        setCatalogLoaded(true)
+      } catch { /* fallback to hardcoded */ }
+    })()
+  }, [isWoMode])
+
+  // Load available WOs for linking (free mode only)
+  useEffect(() => {
+    if (isWoMode) return
+    ;(async () => {
+      try {
+        const wos = await FurnitureWorkOrderService.getAllByType('interior')
+        setAvailableWOs(wos)
+      } catch { /* ignore */ }
+    })()
+  }, [isWoMode])
+
   // Load WO data or saved design
   useEffect(() => {
     if (workOrderId) {
@@ -1130,17 +1211,18 @@ export default function VanInteriorDesign() {
   }
 
   const save = async () => {
-    if (!workOrderId && !projectId) {
-      toast.error('Guarda primero el proyecto para vincular el diseño interior')
+    const effectiveWoId = workOrderId || linkedWO?.id
+    if (!effectiveWoId && !projectId) {
+      toast.error('Vincula una orden de trabajo o guarda desde un proyecto')
       return
     }
     setSaving(true)
     try {
-      if (workOrderId) {
+      if (effectiveWoId) {
         const { data: existing } = await supabase
           .from('interior_designs')
           .select('id')
-          .eq('work_order_id', workOrderId)
+          .eq('work_order_id', effectiveWoId)
           .maybeSingle()
         if (existing) {
           await supabase
@@ -1148,16 +1230,18 @@ export default function VanInteriorDesign() {
             .update({ items, updated_at: new Date().toISOString() })
             .eq('id', existing.id)
         } else {
+          const wo = workOrder || linkedWO
           await supabase
             .from('interior_designs')
-            .insert({ work_order_id: workOrderId, project_id: workOrder?.project_id, items })
+            .insert({ work_order_id: effectiveWoId, project_id: wo?.project_id, items })
         }
-        if (workOrder) {
-          const updatedItems = (workOrder.items as FurnitureWorkOrderItem[]).map(item => ({
+        const wo = workOrder || linkedWO
+        if (wo) {
+          const updatedItems = (wo.items as FurnitureWorkOrderItem[]).map(item => ({
             ...item,
             designStatus: items.length > 0 ? 'designed' as const : item.designStatus,
           }))
-          await FurnitureWorkOrderService.updateItems(workOrder.id, updatedItems)
+          await FurnitureWorkOrderService.updateItems(wo.id, updatedItems)
         }
       } else {
         await supabase
@@ -1200,6 +1284,10 @@ export default function VanInteriorDesign() {
               <p className="text-xs text-slate-500 mt-0.5">
                 📋 {workOrder.quote_number} · {workOrder.client_name} · {(workOrder.items ?? []).length} elementos
               </p>
+            ) : linkedWO ? (
+              <p className="text-xs text-slate-500 mt-0.5">
+                🔗 {linkedWO.quote_number} · {linkedWO.client_name}
+              </p>
             ) : (
               <p className="text-xs text-slate-500 mt-0.5">
                 Distribución de muebles, diagrama eléctrico y diagrama de agua
@@ -1207,8 +1295,45 @@ export default function VanInteriorDesign() {
             )}
           </div>
         </div>
-        <div className="flex gap-2">
-          {(workOrderId || projectId) && (
+        <div className="flex gap-2 items-center">
+          {/* WO linking for free mode */}
+          {!isWoMode && (
+            <div className="relative">
+              <button onClick={() => setShowWOSelector(!showWOSelector)}
+                className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all ${
+                  linkedWO
+                    ? 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
+                    : 'bg-orange-50 border-orange-300 text-orange-700 hover:bg-orange-100'
+                }`}>
+                {linkedWO ? `🔗 ${linkedWO.quote_number}` : '📋 Vincular OT'}
+              </button>
+              {showWOSelector && (
+                <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                  <div className="p-2 border-b border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase">Órdenes de trabajo — Interior</p>
+                  </div>
+                  {linkedWO && (
+                    <button onClick={() => { setLinkedWO(null); setShowWOSelector(false) }}
+                      className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 border-b border-slate-100">
+                      ✕ Desvincular
+                    </button>
+                  )}
+                  {availableWOs.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-4">No hay órdenes de interior</p>
+                  ) : (
+                    availableWOs.map(wo => (
+                      <button key={wo.id} onClick={() => { setLinkedWO(wo); setShowWOSelector(false); toast.success(`Vinculado a ${wo.quote_number}`) }}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-50 ${linkedWO?.id === wo.id ? 'bg-green-50' : ''}`}>
+                        <p className="font-bold text-slate-700">{wo.quote_number}</p>
+                        <p className="text-[10px] text-slate-400">{wo.client_name} · {(wo.items ?? []).length} items</p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {(workOrderId || projectId || linkedWO) && (
             <button onClick={save} disabled={saving}
               className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
               {saving ? '⏳ Guardando…' : '💾 Guardar'}
@@ -1425,18 +1550,21 @@ export default function VanInteriorDesign() {
           {/* Palette for active layer */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
             {(() => {
-              const paletteItems = isWoMode ? (woPalettes[activeLayer] ?? []) : layerCfg.palette
+              const freePalette = catalogLoaded && catalogPalettes[activeLayer].length > 0
+                ? catalogPalettes[activeLayer]
+                : layerCfg.palette
+              const paletteItems = isWoMode ? (woPalettes[activeLayer] ?? []) : freePalette
               return (
                 <>
                   <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                    {layerCfg.icon} {isWoMode ? `${layerCfg.label} (presupuesto)` : layerCfg.label}
+                    {layerCfg.icon} {isWoMode ? `${layerCfg.label} (presupuesto)` : `${layerCfg.label} (catálogo)`}
                     <span className="text-[10px] text-slate-400 ml-auto font-normal">
                       {paletteItems.length} elementos
                     </span>
                   </h3>
                   {paletteItems.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-4">
-                      No hay elementos de {layerCfg.label.toLowerCase()} en esta orden
+                      No hay elementos de {layerCfg.label.toLowerCase()} en {isWoMode ? 'esta orden' : 'el catálogo'}
                     </p>
                   ) : (
                     <div className="space-y-1 max-h-[50vh] overflow-y-auto">

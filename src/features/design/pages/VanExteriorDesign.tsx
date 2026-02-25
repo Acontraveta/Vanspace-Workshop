@@ -15,6 +15,8 @@ import {
   VanConfig, VAN_PRESETS, DEFAULT_VAN, DEFAULT_PRESET,
   findPreset, saveVanConfig, loadVanConfig,
 } from '../constants/vanPresets'
+import { CatalogService } from '@/features/quotes/services/catalogService'
+import type { CatalogProduct } from '@/features/quotes/types/quote.types'
 
 // ── Catalog element types ─────────────────────────────────────────
 export interface ExteriorElement {
@@ -573,6 +575,33 @@ function quoteItemToExteriorElement(item: FurnitureWorkOrderItem, idx: number): 
   }
 }
 
+// ── Map catalog product → ExteriorElement (for free mode) ────────
+function catalogToExteriorElement(p: CatalogProduct, idx: number): ExteriorElement | null {
+  const nameLower = (p.NOMBRE || '').toLowerCase()
+  const famLower = (p.FAMILIA || '').toLowerCase()
+  const catLower = (p.CATEGORIA || '').toLowerCase()
+  const all = `${nameLower} ${famLower} ${catLower}`
+
+  const dimMatch = nameLower.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})/)
+  const parsedW = dimMatch ? parseInt(dimMatch[1]) : undefined
+  const parsedH = dimMatch ? parseInt(dimMatch[2]) : undefined
+
+  for (const mapping of EXTERIOR_TYPE_MAP) {
+    if (mapping.keywords.some(k => all.includes(k))) {
+      return {
+        id: `cat-ext-${idx}-${p.SKU || Date.now()}`,
+        type: mapping.type,
+        label: p.NOMBRE,
+        w: parsedW ?? mapping.defaultW,
+        h: parsedH ?? mapping.defaultH,
+        color: mapping.color,
+        preferredView: mapping.preferredView,
+      }
+    }
+  }
+  return null // no match → skip
+}
+
 // ── Van config panel ──────────────────────────────────────────────
 function VanConfigPanel({ config, preset, onPreset, onChange }: {
   config: VanConfig
@@ -745,6 +774,53 @@ export default function VanExteriorDesign() {
   const [showCotas, setShowCotas] = useState(true)
   const svgRef = useRef<SVGSVGElement>(null)
 
+  // ── Catalog-based palette for free mode ────────────────────────
+  const [catalogPalette, setCatalogPalette] = useState<ExteriorElement[]>([])
+  const [catalogLoaded, setCatalogLoaded] = useState(false)
+
+  // ── WO linking for free mode ───────────────────────────────────
+  const [linkedWO, setLinkedWO] = useState<FurnitureWorkOrder | null>(null)
+  const [availableWOs, setAvailableWOs] = useState<FurnitureWorkOrder[]>([])
+  const [showWOSelector, setShowWOSelector] = useState(false)
+
+  // Load catalog products for free mode palette
+  useEffect(() => {
+    if (isWoMode) return
+    ;(async () => {
+      try {
+        let products = CatalogService.getProducts()
+        if (products.length === 0) {
+          products = await CatalogService.loadFromSupabase()
+        }
+        const mapped: ExteriorElement[] = []
+        const seen = new Set<string>()
+        products.forEach((p, idx) => {
+          const el = catalogToExteriorElement(p, idx)
+          if (el) {
+            const key = `${el.type}-${el.label}`
+            if (!seen.has(key)) {
+              seen.add(key)
+              mapped.push(el)
+            }
+          }
+        })
+        setCatalogPalette(mapped)
+        setCatalogLoaded(true)
+      } catch { /* fallback to hardcoded */ }
+    })()
+  }, [isWoMode])
+
+  // Load available WOs for linking (free mode only)
+  useEffect(() => {
+    if (isWoMode) return
+    ;(async () => {
+      try {
+        const wos = await FurnitureWorkOrderService.getAllByType('exterior')
+        setAvailableWOs(wos)
+      } catch { /* ignore */ }
+    })()
+  }, [isWoMode])
+
   const views = useMemo(() => getViews(van), [van])
   const viewConfig = views.find(v => v.id === activeView)!
 
@@ -792,7 +868,8 @@ export default function VanExteriorDesign() {
     }
   }, [workOrderId, projectId])
 
-  const activePalette = isWoMode ? woPalette : DEFAULT_PALETTE
+  const freePalette = catalogLoaded && catalogPalette.length > 0 ? catalogPalette : DEFAULT_PALETTE
+  const activePalette = isWoMode ? woPalette : freePalette
 
   const snap = (v: number) => Math.round(v / 50) * 50
 
@@ -895,17 +972,18 @@ export default function VanExteriorDesign() {
   }
 
   const save = async () => {
-    if (!workOrderId && !projectId) {
-      toast.error('Guarda primero el proyecto para vincular el diseño exterior')
+    const effectiveWoId = workOrderId || linkedWO?.id
+    if (!effectiveWoId && !projectId) {
+      toast.error('Vincula una orden de trabajo o guarda desde un proyecto')
       return
     }
     setSaving(true)
     try {
-      if (workOrderId) {
+      if (effectiveWoId) {
         const { data: existing } = await supabase
           .from('exterior_designs')
           .select('id')
-          .eq('work_order_id', workOrderId)
+          .eq('work_order_id', effectiveWoId)
           .maybeSingle()
         if (existing) {
           await supabase
@@ -913,16 +991,18 @@ export default function VanExteriorDesign() {
             .update({ elements, updated_at: new Date().toISOString() })
             .eq('id', existing.id)
         } else {
+          const wo = workOrder || linkedWO
           await supabase
             .from('exterior_designs')
-            .insert({ work_order_id: workOrderId, project_id: workOrder?.project_id, elements })
+            .insert({ work_order_id: effectiveWoId, project_id: wo?.project_id, elements })
         }
-        if (workOrder) {
-          const updatedItems = (workOrder.items as FurnitureWorkOrderItem[]).map(item => ({
+        const wo = workOrder || linkedWO
+        if (wo) {
+          const updatedItems = (wo.items as FurnitureWorkOrderItem[]).map(item => ({
             ...item,
             designStatus: elements.some(el => el.fromQuote) ? 'designed' as const : item.designStatus,
           }))
-          await FurnitureWorkOrderService.updateItems(workOrder.id, updatedItems)
+          await FurnitureWorkOrderService.updateItems(wo.id, updatedItems)
         }
       } else {
         await supabase
@@ -959,6 +1039,10 @@ export default function VanExteriorDesign() {
               <p className="text-xs text-slate-500 mt-0.5">
                 📋 {workOrder.quote_number} · {workOrder.client_name} · {(workOrder.items ?? []).length} elementos
               </p>
+            ) : linkedWO ? (
+              <p className="text-xs text-slate-500 mt-0.5">
+                🔗 {linkedWO.quote_number} · {linkedWO.client_name}
+              </p>
             ) : (
               <p className="text-xs text-slate-500 mt-0.5">
                 Coloca ventanas, claraboyas, aireadores y demás elementos en la furgoneta
@@ -966,8 +1050,45 @@ export default function VanExteriorDesign() {
             )}
           </div>
         </div>
-        <div className="flex gap-2">
-          {(workOrderId || projectId) && (
+        <div className="flex gap-2 items-center">
+          {/* WO linking for free mode */}
+          {!isWoMode && (
+            <div className="relative">
+              <button onClick={() => setShowWOSelector(!showWOSelector)}
+                className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all ${
+                  linkedWO
+                    ? 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
+                    : 'bg-orange-50 border-orange-300 text-orange-700 hover:bg-orange-100'
+                }`}>
+                {linkedWO ? `🔗 ${linkedWO.quote_number}` : '📋 Vincular OT'}
+              </button>
+              {showWOSelector && (
+                <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                  <div className="p-2 border-b border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase">Órdenes de trabajo — Exterior</p>
+                  </div>
+                  {linkedWO && (
+                    <button onClick={() => { setLinkedWO(null); setShowWOSelector(false) }}
+                      className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 border-b border-slate-100">
+                      ✕ Desvincular
+                    </button>
+                  )}
+                  {availableWOs.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-4">No hay órdenes de exterior</p>
+                  ) : (
+                    availableWOs.map(wo => (
+                      <button key={wo.id} onClick={() => { setLinkedWO(wo); setShowWOSelector(false); toast.success(`Vinculado a ${wo.quote_number}`) }}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-50 ${linkedWO?.id === wo.id ? 'bg-green-50' : ''}`}>
+                        <p className="font-bold text-slate-700">{wo.quote_number}</p>
+                        <p className="text-[10px] text-slate-400">{wo.client_name} · {(wo.items ?? []).length} items</p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {(workOrderId || projectId || linkedWO) && (
             <button onClick={save} disabled={saving}
               className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
               {saving ? '⏳ Guardando…' : '💾 Guardar'}
@@ -1156,11 +1277,12 @@ export default function VanExteriorDesign() {
           {/* Palette */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
             <h3 className="text-sm font-bold text-slate-700 mb-3">
-              {isWoMode ? '📋 Elementos del presupuesto' : '🧩 Elementos exteriores'}
+              {isWoMode ? '📋 Elementos del presupuesto' : '🧩 Elementos exteriores (catálogo)'}
+              <span className="text-[10px] text-slate-400 ml-2 font-normal">{activePalette.length} elementos</span>
             </h3>
-            {isWoMode && activePalette.length === 0 ? (
+            {activePalette.length === 0 ? (
               <p className="text-xs text-slate-400 text-center py-4">
-                No hay elementos exteriores en esta orden
+                No hay elementos exteriores en {isWoMode ? 'esta orden' : 'el catálogo'}
               </p>
             ) : (
               <div className="space-y-1.5 max-h-[40vh] overflow-y-auto">
