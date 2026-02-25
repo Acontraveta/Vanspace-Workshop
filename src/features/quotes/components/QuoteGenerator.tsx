@@ -118,6 +118,18 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       setSelectedTarifa(TARIFAS[0])
     }
   }, [dbTarifas])
+
+  // Recalcular todos los items cuando cambia la tarifa
+  useEffect(() => {
+    if (items.length === 0) return
+    setItems(prev => prev.map(item => {
+      const catalogData = item.catalogData
+      if (!catalogData) return item
+      const recalculated = PriceCalculator.calculateQuoteItem(catalogData, item.quantity, selectedTarifa)
+      recalculated.id = item.id
+      return recalculated
+    }))
+  }, [selectedTarifa])
   
   // Estados para datos del cliente
   const [leadId, setLeadId] = useState<string | undefined>(initialLeadData?.lead_id)
