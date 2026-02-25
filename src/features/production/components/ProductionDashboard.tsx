@@ -58,11 +58,9 @@ export default function ProductionDashboard() {
 
   const handlePauseProject = async (projectId: string) => {
     try {
-      await ProductionService.updateProject(projectId, {
-        status: 'ON_HOLD'
-      })
+      await ProductionService.pauseProject(projectId)
       
-      toast.success('Proyecto pausado')
+      toast.success('Proyecto pausado — vuelve a lista de espera')
       loadData()
     } catch (error) {
       toast.error('Error pausando proyecto')

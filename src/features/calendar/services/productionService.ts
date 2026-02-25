@@ -78,6 +78,24 @@ export class ProductionService {
     }
   }
 
+  /** Pause a project: revert to WAITING, clear dates, remove calendar event */
+  static async pauseProject(id: string): Promise<void> {
+    await this.updateProject(id, {
+      status: 'WAITING',
+      start_date: null as any,
+      end_date: null as any,
+      actual_start_date: null as any,
+    })
+
+    // Remove any calendar events linked to this project
+    try {
+      await supabase
+        .from('calendar_events')
+        .delete()
+        .eq('source_id', id)
+    } catch { /* calendar event may not exist */ }
+  }
+
   // ============================================
   // SUGERENCIAS DE CALENDARIO (con capacidad)
   // ============================================
