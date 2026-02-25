@@ -5,6 +5,7 @@ import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { CatalogProduct } from '../types/quote.types'
 import { CatalogService } from '../services/catalogService'
+import { CONFIG } from '@/shared/utils/constants'
 import toast from 'react-hot-toast'
 
 interface ManualProductModalProps {
@@ -118,7 +119,7 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
       NOMBRE: formData.nombre,
       FAMILIA: formData.familia || 'personalizado',
       CATEGORIA: formData.categoria || 'sin categoría',
-      PRECIO_COMPRA: formData.precioCompra,
+      PRECIO_COMPRA: formData.precioCompra ? Math.round(formData.precioCompra * (1 + CONFIG.IVA / 100) * 100) / 100 : 0,
       'PRECIO DE VENTA': formData.precioVenta || undefined,
       PROVEEDOR: formData.proveedor || undefined,
       DIAS_ENTREGA_PROVEEDOR: formData.diasEntrega || undefined,
@@ -191,13 +192,18 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
             {/* Precio y tiempo */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Precio Compra (€)</label>
+                <label className="block text-sm font-medium mb-1">Precio Compra (sin IVA) €</label>
                 <Input
                   type="number"
                   step="0.01"
                   value={formData.precioCompra}
                   onChange={e => setFormData({ ...formData, precioCompra: parseFloat(e.target.value) || 0 })}
                 />
+                {formData.precioCompra > 0 && (
+                  <p className="text-xs text-emerald-600 mt-1 font-medium">
+                    Con IVA ({CONFIG.IVA}%): {(formData.precioCompra * (1 + CONFIG.IVA / 100)).toFixed(2)}€
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Precio Venta (€)</label>

@@ -14,6 +14,7 @@ import { PurchaseItem, StockItem } from '../types/purchase.types'
 import { CatalogProduct } from '@/features/quotes/types/quote.types'
 import { CatalogService } from '@/features/quotes/services/catalogService'
 import { supabase } from '@/lib/supabase'
+import { CONFIG } from '@/shared/utils/constants'
 import toast from 'react-hot-toast'
 
 export default function PurchaseList() {
@@ -277,7 +278,7 @@ export default function PurchaseList() {
       cantidad: 0,
       stockMinimo: 0,
       unidad: 'ud',
-      costeIva: product.PRECIO_COMPRA || 0,
+      costeIva: product.PRECIO_COMPRA ? Math.round((product.PRECIO_COMPRA / (1 + CONFIG.IVA / 100)) * 100) / 100 : 0,
       precioVenta: product['PRECIO DE VENTA'] ? Number(product['PRECIO DE VENTA']) : 0,
       ubicacion: '',
       proveedor: product.PROVEEDOR || '',
@@ -381,7 +382,7 @@ export default function PurchaseList() {
         FAMILIA: newProductForm.familia.trim() || 'GENERAL',
         CATEGORIA: newProductForm.categoria.trim() || 'SIN CATEGORÍA',
         DESCRIPCION: newProductForm.descripcion.trim() || undefined,
-        PRECIO_COMPRA: newProductForm.costeIva || 0,
+        PRECIO_COMPRA: newProductForm.costeIva ? Math.round(newProductForm.costeIva * (1 + CONFIG.IVA / 100) * 100) / 100 : 0,
         'PRECIO DE VENTA': newProductForm.precioVenta || undefined,
         PROVEEDOR: newProductForm.proveedor.trim() || undefined,
         DIAS_ENTREGA_PROVEEDOR: newProductForm.diasEntrega || undefined,
@@ -403,7 +404,7 @@ export default function PurchaseList() {
         cantidad: newProductForm.cantidad,
         stock_minimo: newProductForm.stockMinimo || null,
         unidad: newProductForm.unidad || 'ud',
-        coste_iva_incluido: newProductForm.costeIva || null,
+        coste_iva_incluido: newProductForm.costeIva ? Math.round(newProductForm.costeIva * (1 + CONFIG.IVA / 100) * 100) / 100 : null,
         ubicacion: newProductForm.ubicacion.trim() || null,
         proveedor: newProductForm.proveedor.trim() || null,
       }
@@ -2078,14 +2079,24 @@ export default function PurchaseList() {
                   <h4 className="text-sm font-semibold text-gray-800 mb-2">💰 Precios y proveedor</h4>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Coste compra (IVA incl.) €</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Coste compra (sin IVA) €</label>
                       <Input type="number" min={0} step="0.01" placeholder="0.00" value={newProductForm.costeIva}
                         onChange={e => setNewProductForm(f => ({ ...f, costeIva: parseFloat(e.target.value) || 0 }))} />
+                      {newProductForm.costeIva > 0 && (
+                        <p className="text-xs text-emerald-600 mt-1 font-medium">
+                          Con IVA ({CONFIG.IVA}%): {(newProductForm.costeIva * (1 + CONFIG.IVA / 100)).toFixed(2)}€
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Precio venta €</label>
                       <Input type="number" min={0} step="0.01" placeholder="0.00" value={newProductForm.precioVenta}
                         onChange={e => setNewProductForm(f => ({ ...f, precioVenta: parseFloat(e.target.value) || 0 }))} />
+                      {newProductForm.costeIva > 0 && newProductForm.precioVenta > 0 && (
+                        <p className="text-xs text-blue-500 mt-1">
+                          Margen: {((newProductForm.precioVenta / (newProductForm.costeIva * (1 + CONFIG.IVA / 100)) - 1) * 100).toFixed(0)}%
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 mt-2">
