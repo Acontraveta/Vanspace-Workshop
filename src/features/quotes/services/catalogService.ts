@@ -6,7 +6,7 @@ export class CatalogService {
   private static products: CatalogProduct[] = []
   private static EXCEL_PATH = 'catalogoproductos.xlsx'
 
-  // Cargar catálogo desde Supabase Storage (solo lectura)
+  // Cargar catálogo desde Supabase Storage + DB (fusiona ambos)
   static async loadFromSupabase(): Promise<CatalogProduct[]> {
     try {
       console.log('📥 Cargando catálogo desde Supabase Storage...')
@@ -27,18 +27,35 @@ export class CatalogService {
       
       console.log('📦 Filas leídas:', jsonData.length)
       
-      const products = jsonData.map((row: any) => this.parseProduct(row))
-      const validProducts = products.filter(p => p.SKU && p.NOMBRE)
+      const excelProducts = jsonData.map((row: any) => this.parseProduct(row))
+        .filter(p => p.SKU && p.NOMBRE)
       
-      console.log('✅ Productos válidos:', validProducts.length)
+      // También cargar productos de la tabla catalog_products (añadidos vía formulario)
+      let dbProducts: CatalogProduct[] = []
+      try {
+        const { data: dbRows } = await supabase
+          .from('catalog_products')
+          .select('*')
+          .order('sku')
+        dbProducts = (dbRows || []).map((p: any) => this.dbRowToProduct(p))
+      } catch { /* DB table may not exist yet */ }
+
+      // Fusionar: DB products tienen prioridad (son los más recientes)
+      const dbSKUs = new Set(dbProducts.map(p => p.SKU))
+      const merged = [
+        ...excelProducts.filter(p => !dbSKUs.has(p.SKU)),
+        ...dbProducts,
+      ]
+      
+      console.log('✅ Productos finales:', merged.length, `(${excelProducts.length} Excel + ${dbProducts.length} DB, ${merged.length} tras fusión)`)
       
       // Guardar en memoria y caché
-      this.products = validProducts
-      localStorage.setItem('catalog_products', JSON.stringify(validProducts))
+      this.products = merged
+      localStorage.setItem('catalog_products', JSON.stringify(merged))
       localStorage.setItem('catalog_loaded', 'true')
       localStorage.setItem('catalog_last_sync', new Date().toISOString())
       
-      return validProducts
+      return merged
       
     } catch (error) {
       console.error('❌ Error cargando catálogo:', error)
@@ -47,6 +64,48 @@ export class CatalogService {
       console.log('⚠️ Cargando desde caché local...')
       return this.loadFromLocalStorage()
     }
+  }
+
+  /** Convierte una fila de la tabla catalog_products (snake_case) a CatalogProduct */
+  private static dbRowToProduct(p: any): CatalogProduct {
+    const product: any = {
+      SKU: p.sku,
+      FAMILIA: p.familia,
+      CATEGORIA: p.categoria,
+      NOMBRE: p.nombre,
+      DESCRIPCION: p.descripcion,
+      PRECIO_COMPRA: p.precio_compra,
+      'PRECIO DE VENTA': p.precio_venta,
+      PROVEEDOR: p.proveedor,
+      DIAS_ENTREGA_PROVEEDOR: p.dias_entrega_proveedor,
+      TIEMPO_TOTAL_MIN: p.tiempo_total_min,
+      REQUIERE_DISEÑO: p.requiere_diseno,
+      TIPO_DISEÑO: p.tipo_diseno,
+      INSTRUCCIONES_DISEÑO: p.instrucciones_diseno,
+    }
+    const materiales = p.materiales || []
+    for (let i = 0; i < 5; i++) {
+      const mat = materiales[i] || {}
+      product[`MATERIAL_${i + 1}`]        = mat.nombre || ''
+      product[`MATERIAL_${i + 1}_CANT`]   = mat.cantidad || 0
+      product[`MATERIAL_${i + 1}_UNIDAD`] = mat.unidad || ''
+    }
+    const consumibles = p.consumibles || []
+    for (let i = 0; i < 10; i++) {
+      const cons = consumibles[i] || {}
+      product[`CONSUMIBLE_${i + 1}`]        = cons.nombre || ''
+      product[`CONSUMIBLE_${i + 1}_CANT`]   = cons.cantidad || 0
+      product[`CONSUMIBLE_${i + 1}_UNIDAD`] = cons.unidad || ''
+    }
+    const tareas = p.tareas || []
+    for (let i = 0; i < 12; i++) {
+      const t = tareas[i] || {}
+      product[`TAREA_${i + 1}_NOMBRE`]            = t.nombre || ''
+      product[`TAREA_${i + 1}_DURACION`]           = t.duracion || 0
+      product[`TAREA_${i + 1}_REQUIERE_MATERIAL`]  = t.requiere_material || ''
+      product[`TAREA_${i + 1}_REQUIERE_DISEÑO`]    = t.requiere_diseno || ''
+    }
+    return product as CatalogProduct
   }
 
   private static parseProduct(row: any): CatalogProduct {
@@ -218,46 +277,7 @@ export class CatalogService {
       .select('*')
       .order('sku')
 
-    const dbProducts: CatalogProduct[] = (dbRows || []).map((p: any) => {
-      const product: any = {
-        SKU: p.sku,
-        FAMILIA: p.familia,
-        CATEGORIA: p.categoria,
-        NOMBRE: p.nombre,
-        DESCRIPCION: p.descripcion,
-        PRECIO_COMPRA: p.precio_compra,
-        'PRECIO DE VENTA': p.precio_venta,
-        PROVEEDOR: p.proveedor,
-        DIAS_ENTREGA_PROVEEDOR: p.dias_entrega_proveedor,
-        TIEMPO_TOTAL_MIN: p.tiempo_total_min,
-        REQUIERE_DISEÑO: p.requiere_diseno,
-        TIPO_DISEÑO: p.tipo_diseno,
-        INSTRUCCIONES_DISEÑO: p.instrucciones_diseno,
-      }
-      const materiales = p.materiales || []
-      for (let i = 0; i < 5; i++) {
-        const mat = materiales[i] || {}
-        product[`MATERIAL_${i + 1}`]        = mat.nombre || ''
-        product[`MATERIAL_${i + 1}_CANT`]   = mat.cantidad || 0
-        product[`MATERIAL_${i + 1}_UNIDAD`] = mat.unidad || ''
-      }
-      const consumibles = p.consumibles || []
-      for (let i = 0; i < 10; i++) {
-        const cons = consumibles[i] || {}
-        product[`CONSUMIBLE_${i + 1}`]        = cons.nombre || ''
-        product[`CONSUMIBLE_${i + 1}_CANT`]   = cons.cantidad || 0
-        product[`CONSUMIBLE_${i + 1}_UNIDAD`] = cons.unidad || ''
-      }
-      const tareas = p.tareas || []
-      for (let i = 0; i < 12; i++) {
-        const t = tareas[i] || {}
-        product[`TAREA_${i + 1}_NOMBRE`]            = t.nombre || ''
-        product[`TAREA_${i + 1}_DURACION`]           = t.duracion || 0
-        product[`TAREA_${i + 1}_REQUIERE_MATERIAL`]  = t.requiere_material || ''
-        product[`TAREA_${i + 1}_REQUIERE_DISEÑO`]    = t.requiere_diseno || ''
-      }
-      return product as CatalogProduct
-    })
+    const dbProducts: CatalogProduct[] = (dbRows || []).map((p: any) => this.dbRowToProduct(p))
 
     // 3. Merge: DB products override Excel products (by SKU)
     const dbSKUs = new Set(dbProducts.map(p => p.SKU))
