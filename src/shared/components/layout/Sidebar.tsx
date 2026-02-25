@@ -34,6 +34,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     { icon: '📅', label: 'Calendario', path: '/calendar', show: canAccessModule('calendar') },
     { icon: '👥', label: 'CRM', path: '/crm', show: canAccessModule('quotes') },
     { icon: '✏️', label: 'Diseño', path: '/design', show: (canAccessModule('production') || canAccessModule('quotes')) && user?.role !== 'operario' },
+    { icon: '🚐', label: 'Alquiler', path: '/rental', show: canAccessModule('rental') },
     { icon: '⏰', label: 'Fichajes', path: '/timeclock', show: hasPermission('admin.full') },
     { icon: '⚙️', label: 'Configuración', path: '/config', show: hasPermission('config.view') },
   ]

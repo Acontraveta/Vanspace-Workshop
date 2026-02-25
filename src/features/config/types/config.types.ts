@@ -55,7 +55,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'stock.view', 'stock.edit',
     'warehouse.view', 'warehouse.manage',
     'calendar.view',
-    'exports.excel'
+    'exports.excel',
+    'rental.view', 'rental.manage', // Alquiler camper
   ],
   // ENCARGADO DE TALLER - Gestión de producción
   encargado_taller: [

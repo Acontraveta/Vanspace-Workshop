@@ -39,6 +39,7 @@ const VanExteriorDesign = lazyRetry(() => import('@/features/design/pages/VanExt
 const VanInteriorDesign = lazyRetry(() => import('@/features/design/pages/VanInteriorDesign'))
 const ExteriorDesignList = lazyRetry(() => import('@/features/design/pages/ExteriorDesignList'))
 const InteriorDesignList = lazyRetry(() => import('@/features/design/pages/InteriorDesignList'))
+const RentalDashboard = lazyRetry(() => import('@/features/rental/components/RentalDashboard'))
 // Dashboards
 const AdminDashboard = lazyRetry(() => import('@/features/dashboards/AdminDashboard'))
 const EncargadoDashboard = lazyRetry(() => import('@/features/dashboards/EncargadoDashboard'))
@@ -223,6 +224,16 @@ export const router = createBrowserRouter([
           <Suspense fallback={<PageLoading />}>
             <PermissionGuard module="quotes">
               <DesignHub />
+            </PermissionGuard>
+          </Suspense>
+        )
+      },
+      {
+        path: 'rental',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PermissionGuard module="rental">
+              <RentalDashboard />
             </PermissionGuard>
           </Suspense>
         )
