@@ -1628,7 +1628,7 @@ export default function PurchaseList() {
                         ) : null}
                         {hasRecipe && <span title="Tiene materiales/consumibles">🔩</span>}
                         {hasTasks && <span title="Tiene tareas de producción">⚙️</span>}
-                        {product.REQUIERE_DISEÑO === 'SÍ' && <span title="Requiere diseño">📐</span>}
+                        {product.REQUIERE_DISEÑO === 'SÍ' && <span title={`Diseño: ${(product.TIPO_DISEÑO || '').split(',').filter(Boolean).map(d => d === 'furniture' ? '🪑 Muebles' : d === 'exterior' ? '🚐 Exterior' : d === 'interior' ? '🏠 Interior' : d).join(', ') || 'Sin asignar'}`}>📐</span>}
                         {product.TIEMPO_TOTAL_MIN > 0 && (
                           <span className="text-xs text-gray-400">{product.TIEMPO_TOTAL_MIN}min</span>
                         )}
@@ -1735,7 +1735,7 @@ export default function PurchaseList() {
                                                 <div className="flex items-center justify-center gap-1">
                                                   {hasRecipe && <span title="Materiales/consumibles">🔩</span>}
                                                   {hasTasks && <span title="Tareas producción">⚙️</span>}
-                                                  {product.REQUIERE_DISEÑO === 'SÍ' && <span title="Requiere diseño">📐</span>}
+                                                  {product.REQUIERE_DISEÑO === 'SÍ' && <span title={`Diseño: ${(product.TIPO_DISEÑO || '').split(',').filter(Boolean).map(d => d === 'furniture' ? '🪑 Muebles' : d === 'exterior' ? '🚐 Exterior' : d === 'interior' ? '🏠 Interior' : d).join(', ') || 'Sin asignar'}`}>📐</span>}
                                                 </div>
                                               </td>
                                             </tr>
@@ -2245,16 +2245,36 @@ export default function PurchaseList() {
                   {newProductForm.requiereDiseno && (
                     <div className="space-y-2 ml-6">
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de diseño</label>
-                        <select value={newProductForm.tipoDiseno} onChange={e => setNewProductForm(f => ({ ...f, tipoDiseno: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-emerald-500">
-                          <option value="">Selecciona...</option>
-                          <option value="PLANO">PLANO</option>
-                          <option value="DESPIECE">DESPIECE</option>
-                          <option value="3D">3D</option>
-                          <option value="ESQUEMA">ESQUEMA</option>
-                          <option value="OTRO">OTRO</option>
-                        </select>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Departamentos de diseño</label>
+                        <p className="text-xs text-gray-400 mb-2">Selecciona a qué departamentos debe ir este producto</p>
+                        <div className="space-y-1.5">
+                          {[
+                            { key: 'furniture', icon: '🪑', label: 'Muebles', desc: 'Planos, despiece y corte' },
+                            { key: 'exterior', icon: '🚐', label: 'Exterior', desc: 'Ventanas, claraboyas, exteriores' },
+                            { key: 'interior', icon: '🏠', label: 'Interior', desc: 'Distribución en plano interior' },
+                          ].map(dept => {
+                            const selected = newProductForm.tipoDiseno.split(',').filter(Boolean)
+                            const isChecked = selected.includes(dept.key)
+                            return (
+                              <label key={dept.key} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                                isChecked ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-gray-200 hover:bg-gray-50'
+                              }`}>
+                                <input type="checkbox" checked={isChecked} className="w-3.5 h-3.5 accent-emerald-600"
+                                  onChange={() => {
+                                    const newSelected = isChecked
+                                      ? selected.filter(k => k !== dept.key)
+                                      : [...selected, dept.key]
+                                    setNewProductForm(f => ({ ...f, tipoDiseno: newSelected.join(',') }))
+                                  }} />
+                                <span className="text-base">{dept.icon}</span>
+                                <div>
+                                  <div className="text-xs font-medium">{dept.label}</div>
+                                  <div className="text-[10px] text-gray-500">{dept.desc}</div>
+                                </div>
+                              </label>
+                            )
+                          })}
+                        </div>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Instrucciones de diseño</label>

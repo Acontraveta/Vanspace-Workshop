@@ -310,8 +310,20 @@ export default function TaskInstructionsModal({
           {hasInstructions ? (
             <div className="space-y-4">
               {tipoDiseno && (
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold bg-purple-100 text-purple-700 mb-2">
-                  📐 Tipo: {tipoDiseno}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {tipoDiseno.split(',').filter(Boolean).map((dept: string) => {
+                    const deptInfo: Record<string, { icon: string; label: string; color: string }> = {
+                      furniture: { icon: '🪑', label: 'Muebles', color: 'bg-amber-100 text-amber-700' },
+                      exterior:  { icon: '🚐', label: 'Exterior', color: 'bg-blue-100 text-blue-700' },
+                      interior:  { icon: '🏠', label: 'Interior', color: 'bg-green-100 text-green-700' },
+                    }
+                    const info = deptInfo[dept.trim()] || { icon: '📐', label: dept, color: 'bg-purple-100 text-purple-700' }
+                    return (
+                      <span key={dept} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${info.color}`}>
+                        {info.icon} {info.label}
+                      </span>
+                    )
+                  })}
                 </div>
               )}
 

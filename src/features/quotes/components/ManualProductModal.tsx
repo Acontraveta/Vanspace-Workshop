@@ -22,7 +22,7 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
     precioCompra: 0,
     tiempoTotalMin: 0,
     requiereDiseno: false,
-    tipoDiseno: '',
+    tipoDiseno: '' as string,  // comma-separated department keys: furniture,exterior,interior
     instruccionesDiseno: '',
     buscarEnStock: true, // Por defecto sí buscar en stock
     crearOrdenCompra: false, // Si no hay stock, crear orden
@@ -371,19 +371,36 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
               {formData.requiereDiseno && (
                 <div className="space-y-3 ml-6">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Tipo de Diseño</label>
-                    <select
-                      value={formData.tipoDiseno}
-                      onChange={e => setFormData({ ...formData, tipoDiseno: e.target.value })}
-                      className="w-full px-3 py-2 border rounded"
-                    >
-                      <option value="">Selecciona...</option>
-                      <option value="PLANO">PLANO</option>
-                      <option value="DESPIECE">DESPIECE</option>
-                      <option value="3D">3D</option>
-                      <option value="ESQUEMA">ESQUEMA</option>
-                      <option value="OTRO">OTRO</option>
-                    </select>
+                    <label className="block text-sm font-medium mb-1">Departamentos de diseño</label>
+                    <p className="text-xs text-gray-500 mb-2">Selecciona a qué departamentos debe ir este producto</p>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'furniture', icon: '🪑', label: 'Muebles', desc: 'Planos, despiece y optimización de corte' },
+                        { key: 'exterior', icon: '🚐', label: 'Exterior', desc: 'Ventanas, claraboyas y elementos exteriores' },
+                        { key: 'interior', icon: '🏠', label: 'Interior', desc: 'Distribución en plano interior de la furgoneta' },
+                      ].map(dept => {
+                        const selected = formData.tipoDiseno.split(',').filter(Boolean)
+                        const isChecked = selected.includes(dept.key)
+                        return (
+                          <label key={dept.key} className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
+                            isChecked ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-gray-200 hover:bg-gray-50'
+                          }`}>
+                            <input type="checkbox" checked={isChecked} className="w-4 h-4 accent-emerald-600"
+                              onChange={() => {
+                                const newSelected = isChecked
+                                  ? selected.filter(k => k !== dept.key)
+                                  : [...selected, dept.key]
+                                setFormData({ ...formData, tipoDiseno: newSelected.join(',') })
+                              }} />
+                            <span className="text-lg">{dept.icon}</span>
+                            <div>
+                              <div className="text-sm font-medium">{dept.label}</div>
+                              <div className="text-xs text-gray-500">{dept.desc}</div>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Instrucciones de Diseño</label>

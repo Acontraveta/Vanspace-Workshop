@@ -201,48 +201,61 @@ export class QuoteAutomation {
         const EXTERIOR_WORDS  = ['ventana', 'claraboya', 'aireador', 'rejilla', 'placa solar', 'placa_solar', 'toldo', 'portabicis', 'exterior']
         const INTERIOR_WORDS  = ['batería', 'bateria', 'fusiblera', 'inversor', 'enchufe', 'led', 'interruptor', 'panel control', 'depósito', 'deposito', 'bomba', 'calentador', 'grifo', 'tubería', 'tuberia', 'filtro', 'desagüe', 'desague', 'eléctric', 'electric', 'fontaner', 'agua', 'interior']
 
-        /** Classify a quote item into a design type based on TIPO_DISEÑO, FAMILIA, SKU, and product name.
-         *  - If REQUIERE_DISEÑO='SÍ' + TIPO_DISEÑO set → use TIPO_DISEÑO explicitly
-         *  - If REQUIERE_DISEÑO='SÍ' without TIPO_DISEÑO → keyword heuristic, default furniture
+        /** Classify a quote item into design department(s) based on TIPO_DISEÑO field.
+         *  TIPO_DISEÑO now stores comma-separated department keys: "furniture,interior"
+         *  - If REQUIERE_DISEÑO='SÍ' + TIPO_DISEÑO has valid dept keys → use them (multi-department!)
+         *  - If REQUIERE_DISEÑO='SÍ' without TIPO_DISEÑO → keyword heuristic as fallback
          *  - If REQUIERE_DISEÑO not set → keyword heuristic still detects designable items
-         *  - Returns null only when no match at all
-         *  Priority: exterior → interior → furniture (to avoid misc. items defaulting to furniture)
+         *  - Returns empty array when no match at all
+         *  A product can go to MULTIPLE departments (e.g. furniture → muebles + interior)
          */
-        const classifyDesignType = (item: QuoteItem): 'furniture' | 'exterior' | 'interior' | null => {
-          const reqDis = item.catalogData?.REQUIERE_DISEÑO === 'SÍ'
-          const tipo = (item.catalogData?.TIPO_DISEÑO ?? '').toLowerCase()
+        const VALID_DEPTS = ['furniture', 'exterior', 'interior'] as const
+        type DesignDept = typeof VALID_DEPTS[number]
 
-          // 1) Explicit TIPO_DISEÑO (only when REQUIERE_DISEÑO=SÍ) takes priority
-          if (reqDis && tipo) {
-            if (tipo.includes('mueble'))   return 'furniture'
-            if (tipo.includes('exterior')) return 'exterior'
-            if (tipo.includes('interior')) return 'interior'
+        const classifyDesignTypes = (item: QuoteItem): DesignDept[] => {
+          const reqDis = item.catalogData?.REQUIERE_DISEÑO === 'SÍ'
+          const tipoRaw = (item.catalogData?.TIPO_DISEÑO ?? '').toLowerCase().trim()
+
+          // 1) Explicit TIPO_DISEÑO — comma-separated department keys (new format)
+          if (reqDis && tipoRaw) {
+            const parts = tipoRaw.split(',').map(s => s.trim()).filter(Boolean)
+            const depts = parts.filter(p => (VALID_DEPTS as readonly string[]).includes(p)) as DesignDept[]
+            if (depts.length > 0) return depts
+
+            // Legacy: single Spanish keywords (backward compat with old data)
+            if (tipoRaw.includes('mueble'))   return ['furniture']
+            if (tipoRaw.includes('exterior')) return ['exterior']
+            if (tipoRaw.includes('interior')) return ['interior']
           }
 
-          // 2) Keyword heuristic — check exterior/interior BEFORE furniture
-          //    to prevent exterior items (claraboya, ventana…) from defaulting to furniture
+          // 2) Keyword heuristic — check all matching departments (multi-match possible)
           const familia = (item.catalogData?.FAMILIA ?? '').toLowerCase()
           const sku     = (item.catalogSKU ?? '').toLowerCase()
           const name    = (item.productName ?? '').toLowerCase()
           const fields  = `${familia} ${sku} ${name}`
 
-          if (EXTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ext')) return 'exterior'
-          if (INTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ele')) return 'interior'
-          if (FURNITURE_WORDS.some(w => fields.includes(w)) || sku.startsWith('mue')) return 'furniture'
+          const matched: DesignDept[] = []
+          if (EXTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ext')) matched.push('exterior')
+          if (INTERIOR_WORDS.some(w => fields.includes(w))  || sku.startsWith('ele')) matched.push('interior')
+          if (FURNITURE_WORDS.some(w => fields.includes(w)) || sku.startsWith('mue')) matched.push('furniture')
+
+          if (matched.length > 0) return matched
 
           // 3) REQUIERE_DISEÑO=SÍ but no keyword match → default to furniture
-          if (reqDis) return 'furniture'
+          if (reqDis) return ['furniture']
 
           // 4) No match → not a design item
-          return null
+          return []
         }
 
-        // Group quote items by design type
+        // Group quote items by design type — an item can appear in MULTIPLE groups
         const designGroups: Record<string, QuoteItem[]> = { furniture: [], exterior: [], interior: [] }
         for (const item of quote.items) {
-          const dt = classifyDesignType(item)
-          console.log(`📐 Clasificar "${item.productName}" (SKU: ${item.catalogSKU ?? '-'}, FAMILIA: ${item.catalogData?.FAMILIA ?? '-'}, REQ_DISEÑO: ${item.catalogData?.REQUIERE_DISEÑO ?? '-'}, TIPO: ${item.catalogData?.TIPO_DISEÑO ?? '-'}) → ${dt ?? 'sin diseño'}`)
-          if (dt) designGroups[dt].push(item)
+          const depts = classifyDesignTypes(item)
+          console.log(`📐 Clasificar "${item.productName}" (SKU: ${item.catalogSKU ?? '-'}, FAMILIA: ${item.catalogData?.FAMILIA ?? '-'}, REQ_DISEÑO: ${item.catalogData?.REQUIERE_DISEÑO ?? '-'}, TIPO: ${item.catalogData?.TIPO_DISEÑO ?? '-'}) → ${depts.length > 0 ? depts.join(', ') : 'sin diseño'}`)
+          for (const dept of depts) {
+            designGroups[dept].push(item)
+          }
         }
         console.log(`📐 Diseños agrupados: muebles=${designGroups.furniture.length}, exterior=${designGroups.exterior.length}, interior=${designGroups.interior.length}`)
 
@@ -650,13 +663,17 @@ export class QuoteAutomation {
       const requiereDiseno = item.catalogData.REQUIERE_DISEÑO === 'SÍ'
       
       if (requiereDiseno) {
+        // TIPO_DISEÑO now stores comma-separated department keys (furniture,exterior,interior)
+        const tipoDiseno = item.catalogData.TIPO_DISEÑO || ''
+        const departments = tipoDiseno.split(',').filter(Boolean).join(', ') || 'GENERAL'
+        
         const design = {
           id: crypto.randomUUID(),
           projectId,
           projectNumber: quote.quoteNumber,
           productSKU: item.catalogSKU,
           productName: item.productName,
-          designType: item.catalogData.TIPO_DISEÑO || 'GENERAL',
+          designType: departments,
           instructions: item.catalogData.INSTRUCCIONES_DISEÑO || 'Sin instrucciones específicas',
           status: 'PENDING',
           createdAt: new Date()
