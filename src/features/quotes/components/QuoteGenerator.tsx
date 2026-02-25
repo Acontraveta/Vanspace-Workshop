@@ -286,7 +286,9 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
     const product: CatalogProduct = { ...consumableResolver.product }
     for (const c of resolved) {
       if (!c.skipped) {
+        // Search in matches first, then fallback to full catalog
         const selected = c.matches.find(m => m.SKU === c.selectedSKU)
+          || products.find(p => p.SKU === c.selectedSKU)
         if (selected) {
           if (c.index >= 100) {
             // Material resolution (index 100+ → MATERIAL_1..5)

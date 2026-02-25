@@ -52,7 +52,22 @@ export default function ConsumableResolverModal({
   onSkipAll,
   onCancel,
 }: ConsumableResolverModalProps) {
-  const [items, setItems] = useState<UnresolvedConsumable[]>(initial)
+  // Compute / enrich matches from the full catalog on mount
+  const [items, setItems] = useState<UnresolvedConsumable[]>(() =>
+    initial.map(item => {
+      if (item.matches.length > 0) return item
+      // Pre-computed matches were empty — compute from full catalog
+      const nameLower = item.genericName.toLowerCase().trim()
+      const nameWords = nameLower.split(/\s+/).filter(w => w.length >= 3)
+      const matches = allProducts.filter(p => {
+        const pName = (p.NOMBRE || '').toLowerCase()
+        if (pName.includes(nameLower) || nameLower.includes(pName)) return true
+        if (nameWords.length > 0 && nameWords.every(w => pName.includes(w))) return true
+        return false
+      })
+      return { ...item, matches, selectedSKU: matches[0]?.SKU ?? '' }
+    })
+  )
   const [searchTerms, setSearchTerms] = useState<Record<number, string>>({})
 
   const updateSelected = (index: number, sku: string) => {
