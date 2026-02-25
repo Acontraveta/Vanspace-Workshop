@@ -580,8 +580,9 @@ export default function PurchaseList() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     })
 
-  // Agrupación por proveedor
-  const purchaseGroups: [string, PurchaseItem[]][] | null = groupByProvider
+  // Agrupación por proveedor (automática para pendientes)
+  const shouldGroupByProvider = groupByProvider || selectedTab === 'pending'
+  const purchaseGroups: [string, PurchaseItem[]][] | null = shouldGroupByProvider
     ? (() => {
         const groups: Record<string, PurchaseItem[]> = {}
         const sinProveedor: PurchaseItem[] = []
@@ -662,6 +663,23 @@ export default function PurchaseList() {
     }
   }
 
+  // Provider color helper for visual grouping
+  const providerColors = [
+    { bg: 'bg-blue-600', bgLight: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-300' },
+    { bg: 'bg-purple-600', bgLight: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-300' },
+    { bg: 'bg-teal-600', bgLight: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-300' },
+    { bg: 'bg-rose-600', bgLight: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-300' },
+    { bg: 'bg-indigo-600', bgLight: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-300' },
+    { bg: 'bg-orange-500', bgLight: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-300' },
+    { bg: 'bg-cyan-600', bgLight: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-300' },
+    { bg: 'bg-emerald-600', bgLight: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-300' },
+  ]
+  const getProviderColor = (provider: string) => {
+    let hash = 0
+    for (let i = 0; i < provider.length; i++) hash = provider.charCodeAt(i) + ((hash << 5) - hash)
+    return providerColors[Math.abs(hash) % providerColors.length]
+  }
+
   const PurchaseCard = ({ item }: { item: PurchaseItem }) => {
     const borderColor = item.priority >= 8 ? 'border-l-red-500' : item.priority >= 6 ? 'border-l-amber-400' : item.priority >= 4 ? 'border-l-green-400' : 'border-l-gray-300'
     const priorityLabel = item.priority >= 8 ? '🔴 Urgente' : item.priority >= 6 ? '🟡 Alta' : item.priority >= 4 ? '🟢 Media' : '⚪ Baja'
@@ -671,6 +689,212 @@ export default function PurchaseList() {
       ? Math.floor((Date.now() - new Date(item.orderedAt).getTime()) / 86400000)
       : null
 
+    // Delivery calculations
+    const deliveryDays = item.deliveryDays || 0
+    const daysRemaining = daysSinceOrdered !== null && deliveryDays > 0 ? deliveryDays - daysSinceOrdered : null
+    const progress = daysSinceOrdered !== null && deliveryDays > 0 ? (daysSinceOrdered / deliveryDays) * 100 : 0
+    const expectedArrival = item.orderedAt && deliveryDays > 0
+      ? new Date(new Date(item.orderedAt).getTime() + deliveryDays * 86400000)
+      : null
+    const orderedDate = item.orderedAt ? new Date(item.orderedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : null
+    const arrivalDate = expectedArrival ? expectedArrival.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : null
+    const providerColor = item.provider ? getProviderColor(item.provider) : null
+
+    // ── PENDING: prominent supplier banner ──
+    if (item.status === 'PENDING') {
+      return (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
+          {/* Supplier banner */}
+          {item.provider ? (
+            <div className={`px-4 py-2.5 ${providerColor!.bg} flex items-center gap-2`}>
+              <span className="text-white/80">🏭</span>
+              <span className="text-white font-semibold text-sm truncate">{item.provider}</span>
+              {item.deliveryDays ? (
+                <span className="ml-auto text-white/70 text-xs whitespace-nowrap">~{item.deliveryDays}d entrega</span>
+              ) : null}
+            </div>
+          ) : (
+            <div className="px-4 py-2.5 bg-gray-300 flex items-center gap-2">
+              <span className="text-gray-600">⚠️</span>
+              <span className="text-gray-700 font-medium text-sm">Sin proveedor asignado</span>
+            </div>
+          )}
+          <div className={`p-4 flex flex-col flex-1 border-l-4 ${borderColor}`}>
+            {/* Header */}
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-gray-900 leading-tight truncate" title={item.materialName}>
+                  {item.materialName}
+                </h3>
+                {item.productName && (
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">Para: {item.productName}</p>
+                )}
+              </div>
+              <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${priorityBadge}`}>
+                {priorityLabel}
+              </span>
+            </div>
+
+            {/* Tags (no provider - it's in the banner) */}
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {item.projectNumber ? (
+                <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                  📋 {item.projectNumber}
+                </span>
+              ) : isLowStockReplenishment ? (
+                <span className="inline-flex items-center gap-1 text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full">
+                  ⚠️ Reposición stock
+                </span>
+              ) : null}
+            </div>
+
+            {/* Info */}
+            <div className="flex items-center gap-3 text-sm mb-3">
+              <span className="font-semibold text-gray-900">{item.quantity} {item.unit}</span>
+            </div>
+
+            {item.notes && (
+              <p className="text-xs bg-amber-50 text-amber-800 border border-amber-100 rounded px-2 py-1.5 mb-3 line-clamp-2">
+                {item.notes}
+              </p>
+            )}
+
+            {/* Action */}
+            <div className="mt-auto">
+              <button
+                onClick={() => handleMarkAsOrdered(item.id)}
+                className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
+              >
+                📦 Marcar como pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // ── ORDERED: delivery timeline ──
+    if (item.status === 'ORDERED') {
+      return (
+        <div className={`bg-white rounded-xl border border-gray-100 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow flex flex-col`}>
+          <div className="p-4 flex flex-col flex-1">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-gray-900 leading-tight truncate" title={item.materialName}>
+                  {item.materialName}
+                </h3>
+                {item.productName && (
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">Para: {item.productName}</p>
+                )}
+              </div>
+              <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${priorityBadge}`}>
+                {priorityLabel}
+              </span>
+            </div>
+
+            {/* Tags */}
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {item.projectNumber && (
+                <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                  📋 {item.projectNumber}
+                </span>
+              )}
+              {item.provider && (
+                <span className={`inline-flex items-center gap-1 text-xs ${providerColor!.bgLight} ${providerColor!.text} px-2 py-0.5 rounded-full border ${providerColor!.border}`}>
+                  🏭 {item.provider}
+                </span>
+              )}
+            </div>
+
+            {/* Quantity */}
+            <div className="flex items-center gap-3 text-sm mb-3">
+              <span className="font-semibold text-gray-900">{item.quantity} {item.unit}</span>
+            </div>
+
+            {/* Delivery timeline */}
+            {orderedDate && (
+              <div className={`rounded-lg p-3 mb-3 space-y-2 border ${
+                daysRemaining !== null && daysRemaining < 0 ? 'bg-red-50 border-red-200' :
+                daysRemaining !== null && daysRemaining <= 2 ? 'bg-amber-50 border-amber-200' :
+                'bg-blue-50 border-blue-200'
+              }`}>
+                {/* Dates row */}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-600">📅 {orderedDate}</span>
+                  <span className="text-gray-400">→</span>
+                  {arrivalDate ? (
+                    <span className={`font-medium ${
+                      daysRemaining !== null && daysRemaining < 0 ? 'text-red-700' :
+                      daysRemaining !== null && daysRemaining <= 2 ? 'text-amber-700' :
+                      'text-blue-700'
+                    }`}>
+                      📦 {arrivalDate}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">Sin fecha estimada</span>
+                  )}
+                </div>
+
+                {/* Progress bar */}
+                {deliveryDays > 0 && (
+                  <div className="w-full bg-white/60 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className={`h-2.5 rounded-full transition-all ${
+                        progress > 100 ? 'bg-red-500' : progress > 75 ? 'bg-amber-500' : 'bg-blue-500'
+                      }`}
+                      style={{ width: `${Math.min(progress, 100)}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* Status text */}
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500">{daysSinceOrdered}d transcurridos</span>
+                  {daysRemaining !== null ? (
+                    <span className={`font-bold ${
+                      daysRemaining < 0 ? 'text-red-600' :
+                      daysRemaining <= 2 ? 'text-amber-600' :
+                      'text-blue-600'
+                    }`}>
+                      {daysRemaining > 0 ? `⏳ ${daysRemaining}d restantes` :
+                       daysRemaining === 0 ? '📦 Llega hoy' :
+                       `⚠️ ${Math.abs(daysRemaining)}d de retraso`}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">Plazo no definido</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!orderedDate && (
+              <div className="bg-gray-50 rounded-lg p-3 mb-3 text-center text-xs text-gray-500 border border-gray-200">
+                Sin información de fecha de pedido
+              </div>
+            )}
+
+            {item.notes && (
+              <p className="text-xs bg-amber-50 text-amber-800 border border-amber-100 rounded px-2 py-1.5 mb-3 line-clamp-2">
+                {item.notes}
+              </p>
+            )}
+
+            {/* Action */}
+            <div className="mt-auto">
+              <button
+                onClick={() => handleMarkAsReceived(item.id)}
+                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition"
+              >
+                ✅ Marcar como recibido
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // ── RECEIVED / default card ──
     return (
       <div className={`bg-white rounded-xl border border-gray-100 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow flex flex-col`}>
         <div className="p-4 flex flex-col flex-1">
@@ -707,19 +931,9 @@ export default function PurchaseList() {
             )}
           </div>
 
-          {/* Info row */}
-          <div className="flex flex-wrap items-center gap-3 text-sm mb-3">
+          {/* Info */}
+          <div className="flex items-center gap-3 text-sm mb-3">
             <span className="font-semibold text-gray-900">{item.quantity} {item.unit}</span>
-            {item.deliveryDays && (
-              <span className="text-gray-400 text-xs">⏱ {item.deliveryDays}d</span>
-            )}
-            {daysSinceOrdered !== null && (
-              <span className={`text-xs font-medium ml-auto ${
-                daysSinceOrdered > (item.deliveryDays ?? 7) ? 'text-red-600' : 'text-amber-600'
-              }`}>
-                {daysSinceOrdered > 0 ? `Esperando ${daysSinceOrdered}d` : 'Pedido hoy'}
-              </span>
-            )}
           </div>
 
           {item.notes && (
@@ -730,27 +944,9 @@ export default function PurchaseList() {
 
           {/* Action */}
           <div className="mt-auto">
-            {item.status === 'PENDING' && (
-              <button
-                onClick={() => handleMarkAsOrdered(item.id)}
-                className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
-              >
-                📦 Marcar como pedido
-              </button>
-            )}
-            {item.status === 'ORDERED' && (
-              <button
-                onClick={() => handleMarkAsReceived(item.id)}
-                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition"
-              >
-                ✅ Marcar como recibido
-              </button>
-            )}
-            {item.status === 'RECEIVED' && (
-              <div className="w-full py-2 rounded-lg bg-gray-50 text-gray-500 text-sm font-medium text-center border border-gray-200">
-                ✅ Recibido · {item.receivedAt ? new Date(item.receivedAt).toLocaleDateString('es-ES') : ''}
-              </div>
-            )}
+            <div className="w-full py-2 rounded-lg bg-gray-50 text-gray-500 text-sm font-medium text-center border border-gray-200">
+              ✅ Recibido · {item.receivedAt ? new Date(item.receivedAt).toLocaleDateString('es-ES') : ''}
+            </div>
           </div>
         </div>
       </div>
@@ -1070,10 +1266,11 @@ export default function PurchaseList() {
               <button
                 onClick={() => setGroupByProvider(g => !g)}
                 className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
-                  groupByProvider
+                  groupByProvider || selectedTab === 'pending'
                     ? 'bg-blue-600 text-white border-blue-600'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                 }`}
+                title={selectedTab === 'pending' ? 'Agrupación automática en pendientes' : 'Agrupar por proveedor'}
               >
                 🏭 Por proveedor
               </button>
@@ -1544,18 +1741,35 @@ export default function PurchaseList() {
               </Card>
             ) : purchaseGroups ? (
               <div className="space-y-6">
-                {purchaseGroups.map(([prov, items]) => (
-                  <div key={prov}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="font-semibold text-gray-700 text-sm">🏭 {prov}</span>
-                      <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{items.length}</span>
-                      <div className="flex-1 h-px bg-gray-200" />
+                {purchaseGroups.map(([prov, items]) => {
+                  const provColor = prov !== 'Sin proveedor' ? getProviderColor(prov) : null
+                  const urgentCount = items.filter(i => i.priority >= 8).length
+                  return (
+                    <div key={prov}>
+                      <div className={`flex items-center gap-3 mb-3 px-4 py-2.5 rounded-lg ${
+                        provColor ? `${provColor.bgLight} border ${provColor.border}` : 'bg-gray-100 border border-gray-200'
+                      }`}>
+                        <span className={`text-base font-bold ${provColor ? provColor.text : 'text-gray-600'}`}>
+                          🏭 {prov}
+                        </span>
+                        <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                          provColor ? `bg-white/80 ${provColor.text}` : 'bg-gray-200 text-gray-600'
+                        }`}>
+                          {items.length} {items.length === 1 ? 'pedido' : 'pedidos'}
+                        </span>
+                        <div className="flex-1" />
+                        {urgentCount > 0 && (
+                          <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                            🔴 {urgentCount} urgente{urgentCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {items.map(item => <PurchaseCard key={item.id} item={item} />)}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {items.map(item => <PurchaseCard key={item.id} item={item} />)}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
