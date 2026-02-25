@@ -83,11 +83,6 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
         {
           fps: 10,
           qrbox: { width: qrboxSize, height: qrboxSize },
-          videoConstraints: {
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
         },
         (decodedText) => {
           processCode(decodedText)

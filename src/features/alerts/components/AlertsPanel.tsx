@@ -76,8 +76,8 @@ export function AlertsPanel({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
-      <div className="fixed top-0 right-0 h-full w-full max-w-xl bg-white shadow-2xl z-50 flex flex-col">
+      <div className="fixed inset-0 top-14 lg:top-0 bg-black/20 z-40" onClick={onClose} />
+      <div className="fixed top-14 lg:top-0 right-0 h-[calc(100%-3.5rem)] lg:h-full w-full max-w-xl bg-white shadow-2xl z-50 flex flex-col">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">

@@ -249,6 +249,7 @@ export function filterLeads(leads: Lead[], filters: import('../types/crm.types')
     if (filters.origen && lead.origen !== filters.origen) return false
     if (filters.mes && lead.mes !== filters.mes) return false
     if (filters.region && lead.region !== filters.region) return false
+    if (filters.linea_negocio && lead.linea_negocio !== filters.linea_negocio) return false
     return true
   })
 }

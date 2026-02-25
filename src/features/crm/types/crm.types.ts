@@ -92,6 +92,7 @@ export interface LeadFilters {
   origen?: string
   mes?: string
   region?: string
+  linea_negocio?: string
 }
 
 export interface LeadFormData extends Omit<Lead, 'id' | 'created_at' | 'updated_at' | 'synced_at'> {}

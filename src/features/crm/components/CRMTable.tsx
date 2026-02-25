@@ -99,6 +99,18 @@ export function CRMTable({ leads, isLoading }: CRMTableProps) {
           onChange={e => setFilters({ ...filters, asignado: e.target.value || undefined })}
           className="w-32 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
         />
+        <select
+          value={filters.linea_negocio ?? ''}
+          onChange={e => setFilters({ ...filters, linea_negocio: e.target.value || undefined })}
+          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Línea de negocio</option>
+          <option value="Camperización">Camperización</option>
+          <option value="Reparación">Reparación</option>
+          <option value="Otros servicios">Otros servicios</option>
+          <option value="Alquiler">Alquiler</option>
+          <option value="Cesión">Cesión</option>
+        </select>
         <input
           type="text"
           placeholder="Mes (ej. Enero)"

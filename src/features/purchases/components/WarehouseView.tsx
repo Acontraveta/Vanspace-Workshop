@@ -261,11 +261,6 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
         {
           fps: 10,
           qrbox: { width: qrboxSize, height: qrboxSize },
-          videoConstraints: {
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
         },
         (decodedText) => {
           handleQRScan(decodedText)
