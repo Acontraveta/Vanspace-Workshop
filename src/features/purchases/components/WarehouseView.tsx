@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
@@ -41,6 +41,9 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(true)
   const [qrCode, setQrCode] = useState('')
   const [locationFilter, setLocationFilter] = useState<string>('all')
+  const [warehouseCameraActive, setWarehouseCameraActive] = useState(false)
+  const warehouseScannerRef = useRef<any>(null)
+  const warehouseScannerContainerId = 'warehouse-qr-reader'
 
   const [newShelf, setNewShelf] = useState({
     code: '',
@@ -241,6 +244,45 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
       }
     }
   }
+
+  const startWarehouseCamera = useCallback(async () => {
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode')
+      const scanner = new Html5Qrcode(warehouseScannerContainerId)
+      warehouseScannerRef.current = scanner
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
+        (decodedText) => {
+          handleQRScan(decodedText)
+          stopWarehouseCamera()
+        },
+        () => {}
+      )
+      setWarehouseCameraActive(true)
+    } catch (err: any) {
+      toast.error('No se pudo iniciar la cámara')
+      console.error(err)
+    }
+  }, [])
+
+  const stopWarehouseCamera = useCallback(() => {
+    if (warehouseScannerRef.current) {
+      warehouseScannerRef.current.stop().then(() => {
+        warehouseScannerRef.current.clear()
+      }).catch(() => {})
+      warehouseScannerRef.current = null
+    }
+    setWarehouseCameraActive(false)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (warehouseScannerRef.current) {
+        warehouseScannerRef.current.stop().catch(() => {})
+      }
+    }
+  }, [])
 
   const getEmptyLocations = (): string[] => {
     const empty: string[] = []
@@ -865,20 +907,36 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
                 </div>
               </div>
 
+              {/* Camera scanner */}
+              <div
+                id={warehouseScannerContainerId}
+                className={`rounded-lg overflow-hidden mb-3 ${warehouseCameraActive ? 'border-2 border-emerald-400' : 'hidden'}`}
+                style={{ minHeight: warehouseCameraActive ? 260 : 0 }}
+              />
+
               {/* QR Scanner */}
               <div className="flex gap-2">
+                {!warehouseCameraActive ? (
+                  <Button size="sm" onClick={startWarehouseCamera} className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
+                    📸
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={stopWarehouseCamera} className="shrink-0">
+                    ✕
+                  </Button>
+                )}
                 <Input
                   placeholder="Pega o escanea código QR..."
                   value={qrCode}
                   onChange={(e) => setQrCode(e.target.value)}
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter' && qrCode) {
                       handleQRScan(qrCode)
                     }
                   }}
                 />
                 <Button onClick={() => handleQRScan(qrCode)} disabled={!qrCode}>
-                  🔍 Buscar
+                  🔍
                 </Button>
               </div>
             </CardContent>

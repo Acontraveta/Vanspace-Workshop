@@ -23,6 +23,7 @@
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.0",
     "date-fns": "^3.6.0",
+    "html5-qrcode": "^2.3.8",
     "jspdf": "^2.5.1",
     "lucide-react": "^0.309.0",
     "qrcode": "^1.5.4",

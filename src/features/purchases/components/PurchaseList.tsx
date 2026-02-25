@@ -30,6 +30,7 @@ export default function PurchaseList() {
   const [expandedCatalogFamily, setExpandedCatalogFamily] = useState<string | null>(null)
   const [expandedCatalogCategory, setExpandedCatalogCategory] = useState<string | null>(null)
   const [showQR, setShowQR] = useState<string | null>(null)
+  const [showQRItem, setShowQRItem] = useState<PurchaseItem | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedProvider, setSelectedProvider] = useState<string>('all')
   const [selectedEstanteria, setSelectedEstanteria] = useState<string>('all')
@@ -537,6 +538,7 @@ export default function PurchaseList() {
 
     if (qrDataURL) {
       setShowQR(qrDataURL)
+      setShowQRItem(item || null)
 
       if (existedInStock) {
         toast.success('✅ Recibido y cantidad actualizada en stock.', { duration: 5000 })
@@ -1126,65 +1128,97 @@ export default function PurchaseList() {
 
       <div className="p-4 md:p-8 space-y-4 md:space-y-6">
         {showQR && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowQR(null)}>
-            <Card className="max-w-md" onClick={(e) => e.stopPropagation()}>
-              <CardHeader>
-                <CardTitle>✅ Material Recibido - Código QR</CardTitle>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => { setShowQR(null); setShowQRItem(null) }}>
+            <Card className="max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">✅ Material Recibido — Etiqueta QR</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="bg-white p-4 rounded-lg border-2 border-gray-300 flex justify-center">
-                  <img src={showQR} alt="QR Code" className="w-full max-w-xs" />
+                {/* Label preview */}
+                <div className="bg-white p-3 rounded-lg border-2 border-gray-200 flex items-center gap-3">
+                  <img src={showQR} alt="QR Code" className="w-28 h-28 shrink-0" />
+                  {showQRItem && (
+                    <div className="min-w-0">
+                      <div className="font-bold text-sm">{showQRItem.referencia || showQRItem.materialName}</div>
+                      <div className="text-xs text-gray-600 line-clamp-2">{showQRItem.materialName}</div>
+                      <div className="text-xs text-gray-500 mt-1">{showQRItem.quantity} {showQRItem.unit}</div>
+                      {showQRItem.provider && <div className="text-xs text-gray-400">{showQRItem.provider}</div>}
+                    </div>
+                  )}
                 </div>
                 
-                <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm">
-                  <p className="font-bold text-blue-800 mb-2">📋 Instrucciones:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-blue-700">
-                    <li>Imprime este código QR</li>
-                    <li>Pégalo en el material recibido</li>
-                    <li>Escanéalo para ubicarlo en el almacén</li>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs">
+                  <p className="font-bold text-blue-800 mb-1">📋 Instrucciones:</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-blue-700">
+                    <li>Imprime la etiqueta y pégala en el material</li>
+                    <li>Escanea el QR desde la pestaña "Escanear QR" para ubicarlo</li>
                   </ol>
                 </div>
 
                 <div className="flex gap-2">
                   <Button 
+                    size="sm"
                     className="flex-1"
                     onClick={() => {
+                      const printWindow = window.open('', '', 'width=400,height=500')
+                      if (!printWindow) return
+                      const ref = showQRItem?.referencia || showQRItem?.materialName || ''
+                      const name = showQRItem?.materialName || ''
+                      const qty = showQRItem ? `${showQRItem.quantity} ${showQRItem.unit}` : ''
+                      printWindow.document.write(`
+                        <html>
+                          <head>
+                            <title>Etiqueta QR</title>
+                            <style>
+                              @page { size: 62mm 40mm; margin: 0; }
+                              * { margin: 0; padding: 0; box-sizing: border-box; }
+                              body { font-family: Arial, sans-serif; width: 62mm; height: 40mm; display: flex; align-items: center; padding: 2mm; }
+                              .label { display: flex; gap: 2mm; width: 100%; align-items: center; }
+                              .qr { width: 30mm; height: 30mm; flex-shrink: 0; }
+                              .qr img { width: 100%; height: 100%; }
+                              .info { flex: 1; overflow: hidden; }
+                              .ref { font-size: 9pt; font-weight: bold; margin-bottom: 1mm; }
+                              .name { font-size: 7pt; line-height: 1.2; margin-bottom: 1mm; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+                              .qty { font-size: 8pt; color: #555; }
+                            </style>
+                          </head>
+                          <body>
+                            <div class="label">
+                              <div class="qr"><img src="${showQR}" /></div>
+                              <div class="info">
+                                <div class="ref">${ref}</div>
+                                <div class="name">${name}</div>
+                                <div class="qty">${qty}</div>
+                              </div>
+                            </div>
+                          </body>
+                        </html>
+                      `)
+                      printWindow.document.close()
+                      setTimeout(() => printWindow.print(), 300)
+                    }}
+                  >
+                    🖨️ Imprimir etiqueta
+                  </Button>
+                  <Button 
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
                       const link = document.createElement('a')
-                      link.download = `qr-${Date.now()}.png`
+                      link.download = `qr-${showQRItem?.referencia || Date.now()}.png`
                       link.href = showQR
                       link.click()
                       toast.success('QR descargado')
                     }}
                   >
-                    💾 Descargar QR
+                    💾
                   </Button>
                   <Button 
-                    className="flex-1"
-                    onClick={() => {
-                      const printWindow = window.open('', '', 'width=600,height=600')
-                      if (printWindow) {
-                        printWindow.document.write(`
-                          <html>
-                            <head><title>Imprimir QR</title></head>
-                            <body style="text-align: center; padding: 20px;">
-                              <h2>Código QR - Material</h2>
-                              <img src="${showQR}" style="width: 300px; height: 300px;" />
-                              <p>Pegar en el material recibido</p>
-                            </body>
-                          </html>
-                        `)
-                        printWindow.document.close()
-                        printWindow.print()
-                      }
-                    }}
-                  >
-                    🖨️ Imprimir QR
-                  </Button>
-                  <Button 
+                    size="sm"
                     variant="outline"
-                    onClick={() => setShowQR(null)}
+                    onClick={() => { setShowQR(null); setShowQRItem(null) }}
                   >
-                    ✕ Cerrar
+                    ✕
                   </Button>
                 </div>
               </CardContent>
@@ -1523,19 +1557,38 @@ export default function PurchaseList() {
                                                   {item.STOCK_MINIMO && <div className="text-xs text-gray-500">Min: {item.STOCK_MINIMO}</div>}
                                                 </td>
                                                 <td className="px-4 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                                                  {isValidLocation(item.UBICACION) ? (
-                                                    <button onClick={() => handleGoToLocation(item.UBICACION!)}
-                                                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition text-sm font-medium"
-                                                      title="Ir a esta ubicación en el almacén">
-                                                      📍 {item.UBICACION}
+                                                  <div className="flex items-center gap-1">
+                                                    {isValidLocation(item.UBICACION) ? (
+                                                      <button onClick={() => handleGoToLocation(item.UBICACION!)}
+                                                        className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition text-sm font-medium"
+                                                        title="Ir a esta ubicación en el almacén">
+                                                        📍 {item.UBICACION}
+                                                      </button>
+                                                    ) : (
+                                                      <button onClick={() => handleAssignLocation(item)}
+                                                        className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-full hover:bg-orange-200 transition text-sm font-medium"
+                                                        title="Asignar ubicación">
+                                                        ⚠️ Sin ubicar
+                                                      </button>
+                                                    )}
+                                                    <button
+                                                      onClick={async () => {
+                                                        const QR = (await import('qrcode')).default
+                                                        const dataUrl = await QR.toDataURL(
+                                                          JSON.stringify({ type: 'warehouse_product', referencia: item.REFERENCIA, nombre: item.ARTICULO }),
+                                                          { width: 400, margin: 2 }
+                                                        )
+                                                        setShowQR(dataUrl)
+                                                        setShowQRItem({ materialName: item.ARTICULO, referencia: item.REFERENCIA, quantity: item.CANTIDAD, unit: item.UNIDAD, provider: item.PROVEEDOR } as any)
+                                                      }}
+                                                      className="p-1 text-gray-400 hover:text-gray-700 transition"
+                                                      title="Generar etiqueta QR"
+                                                    >
+                                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                        <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM17 14h3v3h-3zM14 17h3v3h-3zM17 20h3v0h-3z" />
+                                                      </svg>
                                                     </button>
-                                                  ) : (
-                                                    <button onClick={() => handleAssignLocation(item)}
-                                                      className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-full hover:bg-orange-200 transition text-sm font-medium"
-                                                      title="Asignar ubicación">
-                                                      ⚠️ Sin ubicar
-                                                    </button>
-                                                  )}
+                                                  </div>
                                                 </td>
                                                 <td className="px-4 py-3 whitespace-nowrap text-sm">
                                                   {item.COSTE_IVA_INCLUIDO && item.COSTE_IVA_INCLUIDO > 0 ? (
