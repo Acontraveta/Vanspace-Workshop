@@ -19,6 +19,8 @@ import { QuoteService } from '../services/quoteService'
 import { QuoteAutomation } from '../services/quoteAutomation'
 import { QuickDocService, QuickDocRecord } from '../services/quickDocService'
 import { Quote } from '../types/quote.types'
+import QuotePreview from './QuotePreview'
+import QuickDocViewerModal from './QuickDocViewerModal'
 import toast from 'react-hot-toast'
 
 // ─── Types ───────────────────────────────────────────────────
@@ -53,6 +55,10 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   // ── Main tab ──────────────────────────────────────────────
   const [mainTab, setMainTab] = useState<MainTab>('presupuestos')
   const [quoteSubFilter, setQuoteSubFilter] = useState<QuoteSubFilter>('all')
+
+  // ── Viewer state ─────────────────────────────────────────
+  const [viewingQuote, setViewingQuote] = useState<Quote | null>(null)
+  const [viewingDoc, setViewingDoc]     = useState<QuickDocRecord | null>(null)
 
   // ── Search ────────────────────────────────────────────────
   const [searchText, setSearchText]     = useState('')
@@ -183,10 +189,19 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
     const progress = quote.status === 'APPROVED' ? getProjectProgress(quote) : null
 
     return (
-      <Card className={`hover:shadow-lg transition ${
-        isExpiringSoon         ? 'border-orange-300 bg-orange-50'  :
-        isFactura              ? 'border-green-200 bg-green-50/40' : ''
-      }`}>
+      <Card
+        className={`hover:shadow-lg transition cursor-pointer ${
+          isExpiringSoon         ? 'border-orange-300 bg-orange-50'  :
+          isFactura              ? 'border-green-200 bg-green-50/40' : ''
+        }`}
+        onClick={() => {
+          if (isFactura) {
+            setViewingQuote(quote)
+          } else {
+            onEditQuote(quote.id)
+          }
+        }}
+      >
         <CardContent className="p-5">
 
           {/* Header row */}
@@ -259,7 +274,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           </div>
 
           {/* Actions */}
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
             {(quote.status === 'DRAFT' || quote.status === 'SENT') && (
               <>
                 <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white flex-1" onClick={() => handleApprove(quote)}>
@@ -280,8 +295,8 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
               <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(quote.id)}>🗑️ Eliminar</Button>
             )}
             {isFactura && (
-              <Button size="sm" variant="outline" className="flex-1" disabled>
-                {progress?.percentage === 100 ? '🎉 Proyecto completado' : '✅ Proyecto en curso'}
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => setViewingQuote(quote)}>
+                👁️ Ver documento
               </Button>
             )}
           </div>
@@ -295,7 +310,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
     const accent = isProforma ? '#7c3aed' : '#1d4ed8'
 
     return (
-      <Card className="hover:shadow-lg transition">
+      <Card className="hover:shadow-lg transition cursor-pointer" onClick={() => setViewingDoc(doc)}>
         <CardContent className="p-5">
           <div className="flex items-start justify-between mb-3">
             <div className="flex-1 min-w-0">
@@ -336,14 +351,21 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
             </div>
           </div>
 
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setViewingDoc(doc)}
+            >
+              👁️ Ver
+            </Button>
             <Button
               size="sm"
               variant="destructive"
-              className="flex-1"
               onClick={() => handleDeleteDoc(doc.id)}
             >
-              🗑️ Eliminar
+              🗑️
             </Button>
           </div>
         </CardContent>
@@ -527,6 +549,23 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           ))}
 
         </div>
+      )}
+
+      {/* ── Quote viewer (facturas / presupuestos) ───────── */}
+      {viewingQuote && (
+        <QuotePreview
+          quote={viewingQuote}
+          type={viewingQuote.status === 'APPROVED' ? 'FACTURA' : 'PRESUPUESTO'}
+          onClose={() => setViewingQuote(null)}
+        />
+      )}
+
+      {/* ── QuickDoc viewer (proformas / simplificadas) ──── */}
+      {viewingDoc && (
+        <QuickDocViewerModal
+          doc={viewingDoc}
+          onClose={() => setViewingDoc(null)}
+        />
       )}
     </div>
   )
