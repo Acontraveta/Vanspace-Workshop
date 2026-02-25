@@ -118,32 +118,8 @@ export default function PurchaseList() {
         PROVEEDOR: item.proveedor
       }))
 
-      // Merge catalog products not yet in stock (quantity 0)
-      const stockRefs = new Set(formattedStock.map(s => s.REFERENCIA?.toUpperCase()).filter(Boolean))
-      let catalogProducts = CatalogService.getProducts()
-      // If catalog not cached yet, load fresh
-      if (catalogProducts.length === 0) {
-        try { catalogProducts = await CatalogService.loadFromSupabase() } catch { /* use empty */ }
-      }
-      const catalogOnly: StockItem[] = catalogProducts
-        .filter(p => p.SKU && !stockRefs.has(p.SKU.toUpperCase()))
-        .map(p => ({
-          REFERENCIA: p.SKU,
-          FAMILIA: p.FAMILIA || '',
-          CATEGORIA: p.CATEGORIA || '',
-          ARTICULO: p.NOMBRE,
-          DESCRIPCION: p.DESCRIPCION || '',
-          CANTIDAD: 0,
-          STOCK_MINIMO: 0,
-          UNIDAD: 'ud',
-          COSTE_IVA_INCLUIDO: p.PRECIO_COMPRA || 0,
-          UBICACION: '',
-          PROVEEDOR: p.PROVEEDOR || '',
-        }))
-
-      const mergedStock = [...formattedStock, ...catalogOnly]
-      setStock(mergedStock)
-      setStockLoaded(mergedStock.length > 0)
+      setStock(formattedStock)
+      setStockLoaded(formattedStock.length > 0)
     }
   }
 
