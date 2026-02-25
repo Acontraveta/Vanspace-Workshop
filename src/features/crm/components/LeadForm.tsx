@@ -318,6 +318,7 @@ export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
                     <option value="Reparación">Reparación</option>
                     <option value="Otros servicios">Otros servicios</option>
                     <option value="Alquiler">Alquiler</option>
+                    <option value="Cesión">Cesión</option>
                   </select>
                 </Field>
                 <Field label="Origen">
