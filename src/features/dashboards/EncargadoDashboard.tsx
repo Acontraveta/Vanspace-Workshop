@@ -29,6 +29,7 @@ export default function EncargadoDashboard() {
     delayedProjects: 0
   })
   const [loading, setLoading] = useState(true)
+  const [dataErrors, setDataErrors] = useState<string[]>([])
 
   useEffect(() => {
     loadAllStats()
@@ -61,6 +62,13 @@ export default function EncargadoDashboard() {
       ])
 
       // Extraer resultados con fallback
+      const errors: string[] = []
+      if (quotesResult.status === 'rejected') { console.warn('⚠️ Dashboard: quotes failed:', quotesResult.reason); errors.push('Presupuestos') }
+      if (projectsResult.status === 'rejected') { console.warn('⚠️ Dashboard: projects failed:', projectsResult.reason); errors.push('Producción') }
+      if (purchasesResult.status === 'rejected') { console.warn('⚠️ Dashboard: purchases failed:', purchasesResult.reason); errors.push('Compras') }
+      if (stockResult.status === 'rejected') { console.warn('⚠️ Dashboard: stock failed:', stockResult.reason); errors.push('Stock') }
+      setDataErrors(errors)
+
       const quotes = quotesResult.status === 'fulfilled' ? quotesResult.value : { active: [], approved: [] }
       const { projects: allProjects, tasks: allTasks } = projectsResult.status === 'fulfilled' ? projectsResult.value : { projects: [], tasks: [] }
       const purchases = purchasesResult.status === 'fulfilled' ? purchasesResult.value : []
@@ -119,6 +127,16 @@ export default function EncargadoDashboard() {
       />
 
       <div className="p-4 md:p-8 space-y-4 md:space-y-6">
+        {/* Alerta si alguna fuente de datos falló */}
+        {dataErrors.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+            <span className="text-amber-600 text-lg">⚠️</span>
+            <div className="text-sm text-amber-800">
+              <p className="font-medium">No se pudieron cargar algunos datos</p>
+              <p className="text-xs mt-1">Módulos afectados: {dataErrors.join(', ')}. Ejecuta la migración 030 en el SQL Editor de Supabase.</p>
+            </div>
+          </div>
+        )}
         {/* Alertas importantes */}
         {(stats.delayedProjects > 0 || stats.blockedTasks > 0 || stats.lowStock > 0) && (
           <Card className="border-orange-300 bg-orange-50">

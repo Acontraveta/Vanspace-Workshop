@@ -18,6 +18,7 @@ export default function ComprasDashboard() {
   const [purchases, setPurchases] = useState<PurchaseItem[]>([])
   const [stock, setStock] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [dataErrors, setDataErrors] = useState<string[]>([])
 
   useEffect(() => {
     loadData()
@@ -29,12 +30,21 @@ export default function ComprasDashboard() {
         PurchaseService.getAllPurchases(),
         StockService.loadFromSupabase(),
       ])
-      if (purchasesResult.status === 'fulfilled') setPurchases(purchasesResult.value)
+      const errors: string[] = []
+      if (purchasesResult.status === 'fulfilled') {
+        setPurchases(purchasesResult.value)
+      } else {
+        console.warn('⚠️ Dashboard: purchases failed:', purchasesResult.reason)
+        errors.push('Compras')
+      }
       if (stockResult.status === 'fulfilled') {
         setStock(stockResult.value)
       } else {
+        console.warn('⚠️ Dashboard: stock failed:', stockResult.reason)
+        errors.push('Stock')
         setStock(StockService.getStock())
       }
+      setDataErrors(errors)
     } catch (error) {
       console.error('Error cargando datos compras:', error)
     } finally {
@@ -73,6 +83,16 @@ export default function ComprasDashboard() {
       />
 
       <div className="p-4 md:p-8 space-y-4 md:space-y-6">
+        {/* Alerta si alguna fuente de datos falló */}
+        {dataErrors.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+            <span className="text-amber-600 text-lg">⚠️</span>
+            <div className="text-sm text-amber-800">
+              <p className="font-medium">No se pudieron cargar algunos datos</p>
+              <p className="text-xs mt-1">Módulos afectados: {dataErrors.join(', ')}. Ejecuta la migración 030 en el SQL Editor de Supabase.</p>
+            </div>
+          </div>
+        )}
         {/* KPIs */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 md:gap-4">
           <Card>
