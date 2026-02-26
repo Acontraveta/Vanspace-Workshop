@@ -21,6 +21,8 @@ export interface RentalVehicle {
   precio_dia_eur: number       // Precio base por día
   precio_semana_eur?: number   // Precio semanal (descuento)
   fianza_eur: number
+  km_incluidos?: number         // Km incluidos por día (ej. 200)
+  precio_km_extra?: number     // €/km extra sobre el límite
   equipamiento: string[]       // ["Nevera", "Ducha", "Calefacción", ...]
   fotos?: string[]             // URLs Supabase Storage
   notas?: string
@@ -66,6 +68,8 @@ export interface RentalBooking {
   km_llegada?: number
   incidencias?: string
   notas?: string
+  // Km extra
+  coste_km_extra?: number      // Coste calculado por km extra
   // Extras
   extras?: RentalExtra[]
   // Lead CRM vinculado

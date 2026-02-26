@@ -289,7 +289,7 @@ function VehicleCard({ vehicle, bookings, onEdit, onStatusChange }: {
         </div>
 
         {/* Pricing */}
-        <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-4">
+        <div className="bg-gray-50 rounded-lg p-3 flex flex-wrap items-center gap-4">
           <div>
             <p className="text-xs text-gray-500">Día</p>
             <p className="text-lg font-bold text-blue-600">{vehicle.precio_dia_eur}€</p>
@@ -304,6 +304,18 @@ function VehicleCard({ vehicle, bookings, onEdit, onStatusChange }: {
             <p className="text-xs text-gray-500">Fianza</p>
             <p className="text-lg font-bold text-amber-600">{vehicle.fianza_eur}€</p>
           </div>
+          {vehicle.km_incluidos && (
+            <div>
+              <p className="text-xs text-gray-500">Km/día incl.</p>
+              <p className="text-sm font-bold text-gray-600">{vehicle.km_incluidos} km</p>
+            </div>
+          )}
+          {vehicle.precio_km_extra && (
+            <div>
+              <p className="text-xs text-gray-500">€/km extra</p>
+              <p className="text-sm font-bold text-red-500">{vehicle.precio_km_extra}€</p>
+            </div>
+          )}
         </div>
 
         {/* Current / next booking */}
@@ -387,6 +399,8 @@ function VehicleForm({ vehicle, saving, onSave, onCancel }: {
   const [precioDia, setPrecioDia] = useState(vehicle?.precio_dia_eur?.toString() ?? '')
   const [precioSemana, setPrecioSemana] = useState(vehicle?.precio_semana_eur?.toString() ?? '')
   const [fianza, setFianza] = useState(vehicle?.fianza_eur?.toString() ?? '500')
+  const [kmIncluidos, setKmIncluidos] = useState(vehicle?.km_incluidos?.toString() ?? '200')
+  const [precioKmExtra, setPrecioKmExtra] = useState(vehicle?.precio_km_extra?.toString() ?? '0.25')
   const [equipamiento, setEquipamiento] = useState(vehicle?.equipamiento?.join(', ') ?? '')
   const [notas, setNotas] = useState(vehicle?.notas ?? '')
   const [kmActual, setKmActual] = useState(vehicle?.km_actual?.toString() ?? '')
@@ -410,6 +424,8 @@ function VehicleForm({ vehicle, saving, onSave, onCancel }: {
       precio_dia_eur: parseFloat(precioDia),
       precio_semana_eur: precioSemana ? parseFloat(precioSemana) : undefined,
       fianza_eur: parseFloat(fianza) || 500,
+      km_incluidos: kmIncluidos ? parseInt(kmIncluidos) : undefined,
+      precio_km_extra: precioKmExtra ? parseFloat(precioKmExtra) : undefined,
       equipamiento: equipamiento ? equipamiento.split(',').map(s => s.trim()).filter(Boolean) : [],
       notas: notas || undefined,
       km_actual: kmActual ? parseInt(kmActual) : undefined,
@@ -464,6 +480,14 @@ function VehicleForm({ vehicle, saving, onSave, onCancel }: {
         <div>
           <label className={labelCls}>Fianza (€)</label>
           <input type="number" step="0.01" value={fianza} onChange={e => setFianza(e.target.value)} className={inputCls} placeholder="500" />
+        </div>
+        <div>
+          <label className={labelCls}>Km incluidos/día</label>
+          <input type="number" value={kmIncluidos} onChange={e => setKmIncluidos(e.target.value)} className={inputCls} placeholder="200" />
+        </div>
+        <div>
+          <label className={labelCls}>€/km extra</label>
+          <input type="number" step="0.01" value={precioKmExtra} onChange={e => setPrecioKmExtra(e.target.value)} className={inputCls} placeholder="0.25" />
         </div>
         <div>
           <label className={labelCls}>Km actual</label>
@@ -676,6 +700,9 @@ function BookingRow({ booking, onEdit, onStatusChange }: {
         <div className="flex items-center gap-3">
           <div className="text-right">
             <p className="text-lg font-bold text-blue-600">{booking.precio_total?.toLocaleString('es-ES')}€</p>
+            {(booking.coste_km_extra ?? 0) > 0 && (
+              <p className="text-xs text-red-500 font-medium">+ {booking.coste_km_extra}€ km extra</p>
+            )}
             <p className="text-xs text-gray-400">Fianza: {booking.fianza}€</p>
           </div>
 
@@ -722,9 +749,14 @@ function BookingRow({ booking, onEdit, onStatusChange }: {
         </div>
       </div>
 
-      {/* Extras + notes */}
-      {(booking.extras?.some(e => e.incluido) || booking.notas || booking.incidencias) && (
+      {/* Km + extras + notes */}
+      {(booking.km_salida || booking.km_llegada || booking.extras?.some(e => e.incluido) || booking.notas || booking.incidencias) && (
         <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-3 text-xs">
+          {booking.km_salida != null && booking.km_llegada != null && (
+            <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
+              📏 {(booking.km_llegada - booking.km_salida).toLocaleString()} km recorridos
+            </span>
+          )}
           {booking.extras?.filter(e => e.incluido).map((e, i) => (
             <span key={i} className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">{e.nombre}</span>
           ))}
@@ -819,6 +851,13 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
       notas: notas || undefined,
       km_salida: kmSalida ? parseInt(kmSalida) : undefined,
       km_llegada: kmLlegada ? parseInt(kmLlegada) : undefined,
+      coste_km_extra: (kmSalida && kmLlegada && selectedVehicle?.km_incluidos && selectedVehicle?.precio_km_extra)
+        ? RentalService.calcularCosteKmExtra(
+            parseInt(kmSalida), parseInt(kmLlegada),
+            selectedVehicle.km_incluidos, selectedVehicle.precio_km_extra,
+            fechaInicio, fechaFin
+          ).coste
+        : 0,
       incidencias: incidencias || undefined,
     })
   }
@@ -954,17 +993,54 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
         </div>
       </div>
 
-      {/* KM + incidencias (for active/completed bookings) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div>
-          <label className={labelCls}>Km salida</label>
-          <input type="number" value={kmSalida} onChange={e => setKmSalida(e.target.value)} className={inputCls} />
+      {/* KM + cobro extra */}
+      <div>
+        <p className="text-sm font-semibold text-gray-700 mb-2">📏 Kilometraje (se registra a la entrega/devolución)</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className={labelCls}>Km salida (entrega)</label>
+            <input type="number" value={kmSalida} onChange={e => setKmSalida(e.target.value)} className={inputCls} placeholder="Anotar al entregar" />
+          </div>
+          <div>
+            <label className={labelCls}>Km llegada (devolución)</label>
+            <input type="number" value={kmLlegada} onChange={e => setKmLlegada(e.target.value)} className={inputCls} placeholder="Anotar al devolver" />
+          </div>
+          <div className="lg:col-span-2">
+            {kmSalida && kmLlegada && selectedVehicle?.km_incluidos && selectedVehicle?.precio_km_extra ? (() => {
+              const calc = RentalService.calcularCosteKmExtra(
+                parseInt(kmSalida), parseInt(kmLlegada),
+                selectedVehicle.km_incluidos, selectedVehicle.precio_km_extra,
+                fechaInicio, fechaFin
+              )
+              return (
+                <div className={`rounded-lg p-3 text-sm ${calc.kmExceso > 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    <span className="text-gray-600">Recorridos: <b>{calc.kmRecorridos.toLocaleString()} km</b></span>
+                    <span className="text-gray-600">Permitidos: <b>{calc.kmPermitidos.toLocaleString()} km</b></span>
+                    {calc.kmExceso > 0 ? (
+                      <>
+                        <span className="text-red-600">Exceso: <b>{calc.kmExceso.toLocaleString()} km</b></span>
+                        <span className="text-red-700 font-bold">Coste extra: {calc.coste.toLocaleString('es-ES')}€</span>
+                      </>
+                    ) : (
+                      <span className="text-green-600 font-medium">✅ Dentro del límite</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })() : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-400">
+                {selectedVehicle?.km_incluidos
+                  ? `${selectedVehicle.km_incluidos} km/día incluidos · ${selectedVehicle.precio_km_extra ?? 0}€/km extra`
+                  : 'Sin límite de km configurado para este vehículo'}
+              </div>
+            )}
+          </div>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Km llegada</label>
-          <input type="number" value={kmLlegada} onChange={e => setKmLlegada(e.target.value)} className={inputCls} />
-        </div>
-        <div className="sm:col-span-2">
           <label className={labelCls}>Incidencias</label>
           <input value={incidencias} onChange={e => setIncidencias(e.target.value)} className={inputCls} placeholder="Daños, multas, etc." />
         </div>
@@ -996,113 +1072,244 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
 // ════════════════════════════════════════════════════════════
 function CalendarioTab({ vehicles, bookings }: { vehicles: RentalVehicle[]; bookings: RentalBooking[] }) {
   const [monthOffset, setMonthOffset] = useState(0)
+  const [hoveredBooking, setHoveredBooking] = useState<string | null>(null)
 
   const now = new Date()
   const viewMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
   const year = viewMonth.getFullYear()
   const month = viewMonth.getMonth()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
-
-  // Generate day headers (1..daysInMonth)
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
 
-  // Active vehicles only
   const activeVehicles = vehicles.filter(v => v.status !== 'inactive')
 
-  // For each vehicle, determine which days have bookings
-  const getBookingsForDay = (vehicleId: string, day: number) => {
-    const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    return bookings.filter(b =>
-      b.vehicle_id === vehicleId &&
-      b.status !== 'cancelled' &&
-      b.fecha_inicio <= dayStr &&
-      b.fecha_fin >= dayStr
-    )
-  }
-
   const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  const dayNames = ['D', 'L', 'M', 'X', 'J', 'V', 'S']
+
+  // Build a map: vehicleId -> array of booking segments visible this month
+  const vehicleBookingSegments = useMemo(() => {
+    const map: Record<string, { booking: RentalBooking; startDay: number; endDay: number }[]> = {}
+    for (const v of activeVehicles) {
+      map[v.id] = []
+    }
+    const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
+
+    for (const b of bookings) {
+      if (b.status === 'cancelled') continue
+      if (b.fecha_fin < monthStart || b.fecha_inicio > monthEnd) continue
+      if (!map[b.vehicle_id]) continue
+
+      const bStart = new Date(b.fecha_inicio)
+      const bEnd = new Date(b.fecha_fin)
+      const startDay = bStart < new Date(monthStart) ? 1 : bStart.getDate()
+      const endDay = bEnd > new Date(monthEnd) ? daysInMonth : bEnd.getDate()
+
+      map[b.vehicle_id].push({ booking: b, startDay, endDay })
+    }
+    return map
+  }, [activeVehicles, bookings, year, month, daysInMonth])
 
   return (
     <div className="space-y-4">
-      {/* Month nav */}
+      {/* Month navigation */}
       <div className="flex items-center justify-between">
-        <button onClick={() => setMonthOffset(o => o - 1)} className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">
-          ← Anterior
+        <button
+          onClick={() => setMonthOffset(o => o - 1)}
+          className="px-4 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors flex items-center gap-1"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          Anterior
         </button>
-        <h3 className="text-lg font-bold text-gray-900">
-          {monthNames[month]} {year}
-        </h3>
-        <button onClick={() => setMonthOffset(o => o + 1)} className="px-3 py-1.5 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors">
-          Siguiente →
+        <div className="text-center">
+          <h3 className="text-lg font-bold text-gray-900">{monthNames[month]} {year}</h3>
+          {monthOffset !== 0 && (
+            <button onClick={() => setMonthOffset(0)} className="text-xs text-blue-600 hover:underline">
+              Ir a hoy
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setMonthOffset(o => o + 1)}
+          className="px-4 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 font-medium transition-colors flex items-center gap-1"
+        >
+          Siguiente
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
         </button>
       </div>
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3 text-xs">
         {Object.entries(BOOKING_STATUS_CONFIG).filter(([k]) => k !== 'cancelled').map(([k, v]) => (
-          <span key={k} className={`px-2 py-1 rounded-full ${v.color} ${v.textColor} font-medium`}>
-            {v.icon} {v.label}
+          <span key={k} className="flex items-center gap-1.5">
+            <span className={`w-3 h-3 rounded-sm ${v.color} border border-opacity-30`} />
+            <span className="text-gray-600">{v.label}</span>
           </span>
         ))}
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-sm bg-blue-200 border border-blue-300" />
+          <span className="text-gray-600">Hoy</span>
+        </span>
       </div>
 
-      {/* Calendar grid */}
-      <div className="overflow-x-auto border border-gray-200 rounded-xl">
-        <div className="min-w-[900px]">
-          {/* Header row */}
-          <div className="flex border-b border-gray-200 bg-gray-50">
-            <div className="w-40 flex-shrink-0 px-3 py-2 text-xs font-medium text-gray-500 border-r border-gray-200">
-              Vehículo
-            </div>
-            {days.map(d => {
-              const dayDate = new Date(year, month, d)
-              const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6
-              const isToday = d === now.getDate() && month === now.getMonth() && year === now.getFullYear()
-              return (
-                <div
-                  key={d}
-                  className={`flex-1 min-w-[30px] text-center py-2 text-xs font-medium border-r border-gray-100 ${
-                    isToday ? 'bg-blue-100 text-blue-700' : isWeekend ? 'bg-gray-100 text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  {d}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Vehicle rows */}
-          {activeVehicles.map(v => (
-            <div key={v.id} className="flex border-b border-gray-100 hover:bg-gray-50">
-              <div className="w-40 flex-shrink-0 px-3 py-2 border-r border-gray-200">
-                <p className="text-sm font-medium text-gray-900 truncate">{v.nombre}</p>
-                <p className="text-xs text-gray-400 truncate">{v.matricula}</p>
-              </div>
+      {/* Calendar table */}
+      <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+        <table className="w-full border-collapse" style={{ minWidth: `${160 + daysInMonth * 32}px` }}>
+          <thead>
+            {/* Day-of-week row */}
+            <tr className="bg-gray-50">
+              <th className="sticky left-0 z-10 bg-gray-50 w-40 min-w-[160px] border-b border-r border-gray-200 px-3 py-1.5 text-left text-xs font-medium text-gray-400">
+                Vehículo
+              </th>
               {days.map(d => {
-                const dayBookings = getBookingsForDay(v.id, d)
-                const b = dayBookings[0]
-                if (!b) {
-                  return <div key={d} className="flex-1 min-w-[30px] border-r border-gray-50" />
-                }
-                const cfg = BOOKING_STATUS_CONFIG[b.status]
+                const dayDate = new Date(year, month, d)
+                const dow = dayDate.getDay()
+                const isWeekend = dow === 0 || dow === 6
                 return (
-                  <div
-                    key={d}
-                    className={`flex-1 min-w-[30px] border-r border-gray-50 ${cfg.color} cursor-default`}
-                    title={`${b.cliente_nombre} — ${cfg.label}\n${b.fecha_inicio} → ${b.fecha_fin}`}
-                  />
+                  <th key={`dow-${d}`} className={`border-b border-gray-200 px-0 py-1 text-center text-[10px] font-normal w-8 min-w-[32px] ${isWeekend ? 'text-red-400' : 'text-gray-400'}`}>
+                    {dayNames[dow]}
+                  </th>
                 )
               })}
-            </div>
-          ))}
+            </tr>
+            {/* Day number row */}
+            <tr className="bg-gray-50">
+              <th className="sticky left-0 z-10 bg-gray-50 border-b border-r border-gray-200" />
+              {days.map(d => {
+                const dayDate = new Date(year, month, d)
+                const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6
+                const isToday = d === now.getDate() && month === now.getMonth() && year === now.getFullYear()
+                return (
+                  <th
+                    key={`num-${d}`}
+                    className={`border-b border-gray-200 px-0 py-1.5 text-center text-xs font-semibold w-8 min-w-[32px] ${
+                      isToday ? 'bg-blue-100 text-blue-700' : isWeekend ? 'bg-red-50/50 text-red-400' : 'text-gray-600'
+                    }`}
+                  >
+                    {d}
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {activeVehicles.map(v => {
+              const segments = vehicleBookingSegments[v.id] ?? []
+              const statusIcon = VEHICLE_STATUS_CONFIG[v.status].icon
 
-          {activeVehicles.length === 0 && (
-            <div className="p-8 text-center text-gray-500 text-sm">
-              No hay vehículos activos para mostrar
-            </div>
-          )}
-        </div>
+              return (
+                <tr key={v.id} className="group hover:bg-gray-50/50">
+                  {/* Vehicle name cell */}
+                  <td className="sticky left-0 z-10 bg-white group-hover:bg-gray-50 border-b border-r border-gray-200 px-3 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{statusIcon}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate leading-tight">{v.nombre}</p>
+                        <p className="text-[10px] text-gray-400 truncate leading-tight">{v.matricula}</p>
+                      </div>
+                    </div>
+                  </td>
+                  {/* Day cells - use relative positioning for the bar overlay approach */}
+                  {days.map(d => {
+                    const dayDate = new Date(year, month, d)
+                    const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6
+                    const isToday = d === now.getDate() && month === now.getMonth() && year === now.getFullYear()
+                    const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+                    const seg = segments.find(s => d >= s.startDay && d <= s.endDay)
+
+                    if (!seg) {
+                      return (
+                        <td
+                          key={d}
+                          className={`border-b border-gray-100 w-8 min-w-[32px] h-10 ${
+                            isToday ? 'bg-blue-50/60' : isWeekend ? 'bg-red-50/30' : ''
+                          }`}
+                        />
+                      )
+                    }
+
+                    const cfg = BOOKING_STATUS_CONFIG[seg.booking.status]
+                    const isStart = d === seg.startDay
+                    const isEnd = d === seg.endDay
+                    const isHovered = hoveredBooking === seg.booking.id
+
+                    // Bar styling
+                    const barColorMap: Record<string, string> = {
+                      pending: 'bg-amber-300',
+                      confirmed: 'bg-blue-400',
+                      active: 'bg-green-400',
+                      completed: 'bg-gray-300',
+                    }
+                    const barColor = barColorMap[seg.booking.status] ?? 'bg-gray-300'
+
+                    return (
+                      <td
+                        key={d}
+                        className={`border-b border-gray-100 w-8 min-w-[32px] h-10 p-0 relative ${
+                          isToday ? 'bg-blue-50/60' : isWeekend ? 'bg-red-50/30' : ''
+                        }`}
+                        onMouseEnter={() => setHoveredBooking(seg.booking.id)}
+                        onMouseLeave={() => setHoveredBooking(null)}
+                      >
+                        <div
+                          className={`absolute inset-y-1.5 inset-x-0 ${barColor} ${
+                            isStart ? 'ml-0.5 rounded-l-md' : ''
+                          } ${isEnd ? 'mr-0.5 rounded-r-md' : ''} ${
+                            isHovered ? 'ring-2 ring-offset-0 ring-gray-600/50 z-20' : ''
+                          } transition-all`}
+                          title={`${seg.booking.cliente_nombre}\n${cfg.label} · ${seg.booking.fecha_inicio} → ${seg.booking.fecha_fin}\n${seg.booking.precio_total?.toLocaleString('es-ES')}€`}
+                        >
+                          {/* Show client name on start cell */}
+                          {isStart && (
+                            <span className="absolute inset-0 flex items-center pl-1.5 text-[10px] font-medium text-white truncate whitespace-nowrap pointer-events-none drop-shadow-sm" style={{ width: `${(seg.endDay - seg.startDay + 1) * 32 - 8}px` }}>
+                              {seg.booking.cliente_nombre}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+            {activeVehicles.length === 0 && (
+              <tr>
+                <td colSpan={daysInMonth + 1} className="p-12 text-center text-gray-400 text-sm">
+                  No hay vehículos activos para mostrar
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
+
+      {/* Hovered booking detail */}
+      {hoveredBooking && (() => {
+        const b = bookings.find(x => x.id === hoveredBooking)
+        if (!b) return null
+        const cfg = BOOKING_STATUS_CONFIG[b.status]
+        const dias = RentalService.getDias(b.fecha_inicio, b.fecha_fin)
+        return (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-4 text-sm animate-in fade-in duration-150">
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color} ${cfg.textColor}`}>
+                {cfg.icon} {cfg.label}
+              </span>
+              <span className="font-bold text-gray-900">{b.cliente_nombre}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs text-gray-600">
+              <div>🚐 {b.vehicle?.nombre}</div>
+              <div>📅 {dias} día{dias !== 1 ? 's' : ''}</div>
+              <div>💰 {b.precio_total?.toLocaleString('es-ES')}€</div>
+              <div>
+                {b.fecha_inicio && new Date(b.fecha_inicio).toLocaleDateString('es-ES')}
+                {' → '}
+                {b.fecha_fin && new Date(b.fecha_fin).toLocaleDateString('es-ES')}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

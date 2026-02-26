@@ -40,6 +40,8 @@ export class RentalService {
         precio_dia_eur: v.precio_dia_eur,
         precio_semana_eur: v.precio_semana_eur,
         fianza_eur: v.fianza_eur,
+        km_incluidos: v.km_incluidos,
+        precio_km_extra: v.precio_km_extra,
         equipamiento: JSON.stringify(v.equipamiento),
         fotos: v.fotos ? JSON.stringify(v.fotos) : null,
         notas: v.notas,
@@ -126,6 +128,7 @@ export class RentalService {
         status: b.status,
         extras: b.extras ? JSON.stringify(b.extras) : null,
         notas: b.notas,
+        coste_km_extra: b.coste_km_extra ?? 0,
         lead_id: b.lead_id,
       })
     if (error) throw error
@@ -203,6 +206,25 @@ export class RentalService {
     return Math.max(1, Math.ceil(
       (new Date(fechaFin).getTime() - new Date(fechaInicio).getTime()) / (1000 * 60 * 60 * 24)
     ))
+  }
+
+  static calcularCosteKmExtra(
+    kmSalida: number | undefined,
+    kmLlegada: number | undefined,
+    kmIncluidosDia: number | undefined,
+    precioKmExtra: number | undefined,
+    fechaInicio: string,
+    fechaFin: string,
+  ): { kmRecorridos: number; kmPermitidos: number; kmExceso: number; coste: number } {
+    if (!kmSalida || !kmLlegada || !kmIncluidosDia || !precioKmExtra) {
+      return { kmRecorridos: 0, kmPermitidos: 0, kmExceso: 0, coste: 0 }
+    }
+    const kmRecorridos = Math.max(0, kmLlegada - kmSalida)
+    const dias = this.getDias(fechaInicio, fechaFin)
+    const kmPermitidos = kmIncluidosDia * dias
+    const kmExceso = Math.max(0, kmRecorridos - kmPermitidos)
+    const coste = Math.round(kmExceso * precioKmExtra * 100) / 100
+    return { kmRecorridos, kmPermitidos, kmExceso, coste }
   }
 
   static isVehicleAvailable(bookings: RentalBooking[], vehicleId: string, from: string, to: string, excludeBookingId?: string): boolean {

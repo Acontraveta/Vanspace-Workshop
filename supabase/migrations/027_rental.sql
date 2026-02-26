@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS rental_vehicles (
   precio_dia_eur   NUMERIC(8,2) NOT NULL DEFAULT 0,
   precio_semana_eur NUMERIC(8,2),
   fianza_eur       NUMERIC(8,2) NOT NULL DEFAULT 500,
+  km_incluidos     INT,                  -- Km incluidos por día (ej. 200)
+  precio_km_extra  NUMERIC(6,2),         -- €/km extra sobre el límite
   equipamiento     JSONB DEFAULT '[]'::jsonb,
   fotos            JSONB DEFAULT '[]'::jsonb,
   notas            TEXT,
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS rental_bookings (
   incidencias TEXT,
   notas       TEXT,
   extras      JSONB DEFAULT '[]'::jsonb,
+  coste_km_extra NUMERIC(8,2) DEFAULT 0,  -- Coste calculado por km extra
   -- CRM link
   lead_id UUID,
   created_at TIMESTAMPTZ DEFAULT now(),
