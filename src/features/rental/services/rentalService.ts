@@ -103,6 +103,8 @@ export class RentalService {
     return (data ?? []).map(row => ({
       ...row,
       extras: typeof row.extras === 'string' ? JSON.parse(row.extras) : (row.extras ?? []),
+      fotos_entrega: typeof row.fotos_entrega === 'string' ? JSON.parse(row.fotos_entrega) : (row.fotos_entrega ?? []),
+      fotos_devolucion: typeof row.fotos_devolucion === 'string' ? JSON.parse(row.fotos_devolucion) : (row.fotos_devolucion ?? []),
       vehicle: row.vehicle ? this.mapVehicle(row.vehicle) : undefined,
     }))
   }
@@ -142,6 +144,8 @@ export class RentalService {
   static async updateBooking(id: string, updates: Partial<RentalBooking>): Promise<void> {
     const dbUpdates: any = { ...updates, updated_at: new Date().toISOString() }
     if (dbUpdates.extras) dbUpdates.extras = JSON.stringify(dbUpdates.extras)
+    if (dbUpdates.fotos_entrega) dbUpdates.fotos_entrega = JSON.stringify(dbUpdates.fotos_entrega)
+    if (dbUpdates.fotos_devolucion) dbUpdates.fotos_devolucion = JSON.stringify(dbUpdates.fotos_devolucion)
     delete dbUpdates.id
     delete dbUpdates.created_at
     delete dbUpdates.vehicle
@@ -165,6 +169,84 @@ export class RentalService {
       cancelled: 'available',
     }
     await this.updateVehicleStatus(vehicleId, vehicleStatusMap[status])
+  }
+
+  // ═══════════════════════════════════════════════════
+  // FOTOS ENTREGA / DEVOLUCIÓN
+  // ═══════════════════════════════════════════════════
+
+  private static readonly PHOTO_BUCKET = 'rental-photos'
+
+  static async uploadBookingPhotos(
+    bookingId: string,
+    files: File[],
+    phase: 'entrega' | 'devolucion',
+  ): Promise<string[]> {
+    const urls: string[] = []
+
+    for (const file of files) {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const path = `${bookingId}/${phase}/${safeName}`
+
+      const { error: uploadErr } = await supabase.storage
+        .from(this.PHOTO_BUCKET)
+        .upload(path, file, { cacheControl: '3600', upsert: false })
+      if (uploadErr) throw uploadErr
+
+      const { data: urlData } = supabase.storage
+        .from(this.PHOTO_BUCKET)
+        .getPublicUrl(path)
+      urls.push(urlData.publicUrl)
+    }
+
+    // Append to existing photos on the booking
+    const field = phase === 'entrega' ? 'fotos_entrega' : 'fotos_devolucion'
+    const { data: current } = await supabase
+      .from('rental_bookings')
+      .select(field)
+      .eq('id', bookingId)
+      .single()
+
+    const existing: string[] = current
+      ? (typeof current[field] === 'string' ? JSON.parse(current[field]) : (current[field] ?? []))
+      : []
+
+    const merged = [...existing, ...urls]
+    await this.updateBooking(bookingId, { [field]: merged } as any)
+
+    return merged
+  }
+
+  static async deleteBookingPhoto(
+    bookingId: string,
+    photoUrl: string,
+    phase: 'entrega' | 'devolucion',
+  ): Promise<string[]> {
+    // Extract storage path from public URL
+    const bucketSegment = `${this.PHOTO_BUCKET}/`
+    const idx = photoUrl.indexOf(bucketSegment)
+    if (idx >= 0) {
+      const storagePath = photoUrl.slice(idx + bucketSegment.length)
+      await supabase.storage.from(this.PHOTO_BUCKET).remove([storagePath])
+    }
+
+    // Remove from DB array
+    const field = phase === 'entrega' ? 'fotos_entrega' : 'fotos_devolucion'
+    const { data: current } = await supabase
+      .from('rental_bookings')
+      .select(field)
+      .eq('id', bookingId)
+      .single()
+
+    const existing: string[] = current
+      ? (typeof current[field] === 'string' ? JSON.parse(current[field]) : (current[field] ?? []))
+      : []
+
+    const updated = existing.filter(u => u !== photoUrl)
+    await this.updateBooking(bookingId, { [field]: updated } as any)
+
+    return updated
   }
 
   // ═══════════════════════════════════════════════════

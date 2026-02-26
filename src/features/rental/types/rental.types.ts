@@ -70,6 +70,9 @@ export interface RentalBooking {
   notas?: string
   // Km extra
   coste_km_extra?: number      // Coste calculado por km extra
+  // Fotos estado vehículo
+  fotos_entrega?: string[]     // URLs fotos antes de entregar
+  fotos_devolucion?: string[]  // URLs fotos al devolver
   // Extras
   extras?: RentalExtra[]
   // Lead CRM vinculado

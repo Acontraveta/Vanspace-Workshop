@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS rental_bookings (
   notas       TEXT,
   extras      JSONB DEFAULT '[]'::jsonb,
   coste_km_extra NUMERIC(8,2) DEFAULT 0,  -- Coste calculado por km extra
+  -- Fotos antes/después
+  fotos_entrega    JSONB DEFAULT '[]'::jsonb,
+  fotos_devolucion JSONB DEFAULT '[]'::jsonb,
   -- CRM link
   lead_id UUID,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -80,3 +83,17 @@ CREATE POLICY "rental_vehicles_all" ON rental_vehicles
 
 CREATE POLICY "rental_bookings_all" ON rental_bookings
   FOR ALL USING (true) WITH CHECK (true);
+
+-- Storage bucket para fotos de alquiler
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('rental-photos', 'rental-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "rental_photos_public_read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'rental-photos');
+
+CREATE POLICY "rental_photos_auth_write" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'rental-photos');
+
+CREATE POLICY "rental_photos_auth_delete" ON storage.objects
+  FOR DELETE USING (bucket_id = 'rental-photos');

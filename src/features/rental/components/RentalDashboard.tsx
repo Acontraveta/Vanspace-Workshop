@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { RentalService } from '../services/rentalService'
 import type {
   RentalVehicle,
@@ -764,6 +764,36 @@ function BookingRow({ booking, onEdit, onStatusChange }: {
           {booking.incidencias && <span className="text-red-500">⚠️ {booking.incidencias}</span>}
         </div>
       )}
+
+      {/* Photos entrega/devolucion */}
+      {((booking.fotos_entrega?.length ?? 0) > 0 || (booking.fotos_devolucion?.length ?? 0) > 0) && (
+        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+          {(booking.fotos_entrega?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">📸 Fotos entrega ({booking.fotos_entrega!.length})</p>
+              <div className="flex flex-wrap gap-1.5">
+                {booking.fotos_entrega!.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                    <img src={url} alt={`Entrega ${i + 1}`} className="w-14 h-14 object-cover rounded-lg border border-gray-200 hover:border-blue-400 transition-colors cursor-pointer" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+          {(booking.fotos_devolucion?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">📸 Fotos devolución ({booking.fotos_devolucion!.length})</p>
+              <div className="flex flex-wrap gap-1.5">
+                {booking.fotos_devolucion!.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                    <img src={url} alt={`Devolución ${i + 1}`} className="w-14 h-14 object-cover rounded-lg border border-gray-200 hover:border-blue-400 transition-colors cursor-pointer" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -1046,6 +1076,29 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
         </div>
       </div>
 
+      {/* Fotos entrega / devolución */}
+      {booking ? (
+        <div className="space-y-4">
+          <PhotoUploadSection
+            bookingId={booking.id}
+            phase="entrega"
+            label="📸 Fotos al entregar (antes del alquiler)"
+            existingUrls={booking.fotos_entrega ?? []}
+          />
+          <PhotoUploadSection
+            bookingId={booking.id}
+            phase="devolucion"
+            label="📸 Fotos al devolver (después del alquiler)"
+            existingUrls={booking.fotos_devolucion ?? []}
+          />
+        </div>
+      ) : (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-500 flex items-center gap-2">
+          <span className="text-lg">📸</span>
+          <span>Las fotos de entrega y devolución se pueden añadir después de crear la reserva (editando).</span>
+        </div>
+      )}
+
       <div>
         <label className={labelCls}>Notas</label>
         <textarea value={notas} onChange={e => setNotas(e.target.value)} className={inputCls} rows={2} placeholder="Observaciones internas..." />
@@ -1064,6 +1117,153 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
         </button>
       </div>
     </form>
+  )
+}
+
+// ════════════════════════════════════════════════════════════
+// PHOTO UPLOAD SECTION
+// ════════════════════════════════════════════════════════════
+function PhotoUploadSection({ bookingId, phase, label, existingUrls }: {
+  bookingId: string
+  phase: 'entrega' | 'devolucion'
+  label: string
+  existingUrls: string[]
+}) {
+  const [photos, setPhotos] = useState<string[]>(existingUrls)
+  const [uploading, setUploading] = useState(false)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
+
+    try {
+      setUploading(true)
+      const updated = await RentalService.uploadBookingPhotos(bookingId, imageFiles, phase)
+      setPhotos(updated)
+    } catch (err: any) {
+      alert('Error subiendo fotos: ' + (err.message || 'Error desconocido'))
+    } finally {
+      setUploading(false)
+      // Reset inputs
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+    }
+  }
+
+  const handleDelete = async (url: string) => {
+    if (!confirm('¿Eliminar esta foto?')) return
+    try {
+      const updated = await RentalService.deleteBookingPhoto(bookingId, url, phase)
+      setPhotos(updated)
+    } catch (err: any) {
+      alert('Error eliminando foto: ' + err.message)
+    }
+  }
+
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-gray-700">{label}</p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="text-xs bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 flex items-center gap-1"
+          >
+            🖼️ Galería
+          </button>
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={uploading}
+            className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 flex items-center gap-1"
+          >
+            📷 Cámara
+          </button>
+        </div>
+      </div>
+
+      {/* Hidden file inputs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={e => handleFiles(e.target.files)}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={e => handleFiles(e.target.files)}
+      />
+
+      {uploading && (
+        <div className="flex items-center gap-2 text-sm text-blue-600 mb-3">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+          Subiendo fotos...
+        </div>
+      )}
+
+      {photos.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {photos.map((url, i) => (
+            <div key={i} className="relative group">
+              <img
+                src={url}
+                alt={`${phase} ${i + 1}`}
+                className="w-20 h-20 object-cover rounded-lg border border-gray-200 cursor-pointer hover:border-blue-400 transition-colors"
+                onClick={() => setLightboxUrl(url)}
+              />
+              <button
+                type="button"
+                onClick={() => handleDelete(url)}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-600"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400 italic">Sin fotos. Usa los botones de arriba para añadir.</p>
+      )}
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <img src={lightboxUrl} alt="Detalle" className="max-w-full max-h-[85vh] object-contain rounded-lg" />
+            <button
+              type="button"
+              onClick={() => setLightboxUrl(null)}
+              className="absolute top-2 right-2 w-8 h-8 bg-black/60 text-white rounded-full flex items-center justify-center hover:bg-black/80 text-lg"
+            >
+              ×
+            </button>
+            <a
+              href={lightboxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute bottom-2 right-2 text-xs bg-white/90 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-white font-medium"
+            >
+              🔗 Abrir original
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
