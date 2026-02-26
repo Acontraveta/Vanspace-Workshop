@@ -37,8 +37,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(storedUser)
         setUser(parsed)
         // Sincronizar datos desde Supabase al abrir la app
-        QuoteService.syncFromSupabase().catch(() => {})
-        QuickDocService.fetchAll().catch(() => {})
+        QuoteService.syncFromSupabase().catch(e => console.error('Sync quotes error:', e))
+        QuickDocService.fetchAll().catch(e => console.error('Sync quick_docs error:', e))
       } catch (error) {
         console.error('Error parsing stored user:', error)
         localStorage.removeItem('auth_user')

@@ -66,21 +66,21 @@ function rowToRecord(row: any): QuickDocRecord {
 function recordToRow(r: QuickDocRecord) {
   return {
     id: r.id,
-    type: r.type,
+    type: r.type || 'FACTURA_SIMPLIFICADA',
     doc_number: r.docNumber,
     doc_date: r.docDate,
-    client_name: r.clientName,
+    client_name: r.clientName || 'Sin nombre',
     client_nif: r.clientNif || null,
     lead_id: r.leadId || null,
-    lines: r.lines,
-    vat_pct: r.vatPct,
-    discount_pct: r.discountPct,
-    subtotal: r.subtotal,
-    vat_amount: r.vatAmount,
-    total: r.total,
-    notes: r.notes,
-    company_name: r.companyName,
-    created_at: r.createdAt,
+    lines: r.lines ?? [],
+    vat_pct: r.vatPct ?? 21,
+    discount_pct: r.discountPct ?? 0,
+    subtotal: r.subtotal ?? 0,
+    vat_amount: r.vatAmount ?? 0,
+    total: r.total ?? 0,
+    notes: r.notes ?? '',
+    company_name: r.companyName ?? '',
+    created_at: r.createdAt || new Date().toISOString(),
   }
 }
 
@@ -135,18 +135,23 @@ export class QuickDocService {
 
     // Push any localStorage-only records to Supabase (recovery)
     let syncedCount = 0
+    let failedCount = 0
     for (const local of localOnly) {
       const { error: upErr } = await supabase
         .from('quick_docs')
         .upsert(recordToRow(local), { onConflict: 'doc_number' })
       if (upErr) {
-        console.warn('⚠️ Failed to sync local doc to Supabase:', local.docNumber, upErr.message)
+        failedCount++
+        console.error('❌ Failed to sync local doc to Supabase:', local.docNumber, upErr.message, upErr.details, upErr.hint)
       } else {
         syncedCount++
       }
     }
     if (syncedCount > 0) {
       toast.success(`☁️ ${syncedCount} documento(s) sincronizado(s) con la nube`)
+    }
+    if (failedCount > 0) {
+      toast.error(`⚠️ ${failedCount} documento(s) no se pudieron sincronizar`, { duration: 6000 })
     }
 
     const merged = [...sbRecords, ...localOnly]
