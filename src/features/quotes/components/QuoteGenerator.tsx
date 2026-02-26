@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createRoot } from 'react-dom/client'
-import { flushSync } from 'react-dom'
-import { createElement } from 'react'
+import { createPortal } from 'react-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -1051,18 +1049,19 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
         </>
       )}
       {/* Preview modal */}
-      {showPreview && currentQuote && (
+      {showPreview && currentQuote && createPortal(
         <QuotePreview
           quote={currentQuote}
           type={showPreview}
           onApprove={showPreview === 'PRESUPUESTO' && currentQuote.status !== 'APPROVED' ? handleApproveFromPreview : undefined}
           onSaveEdits={handleSaveDocumentEdits}
           onClose={() => setShowPreview(null)}
-        />
+        />,
+        document.body
       )}
 
       {/* Quick document modals */}
-      {quickDocType && (
+      {quickDocType && createPortal(
         <QuickDocumentModal
           type={quickDocType}
           initialData={{
@@ -1078,11 +1077,12 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
             })),
           }}
           onClose={() => setQuickDocType(null)}
-        />
+        />,
+        document.body
       )}
 
       {/* Consumable resolver modal */}
-      {consumableResolver && (
+      {consumableResolver && createPortal(
         <ConsumableResolverModal
           productName={consumableResolver.product.NOMBRE}
           unresolved={consumableResolver.unresolved}
@@ -1093,20 +1093,20 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
             setConsumableResolver(null)
           }}
           onCancel={() => setConsumableResolver(null)}
-        />
+        />,
+        document.body
       )}
 
       {/* Modal producto manual */}
-      {showManualProductModal && (
-        <>
-          <ManualProductModal
-            onAdd={(product) => {
-              addProduct(product)
-              setShowManualProductModal(false)
-            }}
-            onCancel={() => setShowManualProductModal(false)}
-          />
-        </>
+      {showManualProductModal && createPortal(
+        <ManualProductModal
+          onAdd={(product) => {
+            addProduct(product)
+            setShowManualProductModal(false)
+          }}
+          onCancel={() => setShowManualProductModal(false)}
+        />,
+        document.body
       )}
     </div>
   )

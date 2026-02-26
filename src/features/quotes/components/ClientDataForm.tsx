@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
@@ -72,11 +73,12 @@ export default function ClientDataForm({
 
   return (
     <div className="space-y-6">
-      {showCRMModal && onLinkLead && (
+      {showCRMModal && onLinkLead && createPortal(
         <CRMLinkModal
           onSelect={data => { onLinkLead(data); setShowCRMModal(false) }}
           onClose={() => setShowCRMModal(false)}
-        />
+        />,
+        document.body
       )}
 
       {/* Datos Básicos del Cliente */}

@@ -11,6 +11,7 @@
  */
 
 import { useState, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Card, CardContent } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
@@ -144,30 +145,44 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
     }
   }
 
+  const [confirmAction, setConfirmAction] = useState<{ message: string; action: () => void } | null>(null)
+
   const handleCancel = (quoteId: string) => {
-    if (!confirm('¿Cancelar este presupuesto?')) return
-    try {
-      QuoteService.cancelQuote(quoteId)
-      refresh()
-    } catch (error: any) {
-      toast.error(error.message)
-    }
+    setConfirmAction({
+      message: '¿Cancelar este presupuesto?',
+      action: () => {
+        try {
+          QuoteService.cancelQuote(quoteId)
+          refresh()
+        } catch (error: any) {
+          toast.error(error.message)
+        }
+      }
+    })
   }
 
   const handleDelete = (quoteId: string) => {
-    if (!confirm('¿Eliminar este presupuesto? Esta acción no se puede deshacer.')) return
-    try {
-      QuoteService.deleteQuote(quoteId)
-      refresh()
-    } catch (error: any) {
-      toast.error(error.message)
-    }
+    setConfirmAction({
+      message: '¿Eliminar este presupuesto? Esta acción no se puede deshacer.',
+      action: () => {
+        try {
+          QuoteService.deleteQuote(quoteId)
+          refresh()
+        } catch (error: any) {
+          toast.error(error.message)
+        }
+      }
+    })
   }
 
   const handleDeleteDoc = (id: string) => {
-    if (!confirm('¿Eliminar este documento?')) return
-    QuickDocService.delete(id)
-    refresh()
+    setConfirmAction({
+      message: '¿Eliminar este documento?',
+      action: () => {
+        QuickDocService.delete(id)
+        refresh()
+      }
+    })
   }
 
   const getProjectProgress = (quote: Quote) => {
@@ -552,20 +567,36 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
       )}
 
       {/* ── Quote viewer (facturas / presupuestos) ───────── */}
-      {viewingQuote && (
+      {viewingQuote && createPortal(
         <QuotePreview
           quote={viewingQuote}
           type={viewingQuote.status === 'APPROVED' ? 'FACTURA' : 'PRESUPUESTO'}
           onClose={() => setViewingQuote(null)}
-        />
+        />,
+        document.body
       )}
 
       {/* ── QuickDoc viewer (proformas / simplificadas) ──── */}
-      {viewingDoc && (
+      {viewingDoc && createPortal(
         <QuickDocViewerModal
           doc={viewingDoc}
           onClose={() => setViewingDoc(null)}
-        />
+        />,
+        document.body
+      )}
+
+      {/* ── Confirmation dialog via portal ──── */}
+      {confirmAction && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4" onClick={() => setConfirmAction(null)}>
+          <div className="bg-white rounded-xl p-5 shadow-2xl max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-medium text-gray-800 mb-4">{confirmAction.message}</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirmAction(null)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button type="button" onClick={() => { confirmAction.action(); setConfirmAction(null) }} className="text-sm px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600">Confirmar</button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )
