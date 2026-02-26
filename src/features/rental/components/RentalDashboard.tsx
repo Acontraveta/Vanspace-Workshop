@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { RentalService } from '../services/rentalService'
 import type {
   RentalVehicle,
@@ -1154,8 +1155,16 @@ function PhotoUploadSection({ bookingId, phase, label, existingUrls }: {
     }
   }
 
+  const [deleting, setDeleting] = useState<string | null>(null)
+
   const handleDelete = async (url: string) => {
-    if (!confirm('¿Eliminar esta foto?')) return
+    setDeleting(url)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleting) return
+    const url = deleting
+    setDeleting(null)
     try {
       const updated = await RentalService.deleteBookingPhoto(bookingId, url, phase)
       setPhotos(updated)
@@ -1237,10 +1246,10 @@ function PhotoUploadSection({ bookingId, phase, label, existingUrls }: {
         <p className="text-xs text-gray-400 italic">Sin fotos. Usa los botones de arriba para añadir.</p>
       )}
 
-      {/* Lightbox */}
-      {lightboxUrl && (
+      {/* Lightbox — rendered via portal to avoid removeChild issues */}
+      {lightboxUrl && createPortal(
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4"
           onClick={() => setLightboxUrl(null)}
         >
           <div className="relative max-w-4xl max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -1261,7 +1270,23 @@ function PhotoUploadSection({ bookingId, phase, label, existingUrls }: {
               🔗 Abrir original
             </a>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Delete confirmation — rendered via portal */}
+      {deleting && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4" onClick={() => setDeleting(null)}>
+          <div className="bg-white rounded-xl p-5 shadow-2xl max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-medium text-gray-800 mb-1">¿Eliminar esta foto?</p>
+            <p className="text-xs text-gray-500 mb-4">Esta acción no se puede deshacer.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setDeleting(null)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button type="button" onClick={confirmDelete} className="text-sm px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600">Eliminar</button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )
