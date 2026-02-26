@@ -320,6 +320,22 @@ export class UnifiedCalendarService {
 
   // ── Helpers ───────────────────────────────────────────
 
+  /** Get project IDs where a specific user has assigned tasks */
+  static async getAssignedProjectIds(userId: string): Promise<Set<string>> {
+    try {
+      const { data, error } = await supabase
+        .from('production_tasks')
+        .select('project_id')
+        .eq('assigned_to', userId)
+
+      if (error) throw error
+      return new Set((data ?? []).map((r: any) => r.project_id))
+    } catch (err) {
+      console.error('[CalendarService] Error fetching assigned projects:', err)
+      return new Set()
+    }
+  }
+
   static filterByRole(events: CalendarEvent[], role: string): CalendarEvent[] {
     return events.filter((e) => e.visibleRoles.includes(role))
   }

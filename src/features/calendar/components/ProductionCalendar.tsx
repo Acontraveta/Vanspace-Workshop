@@ -17,7 +17,6 @@ export default function ProductionCalendar() {
   const [selectedProject, setSelectedProject] = useState<ProductionProject | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(true)
-  const [activeView, setActiveView] = useState<'waiting' | 'calendar'>('waiting')
 
   // Unified calendar events hook
   const {
@@ -30,9 +29,19 @@ export default function ProductionCalendar() {
     userRole,
   } = useCalendarEvents()
 
+  // Operario only sees calendar (not waiting list)
+  const isOperario = userRole === 'operario'
+  const [activeView, setActiveView] = useState<'waiting' | 'calendar'>('waiting')
+
+  // Force calendar view for operario on mount & role change
   useEffect(() => {
-    loadProjects()
-  }, [])
+    if (isOperario) setActiveView('calendar')
+  }, [isOperario])
+
+  useEffect(() => {
+    if (!isOperario) loadProjects()
+    else setLoadingProjects(false)
+  }, [isOperario])
 
   const loadProjects = async () => {
     setLoadingProjects(true)
@@ -86,18 +95,20 @@ export default function ProductionCalendar() {
       />
 
       <div className="p-4 md:p-8">
-        {/* Tabs */}
+        {/* Tabs — operario solo ve calendario */}
         <div className="mb-6 flex gap-2">
-          <Button
-            onClick={() => setActiveView('waiting')}
-            variant={activeView === 'waiting' ? 'default' : 'outline'}
-            className="gap-2"
-          >
-            ⏳ Lista de Espera
-            {waitingProjects.length > 0 && (
-              <Badge variant="destructive">{waitingProjects.length}</Badge>
-            )}
-          </Button>
+          {!isOperario && (
+            <Button
+              onClick={() => setActiveView('waiting')}
+              variant={activeView === 'waiting' ? 'default' : 'outline'}
+              className="gap-2"
+            >
+              ⏳ Lista de Espera
+              {waitingProjects.length > 0 && (
+                <Badge variant="destructive">{waitingProjects.length}</Badge>
+              )}
+            </Button>
+          )}
           <Button
             onClick={() => setActiveView('calendar')}
             variant={activeView === 'calendar' ? 'default' : 'outline'}
