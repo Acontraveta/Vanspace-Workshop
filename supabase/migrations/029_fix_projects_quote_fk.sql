@@ -1,25 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════
--- 029 · Ensure no FK constraints block quote deletion
--- The tables projects / quote_items from migration 001 were never
--- created in practice. This migration is a safe no-op guard that
--- drops any FK referencing quotes(id) if it ever appears.
+-- 029 · Soft-delete support for quotes
+-- Instead of hard DELETE (which other devices re-upload as "offline"),
+-- we set deleted_at. syncFromSupabase filters and propagates the deletion.
 -- ═══════════════════════════════════════════════════════════════
 
--- Guard: only act if the table actually exists
-DO $$ BEGIN
-  -- projects table (from 001, never deployed)
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'projects') THEN
-    ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_quote_id_fkey;
-    ALTER TABLE projects
-      ADD CONSTRAINT projects_quote_id_fkey
-      FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE SET NULL;
-  END IF;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
-  -- quote_items table (from 001, never deployed — items stored as JSONB in quotes)
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'quote_items') THEN
-    ALTER TABLE quote_items DROP CONSTRAINT IF EXISTS quote_items_quote_id_fkey;
-    ALTER TABLE quote_items
-      ADD CONSTRAINT quote_items_quote_id_fkey
-      FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE;
-  END IF;
-END $$;
+-- Index for fast filtering of active quotes
+CREATE INDEX IF NOT EXISTS idx_quotes_deleted_at ON quotes(deleted_at)
+  WHERE deleted_at IS NULL;

@@ -90,10 +90,9 @@ export class QuoteService {
   private static STORAGE_KEY = 'saved_quotes'
   private static DELETED_IDS_KEY = 'deleted_quote_ids'
 
-  // ── Gestión de IDs eliminados ──────────────────────────
-  // Persiste IDs de facturas/presupuestos eliminados para que
-  // syncFromSupabase nunca los restaure, incluso si Supabase
-  // no pudo borrar la fila (type mismatch, FK constraint, etc.)
+  // ── Gestión de IDs eliminados (red de seguridad local) ───
+  // Mantener como fallback hasta que la columna deleted_at
+  // esté creada en Supabase (migración 029).
 
   private static getDeletedIds(): Set<string> {
     try {
@@ -119,9 +118,13 @@ export class QuoteService {
   /**
    * Descarga todos los presupuestos de Supabase, fusiona con localStorage
    * y actualiza el caché local.  Llamar al montar la vista de presupuestos.
+   *
+   * SOFT DELETE: las filas con deleted_at != null se consideran eliminadas.
+   * Se eliminan del localStorage local y NUNCA se re-suben.
    */
   static async syncFromSupabase(): Promise<Quote[]> {
     try {
+      // Descargar TODOS los quotes (incluidos soft-deleted)
       const { data, error } = await supabase
         .from('quotes')
         .select('*')
@@ -132,34 +135,51 @@ export class QuoteService {
         return this.getAllQuotes()
       }
 
-      // IDs marcados para eliminar localmente
       const deletedIds = this.getDeletedIds()
 
-      // Filtrar resultados de Supabase: excluir cualquier ID marcado como eliminado
-      const sbQuotes = (data || [])
-        .filter((row: any) => !deletedIds.has(row.id))
+      // Separar activos vs soft-deleted (deleted_at presente)
+      const allRows = data || []
+      const softDeletedIds = new Set(
+        allRows.filter((r: any) => r.deleted_at).map((r: any) => r.id)
+      )
+
+      // Quotes activos de Supabase (sin deleted_at Y sin deletedIds local)
+      const sbQuotes = allRows
+        .filter((row: any) => !row.deleted_at && !deletedIds.has(row.id))
         .map(fromDb)
         .map(applyExpiration)
       const sbIds = new Set(sbQuotes.map(q => q.id))
 
-      // Reintentar eliminación en Supabase de IDs pendientes (con limpieza FK)
+      // Aplicar soft-deletes pendientes: quotes marcados localmente pero
+      // que aún no tienen deleted_at en Supabase
       if (deletedIds.size > 0) {
-        const successfulDeletes: string[] = []
         for (const delId of deletedIds) {
-          const ok = await this.supabaseDeleteWithFKCleanup(delId)
-          if (ok) successfulDeletes.push(delId)
-        }
-        // Limpiar IDs que ya fueron eliminados exitosamente de Supabase
-        for (const id of successfulDeletes) {
-          this.removeDeletedId(id)
+          if (!softDeletedIds.has(delId)) {
+            // Intentar marcar como soft-deleted en Supabase
+            const { error: sdErr } = await supabase
+              .from('quotes')
+              .update({ deleted_at: new Date().toISOString() })
+              .eq('id', delId)
+            if (!sdErr) {
+              softDeletedIds.add(delId)
+              this.removeDeletedId(delId)
+            }
+          } else {
+            // Ya está soft-deleted en Supabase, limpiar local
+            this.removeDeletedId(delId)
+          }
         }
       }
 
-      // Detectar quotes en localStorage que NO estén en Supabase (creados offline)
+      // Detectar quotes en localStorage que NO estén en Supabase activos
       const localQuotes = this.getAllQuotes()
-      const localOnly = localQuotes.filter(q => !sbIds.has(q.id) && !deletedIds.has(q.id))
+      const localOnly = localQuotes.filter(q =>
+        !sbIds.has(q.id) &&             // no vino de Supabase activo
+        !softDeletedIds.has(q.id) &&     // no está soft-deleted en Supabase
+        !deletedIds.has(q.id)            // no está marcado localmente para borrar
+      )
 
-      // Subir registros solo-locales a Supabase (recuperación)
+      // Subir registros solo-locales a Supabase (recuperación offline)
       let syncedCount = 0
       for (const local of localOnly) {
         const { error: upErr } = await supabase.from('quotes').upsert(toDb(local))
@@ -319,57 +339,53 @@ export class QuoteService {
     return quote
   }
 
-  // ── Eliminar de Supabase con limpieza de FK ──────────────
-  private static async supabaseDeleteWithFKCleanup(quoteId: string): Promise<boolean> {
-    try {
-      // Limpiar cualquier FK que pueda existir (las tablas pueden no existir;
-      // PostgREST devuelve 404/error que ignoramos)
-      await supabase.from('projects').update({ quote_id: null }).eq('quote_id', quoteId).catch(() => {})
-      await supabase.from('quote_items').delete().eq('quote_id', quoteId).catch(() => {})
+  // ── Soft-delete: marcar como eliminado en Supabase ───────
+  // En vez de DELETE (que otro dispositivo puede resucitar via
+  // re-upload), marcamos deleted_at. La fila sigue existiendo
+  // en la nube, así que nadie la confunde con "creada offline".
 
-      // Eliminar la quote
-      const { error, count } = await supabase
-        .from('quotes')
-        .delete()
-        .eq('id', quoteId)
-        .select('id', { count: 'exact' })
-
-      if (error) {
-        console.error('❌ Supabase DELETE quotes error:', error.message, error.details, error.hint)
-        return false
-      }
-
-      console.log('✅ Quote eliminada de Supabase:', quoteId, '(rows:', count, ')')
-      return true
-    } catch (err) {
-      console.warn('⚠️ Supabase delete network error:', err)
-      return false
-    }
-  }
-
-  // Eliminar presupuesto o factura
   static async deleteQuote(quoteId: string): Promise<void> {
     const quotes = this.getAllQuotes()
     const quote = quotes.find(q => q.id === quoteId)
     const wasFactura = quote?.status === 'APPROVED'
 
-    // 1. Registrar ID como eliminado (SIEMPRE, antes de intentar Supabase)
-    // Esto garantiza que syncFromSupabase nunca lo restaure
+    // 1. Red de seguridad local (por si Supabase falla)
     this.addDeletedId(quoteId)
 
     // 2. Eliminar de localStorage inmediatamente
     const filtered = quotes.filter(q => q.id !== quoteId)
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered))
 
-    // 3. Eliminar de Supabase CON limpieza de FK
-    const deleted = await this.supabaseDeleteWithFKCleanup(quoteId)
+    // 3. Soft-delete en Supabase: UPDATE deleted_at = NOW()
+    //    La fila queda en la tabla pero syncFromSupabase la filtra.
+    //    Otros dispositivos la ven como eliminada y la quitan de su localStorage.
+    try {
+      const { error } = await supabase
+        .from('quotes')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', quoteId)
 
-    if (deleted) {
-      // Si Supabase confirmó la eliminación, limpiar de la lista de borrados
-      // ya que la fila ya no existe en la nube
-      this.removeDeletedId(quoteId)
+      if (error) {
+        console.error('❌ Supabase soft-delete error:', error.message)
+        // Fallback: intentar hard DELETE
+        const { error: delErr } = await supabase
+          .from('quotes')
+          .delete()
+          .eq('id', quoteId)
+        if (delErr) {
+          console.error('❌ Supabase hard-delete also failed:', delErr.message)
+        } else {
+          console.log('✅ Quote hard-deleted (fallback):', quoteId)
+          this.removeDeletedId(quoteId)
+        }
+      } else {
+        console.log('✅ Quote soft-deleted en Supabase:', quoteId)
+        this.removeDeletedId(quoteId)
+      }
+    } catch (err) {
+      console.warn('⚠️ Supabase delete network error:', err)
+      // deletedIds queda como red de seguridad
     }
-    // Si falló, el ID queda en deleted_quote_ids como red de seguridad
 
     toast.success(wasFactura ? 'Factura eliminada del sistema' : 'Presupuesto eliminado')
   }
