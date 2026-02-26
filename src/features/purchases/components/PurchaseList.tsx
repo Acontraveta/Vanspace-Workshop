@@ -239,6 +239,32 @@ export default function PurchaseList() {
     refreshData()
   }
 
+  const handleDeletePurchase = (itemId: string, materialName: string) => {
+    confirm(`¿Eliminar "${materialName}" del sistema? Esta acción es irreversible.`, async () => {
+      try {
+        await PurchaseService.deletePurchase(itemId)
+        toast.success('🗑️ Pedido eliminado del sistema')
+        refreshData()
+      } catch {
+        toast.error('Error al eliminar pedido')
+      }
+    })
+  }
+
+  const handleDeleteMultiplePurchases = () => {
+    if (selectedPendingIds.size === 0) return
+    confirm(`¿Eliminar ${selectedPendingIds.size} pedido(s) seleccionado(s) del sistema? Esta acción es irreversible.`, async () => {
+      try {
+        await PurchaseService.deletePurchases(Array.from(selectedPendingIds))
+        toast.success(`🗑️ ${selectedPendingIds.size} pedido(s) eliminado(s)`)
+        setSelectedPendingIds(new Set())
+        refreshData()
+      } catch {
+        toast.error('Error al eliminar pedidos')
+      }
+    })
+  }
+
   const togglePendingSelection = (id: string) => {
     setSelectedPendingIds(prev => {
       const next = new Set(prev)
@@ -841,12 +867,19 @@ export default function PurchaseList() {
             )}
 
             {/* Action */}
-            <div className="mt-auto">
+            <div className="mt-auto flex gap-2">
               <button
                 onClick={() => handleMarkAsOrdered(item.id)}
-                className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
+                className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition"
               >
                 📦 Marcar como pedido
+              </button>
+              <button
+                onClick={() => handleDeletePurchase(item.id, item.materialName)}
+                className="px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium transition border border-red-200"
+                title="Eliminar pedido"
+              >
+                🗑️
               </button>
             </div>
           </div>
@@ -977,12 +1010,19 @@ export default function PurchaseList() {
             )}
 
             {/* Action */}
-            <div className="mt-auto">
+            <div className="mt-auto flex gap-2">
               <button
                 onClick={() => handleMarkAsReceived(item.id)}
-                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition"
+                className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition"
               >
                 ✅ Marcar como recibido
+              </button>
+              <button
+                onClick={() => handleDeletePurchase(item.id, item.materialName)}
+                className="px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium transition border border-red-200"
+                title="Eliminar pedido"
+              >
+                🗑️
               </button>
             </div>
           </div>
@@ -1058,6 +1098,13 @@ export default function PurchaseList() {
               <input id={fileInputId} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic" capture="environment" className="hidden" onChange={handleAttach} />
             </>
           )}
+          <button
+            onClick={() => handleDeletePurchase(item.id, item.materialName)}
+            className="px-2.5 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 text-red-500 hover:text-red-600 text-sm transition"
+            title="Eliminar pedido"
+          >
+            🗑️
+          </button>
         </div>
 
         {/* Attached documents (only for non-grouped items) */}
@@ -2654,6 +2701,12 @@ export default function PurchaseList() {
               className="bg-white text-blue-700 font-bold text-sm px-4 py-2 rounded-xl hover:bg-blue-50 transition"
             >
               🚚 Registrar pedido en bloque
+            </button>
+            <button
+              onClick={handleDeleteMultiplePurchases}
+              className="bg-red-500 text-white font-bold text-sm px-4 py-2 rounded-xl hover:bg-red-600 transition"
+            >
+              🗑️ Eliminar
             </button>
             <button
               onClick={() => setSelectedPendingIds(new Set())}

@@ -379,4 +379,49 @@ export class PurchaseService {
       .update({ attachments: JSON.stringify(updated) })
       .eq('id', itemId)
   }
+
+  // ── Eliminar pedido completamente del sistema ──────────
+  static async deletePurchase(itemId: string): Promise<void> {
+    // Limpiar adjuntos de Storage antes de borrar la fila
+    const { data: row } = await supabase
+      .from('purchase_items')
+      .select('attachments, invoice_image_url')
+      .eq('id', itemId)
+      .single()
+
+    if (row) {
+      const attachments: string[] = row.attachments
+        ? (typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments)
+        : []
+      const paths: string[] = []
+      for (const url of attachments) {
+        const m = url.match(/\/excel-files\/(.+)$/)
+        if (m) paths.push(m[1])
+      }
+      if (row.invoice_image_url) {
+        const m = row.invoice_image_url.match(/\/excel-files\/(.+)$/)
+        if (m) paths.push(m[1])
+      }
+      if (paths.length > 0) {
+        await supabase.storage.from('excel-files').remove(paths)
+      }
+    }
+
+    const { error } = await supabase
+      .from('purchase_items')
+      .delete()
+      .eq('id', itemId)
+
+    if (error) {
+      console.error('❌ Error eliminando pedido:', error.message)
+      throw error
+    }
+  }
+
+  // Eliminar múltiples pedidos a la vez
+  static async deletePurchases(itemIds: string[]): Promise<void> {
+    for (const id of itemIds) {
+      await this.deletePurchase(id)
+    }
+  }
 }
