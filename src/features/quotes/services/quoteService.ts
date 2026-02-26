@@ -142,20 +142,16 @@ export class QuoteService {
         .map(applyExpiration)
       const sbIds = new Set(sbQuotes.map(q => q.id))
 
-      // Reintentar eliminación en Supabase de IDs pendientes
+      // Reintentar eliminación en Supabase de IDs pendientes (con limpieza FK)
       if (deletedIds.size > 0) {
+        const successfulDeletes: string[] = []
         for (const delId of deletedIds) {
-          const { error: retryErr } = await supabase
-            .from('quotes')
-            .delete()
-            .eq('id', delId)
-          if (!retryErr) {
-            // También intentar con cast por si el campo es UUID
-            await supabase
-              .from('quotes')
-              .delete()
-              .filter('id', 'eq', delId)
-          }
+          const ok = await this.supabaseDeleteWithFKCleanup(delId)
+          if (ok) successfulDeletes.push(delId)
+        }
+        // Limpiar IDs que ya fueron eliminados exitosamente de Supabase
+        for (const id of successfulDeletes) {
+          this.removeDeletedId(id)
         }
       }
 
@@ -323,6 +319,31 @@ export class QuoteService {
     return quote
   }
 
+  // ── Eliminar de Supabase con limpieza de FK ──────────────
+  private static async supabaseDeleteWithFKCleanup(quoteId: string): Promise<boolean> {
+    try {
+      // 1. Limpiar FK: projects.quote_id → SET NULL
+      await supabase.from('projects').update({ quote_id: null }).eq('quote_id', quoteId)
+
+      // 2. Eliminar quote_items (tienen ON DELETE CASCADE, pero por seguridad)
+      await supabase.from('quote_items').delete().eq('quote_id', quoteId)
+
+      // 3. Eliminar la quote
+      const { error } = await supabase.from('quotes').delete().eq('id', quoteId)
+
+      if (error) {
+        console.error('❌ Supabase DELETE quotes error:', error.message, error.details, error.hint)
+        return false
+      }
+
+      console.log('✅ Quote eliminada de Supabase:', quoteId)
+      return true
+    } catch (err) {
+      console.warn('⚠️ Supabase delete network error:', err)
+      return false
+    }
+  }
+
   // Eliminar presupuesto o factura
   static async deleteQuote(quoteId: string): Promise<void> {
     const quotes = this.getAllQuotes()
@@ -337,12 +358,15 @@ export class QuoteService {
     const filtered = quotes.filter(q => q.id !== quoteId)
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered))
 
-    // 3. Intentar eliminar de Supabase (best effort)
-    try {
-      await supabase.from('quotes').delete().eq('id', quoteId)
-    } catch (err) {
-      console.warn('⚠️ Supabase delete attempt failed (will retry on next sync):', err)
+    // 3. Eliminar de Supabase CON limpieza de FK
+    const deleted = await this.supabaseDeleteWithFKCleanup(quoteId)
+
+    if (deleted) {
+      // Si Supabase confirmó la eliminación, limpiar de la lista de borrados
+      // ya que la fila ya no existe en la nube
+      this.removeDeletedId(quoteId)
     }
+    // Si falló, el ID queda en deleted_quote_ids como red de seguridad
 
     toast.success(wasFactura ? 'Factura eliminada del sistema' : 'Presupuesto eliminado')
   }
