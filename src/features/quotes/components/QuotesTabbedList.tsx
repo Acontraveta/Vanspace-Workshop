@@ -12,6 +12,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { getPortalRoot } from '@/shared/utils/portalRoot'
 import { Card, CardContent } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
@@ -607,7 +608,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           type={viewingQuote.status === 'APPROVED' ? 'FACTURA' : 'PRESUPUESTO'}
           onClose={() => setViewingQuote(null)}
         />,
-        document.body
+        getPortalRoot()
       )}
 
       {/* ── QuickDoc viewer (proformas / simplificadas) ──── */}
@@ -616,7 +617,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           doc={viewingDoc}
           onClose={() => setViewingDoc(null)}
         />,
-        document.body
+        getPortalRoot()
       )}
 
       {/* ── Confirmation dialog via portal ──── */}
@@ -630,7 +631,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
             </div>
           </div>
         </div>,
-        document.body
+        getPortalRoot()
       )}
     </div>
   )

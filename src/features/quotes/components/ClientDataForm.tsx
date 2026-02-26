@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
+import { getPortalRoot } from '@/shared/utils/portalRoot'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
@@ -78,7 +79,7 @@ export default function ClientDataForm({
           onSelect={data => { onLinkLead(data); setShowCRMModal(false) }}
           onClose={() => setShowCRMModal(false)}
         />,
-        document.body
+        getPortalRoot()
       )}
 
       {/* Datos Básicos del Cliente */}

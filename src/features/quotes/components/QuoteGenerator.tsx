@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { getPortalRoot } from '@/shared/utils/portalRoot'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
@@ -1051,7 +1052,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
           onSaveEdits={handleSaveDocumentEdits}
           onClose={() => setShowPreview(null)}
         />,
-        document.body
+        getPortalRoot()
       )}
 
       {/* Quick document modals */}
@@ -1072,7 +1073,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
           }}
           onClose={() => setQuickDocType(null)}
         />,
-        document.body
+        getPortalRoot()
       )}
 
       {/* Consumable resolver modal */}
@@ -1088,7 +1089,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
           }}
           onCancel={() => setConsumableResolver(null)}
         />,
-        document.body
+        getPortalRoot()
       )}
 
       {/* Modal producto manual */}
@@ -1100,7 +1101,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
           }}
           onCancel={() => setShowManualProductModal(false)}
         />,
-        document.body
+        getPortalRoot()
       )}
     </div>
   )

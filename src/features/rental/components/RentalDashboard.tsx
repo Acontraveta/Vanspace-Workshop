@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { getPortalRoot } from '@/shared/utils/portalRoot'
 import toast from 'react-hot-toast'
 import { fmtEur, fmtNum } from '@/shared/utils/formatters'
 import { RentalService } from '../services/rentalService'
@@ -1273,7 +1274,7 @@ function PhotoUploadSection({ bookingId, phase, label, existingUrls }: {
             </a>
           </div>
         </div>,
-        document.body
+        getPortalRoot()
       )}
 
       {/* Delete confirmation — rendered via portal */}
@@ -1288,7 +1289,7 @@ function PhotoUploadSection({ bookingId, phase, label, existingUrls }: {
             </div>
           </div>
         </div>,
-        document.body
+        getPortalRoot()
       )}
     </div>
   )

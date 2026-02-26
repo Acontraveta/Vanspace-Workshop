@@ -13,6 +13,7 @@
 
 import { useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { getPortalRoot } from '@/shared/utils/portalRoot'
 
 interface ConfirmState {
   message: string
@@ -60,7 +61,7 @@ export function useConfirm(): [JSX.Element | null, (message: string, onOk: () =>
             </div>
           </div>
         </div>,
-        document.body
+        getPortalRoot()
       )
     : null
 
