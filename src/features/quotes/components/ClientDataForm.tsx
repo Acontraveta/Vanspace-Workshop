@@ -58,7 +58,7 @@ export default function ClientDataForm({
   const [showCRMModal, setShowCRMModal] = useState(false)
 
   const updateBillingData = (field: string, value: string) => {
-    setBillingData({ ...billingData, [field]: value })
+    setBillingData((prev: typeof billingData) => ({ ...prev, [field]: value }))
   }
 
   const isBasicDataComplete = !!(clientName && clientEmail && clientPhone)
@@ -110,11 +110,9 @@ export default function ClientDataForm({
                   </button>
                 )
               )}
-              {isBasicDataComplete ? (
-                <Badge variant="success">✅ Completo</Badge>
-              ) : (
-                <Badge variant="secondary">⚠️ Incompleto</Badge>
-              )}
+              <Badge variant={isBasicDataComplete ? 'success' : 'secondary'}>
+                {isBasicDataComplete ? '✅ Completo' : '⚠️ Incompleto'}
+              </Badge>
             </div>
           </div>
         </CardHeader>
@@ -182,11 +180,9 @@ export default function ClientDataForm({
                   Necesarios para aprobar el presupuesto
                 </p>
               </div>
-              {isBillingDataComplete ? (
-                <Badge variant="success">✅ Completo</Badge>
-              ) : (
-                <Badge variant="destructive">❌ Requerido</Badge>
-              )}
+              <Badge variant={isBillingDataComplete ? 'success' : 'destructive'}>
+                {isBillingDataComplete ? '✅ Completo' : '❌ Requerido'}
+              </Badge>
             </div>
           </CardHeader>
           <CardContent>

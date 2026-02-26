@@ -1008,14 +1008,14 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                               disabled={saving || !canApprove}
                               title={!isBillingDataComplete ? 'Completa los datos de facturación' : ''}
                             >
-                              ✅ Aprobar
-                              {!isBillingDataComplete && ' ⚠️'}
+                              {isBillingDataComplete ? '✅ Aprobar' : '✅ Aprobar ⚠️'}
                             </Button>
-                            {!isBillingDataComplete && (
-                              <p className="text-xs text-center text-orange-600">
-                                ⚠️ Faltan datos de facturación
-                              </p>
-                            )}
+                            <p
+                              className="text-xs text-center text-orange-600"
+                              style={{ display: isBillingDataComplete ? 'none' : undefined }}
+                            >
+                              ⚠️ Faltan datos de facturación
+                            </p>
                           </>
                         )}
                         
