@@ -931,7 +931,6 @@ export default function VanExteriorDesign() {
     const targetView = tpl.preferredView ?? activeView
     if (tpl.preferredView && tpl.preferredView !== activeView) {
       setActiveView(tpl.preferredView)
-      toast(`Vista cambiada a ${views.find(v => v.id === tpl.preferredView)?.label ?? tpl.preferredView}`, { icon: '🔄' })
     }
     const vc = views.find(v => v.id === targetView)!
     const rawX = snap(vc.svgW / 2 - tpl.w / 2)
@@ -946,7 +945,13 @@ export default function VanExteriorDesign() {
     }
     setElements(prev => [...prev, placed])
     setSelected(placed.id)
-    toast.success(`${tpl.label} añadido`)
+    // Defer toasts so they don't fire during React's reconciliation
+    setTimeout(() => {
+      if (tpl.preferredView && tpl.preferredView !== activeView) {
+        toast(`Vista cambiada a ${views.find(v => v.id === tpl.preferredView)?.label ?? tpl.preferredView}`, { icon: '🔄' })
+      }
+      toast.success(`${tpl.label} añadido`)
+    }, 0)
   }
 
   const deleteSelected = () => {
@@ -1189,10 +1194,12 @@ export default function VanExteriorDesign() {
           >
             <CotaMarkers />
 
-            {activeView === 'side-left' && <VanSideLeftSVG van={van} key="side-left" />}
-            {activeView === 'side-right' && <VanSideRightSVG van={van} key="side-right" />}
-            {activeView === 'top' && <VanTopSVG van={van} key="top" />}
-            {activeView === 'rear' && <VanRearSVG van={van} key="rear" />}
+            {/* Single-expression view switch – avoids removeChild errors from
+                multiple && conditional siblings toggling in the same render */}
+            {activeView === 'side-left'  ? <VanSideLeftSVG van={van} key="side-left" /> :
+             activeView === 'side-right' ? <VanSideRightSVG van={van} key="side-right" /> :
+             activeView === 'top'        ? <VanTopSVG van={van} key="top" /> :
+                                           <VanRearSVG van={van} key="rear" />}
 
             {/* Placed elements with symbols */}
             {viewElements.map(el => {
