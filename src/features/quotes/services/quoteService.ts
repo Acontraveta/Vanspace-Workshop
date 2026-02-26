@@ -322,21 +322,24 @@ export class QuoteService {
   // ── Eliminar de Supabase con limpieza de FK ──────────────
   private static async supabaseDeleteWithFKCleanup(quoteId: string): Promise<boolean> {
     try {
-      // 1. Limpiar FK: projects.quote_id → SET NULL
-      await supabase.from('projects').update({ quote_id: null }).eq('quote_id', quoteId)
+      // Limpiar cualquier FK que pueda existir (las tablas pueden no existir;
+      // PostgREST devuelve 404/error que ignoramos)
+      await supabase.from('projects').update({ quote_id: null }).eq('quote_id', quoteId).catch(() => {})
+      await supabase.from('quote_items').delete().eq('quote_id', quoteId).catch(() => {})
 
-      // 2. Eliminar quote_items (tienen ON DELETE CASCADE, pero por seguridad)
-      await supabase.from('quote_items').delete().eq('quote_id', quoteId)
-
-      // 3. Eliminar la quote
-      const { error } = await supabase.from('quotes').delete().eq('id', quoteId)
+      // Eliminar la quote
+      const { error, count } = await supabase
+        .from('quotes')
+        .delete()
+        .eq('id', quoteId)
+        .select('id', { count: 'exact' })
 
       if (error) {
         console.error('❌ Supabase DELETE quotes error:', error.message, error.details, error.hint)
         return false
       }
 
-      console.log('✅ Quote eliminada de Supabase:', quoteId)
+      console.log('✅ Quote eliminada de Supabase:', quoteId, '(rows:', count, ')')
       return true
     } catch (err) {
       console.warn('⚠️ Supabase delete network error:', err)
