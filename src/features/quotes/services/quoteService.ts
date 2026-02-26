@@ -268,17 +268,22 @@ export class QuoteService {
   }
 
   // Eliminar presupuesto o factura
-  static deleteQuote(quoteId: string): void {
+  static async deleteQuote(quoteId: string): Promise<void> {
     const quotes = this.getAllQuotes()
     const quote = quotes.find(q => q.id === quoteId)
     const wasFactura = quote?.status === 'APPROVED'
-    
+
+    // 1. Eliminar de Supabase primero (await para asegurar que se completa)
+    const { error } = await supabase.from('quotes').delete().eq('id', quoteId)
+    if (error) {
+      console.error('❌ Supabase quote delete failed:', error.message)
+      toast.error('Error eliminando de la base de datos')
+      return
+    }
+
+    // 2. Solo si Supabase confirmó, eliminar de localStorage
     const filtered = quotes.filter(q => q.id !== quoteId)
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered))
-    // Remove from Supabase in background
-    supabase.from('quotes').delete().eq('id', quoteId).then(({ error }) => {
-      if (error) console.error('❌ Supabase quote delete failed:', error.message)
-    })
     toast.success(wasFactura ? 'Factura eliminada del sistema' : 'Presupuesto eliminado')
   }
 

@@ -32,6 +32,7 @@ function toDb(item: PurchaseItem): Record<string, any> {
     invoice_vat_pct:     item.invoiceVatPct ?? null,
     invoice_vat_amount:  item.invoiceVatAmount ?? null,
     invoice_provider_nif: item.invoiceProviderNif ?? null,
+    invoice_image_url:    item.invoiceImageUrl ?? null,
   }
 }
 
@@ -62,6 +63,7 @@ function fromDb(row: any): PurchaseItem {
     invoiceVatPct:     row.invoice_vat_pct != null ? Number(row.invoice_vat_pct) : undefined,
     invoiceVatAmount:  row.invoice_vat_amount != null ? Number(row.invoice_vat_amount) : undefined,
     invoiceProviderNif: row.invoice_provider_nif ?? undefined,
+    invoiceImageUrl:    row.invoice_image_url ?? undefined,
   }
 }
 
@@ -263,6 +265,55 @@ export class PurchaseService {
   // Pendientes ordenados por prioridad
   static async getPendingByPriority(): Promise<PurchaseItem[]> {
     return this.getByStatus('PENDING')
+  }
+
+  /**
+   * Subir factura de compra compartida para un bloque de pedido.
+   * Se sube una sola imagen/PDF y se asigna la URL a TODOS los items del grupo.
+   */
+  static async uploadGroupInvoice(orderGroupId: string, file: File): Promise<string> {
+    const ext = file.name.split('.').pop() || 'bin'
+    const ts = Date.now()
+    const path = `purchases/groups/${orderGroupId}/${ts}.${ext}`
+
+    // Subir a Storage
+    const { error: uploadErr } = await supabase.storage
+      .from('excel-files')
+      .upload(path, file, { cacheControl: '3600', upsert: true })
+    if (uploadErr) throw uploadErr
+
+    // Obtener URL pública
+    const { data: urlData } = supabase.storage
+      .from('excel-files')
+      .getPublicUrl(path)
+    const url = urlData.publicUrl
+
+    // Asignar la URL a todos los items del grupo
+    const { error: updateErr } = await supabase
+      .from('purchase_items')
+      .update({ invoice_image_url: url })
+      .eq('order_group_id', orderGroupId)
+    if (updateErr) throw updateErr
+
+    return url
+  }
+
+  /**
+   * Eliminar factura de compra compartida de un bloque de pedido.
+   */
+  static async removeGroupInvoice(orderGroupId: string, url: string): Promise<void> {
+    // Eliminar de Storage
+    const match = url.match(/\/excel-files\/(.+)$/)
+    if (match) {
+      await supabase.storage.from('excel-files').remove([match[1]])
+    }
+
+    // Quitar la URL de todos los items del grupo
+    const { error } = await supabase
+      .from('purchase_items')
+      .update({ invoice_image_url: null })
+      .eq('order_group_id', orderGroupId)
+    if (error) throw error
   }
 
   // Subir documento adjunto (albarán, factura, etc.)

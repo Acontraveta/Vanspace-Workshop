@@ -995,7 +995,7 @@ export default function PurchaseList() {
   }
 
   // Row component for received items (list view grouped by date)
-  const ReceivedRow = ({ item }: { item: PurchaseItem }) => {
+  const ReceivedRow = ({ item, hideAttach }: { item: PurchaseItem; hideAttach?: boolean }) => {
     const fileInputId = `attach-${item.id}`
     const hasAttachments = item.attachments && item.attachments.length > 0
 
@@ -1044,22 +1044,24 @@ export default function PurchaseList() {
           {/* Quantity */}
           <span className="text-sm font-semibold text-gray-700 whitespace-nowrap">{item.quantity} {item.unit}</span>
 
-          {/* Attachments indicator */}
-          {hasAttachments && (
-            <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-medium">
-              📎 {item.attachments!.length}
-            </span>
+          {/* Individual attachments (only for non-grouped items) */}
+          {!hideAttach && (
+            <>
+              {hasAttachments && (
+                <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-medium">
+                  📎 {item.attachments!.length}
+                </span>
+              )}
+              <label htmlFor={fileInputId} className="cursor-pointer px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-sm text-gray-600 hover:text-blue-600 transition flex items-center gap-1" title="Adjuntar albarán o documento">
+                📷 Adjuntar
+              </label>
+              <input id={fileInputId} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic" capture="environment" className="hidden" onChange={handleAttach} />
+            </>
           )}
-
-          {/* Attach button */}
-          <label htmlFor={fileInputId} className="cursor-pointer px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-sm text-gray-600 hover:text-blue-600 transition flex items-center gap-1" title="Adjuntar albarán o documento">
-            📷 Adjuntar
-          </label>
-          <input id={fileInputId} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic" capture="environment" className="hidden" onChange={handleAttach} />
         </div>
 
-        {/* Attached documents */}
-        {hasAttachments && (
+        {/* Attached documents (only for non-grouped items) */}
+        {!hideAttach && hasAttachments && (
           <div className="mt-2 flex flex-wrap gap-2">
             {item.attachments!.map((url, i) => {
               const isImage = /\.(jpg|jpeg|png|gif|webp|heic)/i.test(url)
@@ -1087,6 +1089,105 @@ export default function PurchaseList() {
             })}
           </div>
         )}
+      </div>
+    )
+  }
+
+  // ── Group invoice component for order groups (shared invoice image) ──
+  const OrderGroupInvoice = ({ groupId, items }: { groupId: string; items: PurchaseItem[] }) => {
+    const fileInputId = `group-attach-${groupId}`
+    const firstItem = items[0]
+    const invoiceImageUrl = firstItem?.invoiceImageUrl
+
+    const handleGroupAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      try {
+        toast.loading('Subiendo factura del grupo...', { id: 'group-upload' })
+        await PurchaseService.uploadGroupInvoice(groupId, file)
+        toast.success('🧾 Factura adjuntada al bloque', { id: 'group-upload' })
+        refreshData()
+      } catch (err) {
+        console.error(err)
+        toast.error('Error al subir factura', { id: 'group-upload' })
+      }
+      e.target.value = ''
+    }
+
+    const handleRemoveGroupInvoice = async () => {
+      if (!invoiceImageUrl) return
+      confirm('¿Eliminar la factura de este bloque de pedido?', async () => {
+        try {
+          await PurchaseService.removeGroupInvoice(groupId, invoiceImageUrl)
+          toast.success('Factura eliminada')
+          refreshData()
+        } catch { toast.error('Error eliminando') }
+      })
+    }
+
+    return (
+      <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-4 space-y-3">
+        {/* Group header */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-sm font-bold text-amber-800">📦 Bloque de pedido</span>
+          {firstItem?.invoiceNumber && (
+            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">{firstItem.invoiceNumber}</span>
+          )}
+          {firstItem?.provider && (
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">🏭 {firstItem.provider}</span>
+          )}
+          <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">
+            {items.length} artículo{items.length > 1 ? 's' : ''}
+          </span>
+          {firstItem?.invoiceAmount != null && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">
+              {firstItem.invoiceAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+            </span>
+          )}
+          {firstItem?.invoiceProviderNif && (
+            <span className="text-xs text-gray-500">NIF: {firstItem.invoiceProviderNif}</span>
+          )}
+        </div>
+
+        {/* Items list */}
+        <div className="space-y-1.5">
+          {items.map(item => <ReceivedRow key={item.id} item={item} hideAttach />)}
+        </div>
+
+        {/* Shared invoice image */}
+        <div className="border-t border-amber-200 pt-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-medium text-amber-800">🧾 Factura de compra:</span>
+
+            {invoiceImageUrl ? (
+              <div className="group relative">
+                {/\.(jpg|jpeg|png|gif|webp|heic)/i.test(invoiceImageUrl) ? (
+                  <a href={invoiceImageUrl} target="_blank" rel="noreferrer" className="block w-20 h-20 rounded-lg overflow-hidden border-2 border-amber-300 hover:border-blue-400 transition">
+                    <img src={invoiceImageUrl} alt="Factura" className="w-full h-full object-cover" />
+                  </a>
+                ) : (
+                  <a href={invoiceImageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-2 bg-white rounded-lg border-2 border-amber-300 hover:border-blue-400 text-xs text-gray-700 hover:text-blue-600 transition">
+                    📄 Ver factura
+                  </a>
+                )}
+                <button
+                  onClick={handleRemoveGroupInvoice}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                  title="Eliminar factura"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <>
+                <label htmlFor={fileInputId} className="cursor-pointer px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-sm text-amber-800 font-medium transition flex items-center gap-1.5">
+                  📷 Adjuntar factura del bloque
+                </label>
+                <input id={fileInputId} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic" capture="environment" className="hidden" onChange={handleGroupAttach} />
+              </>
+            )}
+          </div>
+        </div>
       </div>
     )
   }
@@ -1971,7 +2072,7 @@ export default function PurchaseList() {
                 })}
               </div>
             ) : selectedTab === 'received' ? (
-              // ── RECEIVED: date-grouped list view ──
+              // ── RECEIVED: date-grouped list view with order group support ──
               (() => {
                 const dateGroups: Record<string, PurchaseItem[]> = {}
                 filteredPurchases.forEach(item => {
@@ -1981,7 +2082,6 @@ export default function PurchaseList() {
                   if (!dateGroups[dateKey]) dateGroups[dateKey] = []
                   dateGroups[dateKey].push(item)
                 })
-                // Sort by date descending (most recent first) — already sorted by createdAt desc from filter
                 const sortedDates = Object.entries(dateGroups).sort(([, a], [, b]) => {
                   const da = a[0]?.receivedAt ? new Date(a[0].receivedAt).getTime() : 0
                   const db = b[0]?.receivedAt ? new Date(b[0].receivedAt).getTime() : 0
@@ -1990,7 +2090,20 @@ export default function PurchaseList() {
                 return (
                   <div className="space-y-6">
                     {sortedDates.map(([dateLabel, items]) => {
-                      const totalDocs = items.reduce((s, i) => s + (i.attachments?.length || 0), 0)
+                      const totalDocs = items.reduce((s, i) => s + (i.attachments?.length || 0) + (i.invoiceImageUrl ? 1 : 0), 0)
+
+                      // Separate grouped (order group) vs individual items
+                      const orderGroups: Record<string, PurchaseItem[]> = {}
+                      const individualItems: PurchaseItem[] = []
+                      items.forEach(item => {
+                        if (item.orderGroupId) {
+                          if (!orderGroups[item.orderGroupId]) orderGroups[item.orderGroupId] = []
+                          orderGroups[item.orderGroupId].push(item)
+                        } else {
+                          individualItems.push(item)
+                        }
+                      })
+
                       return (
                         <div key={dateLabel}>
                           <div className="flex items-center gap-3 mb-2">
@@ -2006,7 +2119,12 @@ export default function PurchaseList() {
                             <div className="flex-1 h-px bg-gray-200" />
                           </div>
                           <div className="space-y-2">
-                            {items.map(item => <ReceivedRow key={item.id} item={item} />)}
+                            {/* Order groups — shared invoice */}
+                            {Object.entries(orderGroups).map(([groupId, groupItems]) => (
+                              <OrderGroupInvoice key={groupId} groupId={groupId} items={groupItems} />
+                            ))}
+                            {/* Individual items — own attachments */}
+                            {individualItems.map(item => <ReceivedRow key={item.id} item={item} />)}
                           </div>
                         </div>
                       )

@@ -54,6 +54,7 @@ export interface PurchaseItem {
   invoiceVatPct?: number      // % IVA de la factura de compra
   invoiceVatAmount?: number   // Cuota IVA de la factura de compra
   invoiceProviderNif?: string // NIF/CIF del proveedor
+  invoiceImageUrl?: string    // URL de la imagen/PDF de la factura de compra (compartida en el grupo)
 }
 
 // Agrupación de pedidos por proveedor

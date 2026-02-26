@@ -72,6 +72,7 @@ interface InvoiceRow {
   vatAmount: number
   total: number
   type: 'factura' | 'simplificada' | 'proforma'
+  invoiceImageUrl?: string
 }
 
 function quoteToRow(q: Quote): InvoiceRow {
@@ -158,7 +159,8 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
         vatPct,
         vatAmount: Math.round(vatAmt * 100) / 100,
         total,
-        type: 'factura', // reused type for display
+        type: 'factura',
+        invoiceImageUrl: first.invoiceImageUrl,
       })
     }
 
@@ -178,6 +180,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
         vatAmount: Math.round(vatAmt * 100) / 100,
         total,
         type: 'factura',
+        invoiceImageUrl: p.invoiceImageUrl,
       })
     }
 
@@ -598,6 +601,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
                 <th className="px-3 py-2 text-center">IVA%</th>
                 <th className="px-3 py-2 text-right">Cuota IVA</th>
                 <th className="px-3 py-2 text-right">Total</th>
+                <th className="px-3 py-2 text-center">Doc</th>
               </tr>
             </thead>
             <tbody>
@@ -611,11 +615,20 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
                   <td className="px-3 py-1.5 text-center">{r.vatPct}%</td>
                   <td className="px-3 py-1.5 text-right text-blue-600">{fmt(r.vatAmount)} €</td>
                   <td className="px-3 py-1.5 text-right font-semibold">{fmt(r.total)} €</td>
+                  <td className="px-3 py-1.5 text-center">
+                    {r.invoiceImageUrl ? (
+                      <a href={r.invoiceImageUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700" title="Ver factura">
+                        📄
+                      </a>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center text-gray-400 py-8">
+                  <td colSpan={9} className="text-center text-gray-400 py-8">
                     No hay facturas de compra registradas en {year}.
                     <br /><span className="text-xs">Registra datos de factura al marcar pedidos como enviados.</span>
                   </td>
@@ -630,6 +643,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
                   <td />
                   <td className="px-3 py-2 text-right text-blue-600">{fmt(totals.vat)} €</td>
                   <td className="px-3 py-2 text-right text-red-600">{fmt(totals.total)} €</td>
+                  <td />
                 </tr>
               </tfoot>
             )}

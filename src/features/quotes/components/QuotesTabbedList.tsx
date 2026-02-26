@@ -166,7 +166,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
     }
   }
 
-  const [confirmAction, setConfirmAction] = useState<{ message: string; action: () => void } | null>(null)
+  const [confirmAction, setConfirmAction] = useState<{ message: string; action: () => void | Promise<void> } | null>(null)
 
   const handleCancel = (quoteId: string) => {
     setConfirmAction({
@@ -199,9 +199,9 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   const handleDeleteFactura = (quoteId: string) => {
     setConfirmAction({
       message: '⚠️ ¿Eliminar esta factura del sistema? Esta acción es irreversible y eliminará la factura, su proyecto asociado y todas las compras/tareas generadas.',
-      action: () => {
+      action: async () => {
         try {
-          QuoteService.deleteQuote(quoteId)
+          await QuoteService.deleteQuote(quoteId)
           refresh()
         } catch (error: any) {
           toast.error(error.message)

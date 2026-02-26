@@ -14,6 +14,7 @@ DO $$ BEGIN
     ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS invoice_vat_pct      NUMERIC DEFAULT 21;
     ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS invoice_vat_amount   NUMERIC;
     ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS invoice_provider_nif TEXT;
+    ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS invoice_image_url   TEXT;
 
     -- Index for fast group lookups
     CREATE INDEX IF NOT EXISTS idx_purchase_items_order_group ON purchase_items(order_group_id) WHERE order_group_id IS NOT NULL;
