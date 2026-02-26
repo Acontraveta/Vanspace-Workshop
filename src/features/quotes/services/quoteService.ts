@@ -13,6 +13,7 @@ function toDb(q: Quote) {
     client_phone: q.clientPhone ?? null,
     vehicle_model: q.vehicleModel ?? null,
     vehicle_size: (q as any).vehicleSize ?? null,
+    business_line: 'Camperización',
     billing_data: q.billingData ?? null,
     tarifa: q.tarifa ?? {},
     items: q.items ?? [],
@@ -114,11 +115,17 @@ export class QuoteService {
       const localOnly = localQuotes.filter(q => !sbIds.has(q.id))
 
       // Subir registros solo-locales a Supabase (recuperación)
+      let syncedCount = 0
       for (const local of localOnly) {
-        supabase.from('quotes').upsert(toDb(local))
-          .then(({ error: upErr }) => {
-            if (upErr) console.warn('⚠️ Failed to sync local quote to Supabase:', local.quoteNumber, upErr.message)
-          })
+        const { error: upErr } = await supabase.from('quotes').upsert(toDb(local))
+        if (upErr) {
+          console.warn('⚠️ Failed to sync local quote to Supabase:', local.quoteNumber, upErr.message)
+        } else {
+          syncedCount++
+        }
+      }
+      if (syncedCount > 0) {
+        toast.success(`☁️ ${syncedCount} documento(s) sincronizado(s) con la nube`)
       }
 
       const merged = [...sbQuotes, ...localOnly]
@@ -145,7 +152,10 @@ export class QuoteService {
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(quotes))
     // Persist to Supabase in background
     supabase.from('quotes').upsert(toDb(quote)).then(({ error }) => {
-      if (error) console.warn('Supabase quote sync failed:', error.message)
+      if (error) {
+        console.error('❌ Supabase quote sync failed:', error.message)
+        toast.error('⚠️ Guardado local OK, pero no se sincronizó con la nube. Inténtalo de nuevo.', { duration: 5000 })
+      }
     })
     toast.success('Presupuesto guardado')
   }
@@ -270,7 +280,7 @@ export class QuoteService {
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered))
     // Remove from Supabase in background
     supabase.from('quotes').delete().eq('id', quoteId).then(({ error }) => {
-      if (error) console.warn('Supabase quote delete failed:', error.message)
+      if (error) console.error('❌ Supabase quote delete failed:', error.message)
     })
     toast.success('Presupuesto eliminado')
   }

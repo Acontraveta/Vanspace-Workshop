@@ -10,6 +10,7 @@
 
 import { QuickDocType } from '../components/QuickDocumentModal'
 import { supabase } from '@/lib/supabase'
+import toast from 'react-hot-toast'
 
 export interface QuickDocLine {
   id: string
@@ -133,11 +134,19 @@ export class QuickDocService {
     const localOnly = cacheGetAll().filter(r => !sbDocNumbers.has(r.docNumber))
 
     // Push any localStorage-only records to Supabase (recovery)
+    let syncedCount = 0
     for (const local of localOnly) {
-      supabase.from('quick_docs').upsert(recordToRow(local), { onConflict: 'doc_number' })
-        .then(({ error: upErr }) => {
-          if (upErr) console.warn('⚠️ Failed to sync local doc to Supabase:', local.docNumber, upErr.message)
-        })
+      const { error: upErr } = await supabase
+        .from('quick_docs')
+        .upsert(recordToRow(local), { onConflict: 'doc_number' })
+      if (upErr) {
+        console.warn('⚠️ Failed to sync local doc to Supabase:', local.docNumber, upErr.message)
+      } else {
+        syncedCount++
+      }
+    }
+    if (syncedCount > 0) {
+      toast.success(`☁️ ${syncedCount} documento(s) sincronizado(s) con la nube`)
     }
 
     const merged = [...sbRecords, ...localOnly]
@@ -169,11 +178,13 @@ export class QuickDocService {
     all.unshift(record)
     cacheSet(all)
 
-    // Persist to Supabase (async, fire-and-forget with logging)
+    // Persist to Supabase (async — notify user on failure)
     supabase.from('quick_docs').upsert(recordToRow(record), { onConflict: 'doc_number' })
       .then(({ error: upErr }) => {
-        if (upErr) console.error('❌ QuickDocService: failed to save to Supabase:', upErr.message)
-        else console.log('✅ QuickDoc saved to Supabase:', record.docNumber)
+        if (upErr) {
+          console.error('❌ QuickDocService: failed to save to Supabase:', upErr.message)
+          toast.error('⚠️ Documento guardado local, pero no sincronizado con la nube', { duration: 5000 })
+        }
       })
 
     return record
