@@ -7,7 +7,7 @@ import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
 import { ProductionService } from '@/features/calendar/services/productionService'
 import { PurchaseService } from '@/features/purchases/services/purchaseService'
-import { supabase } from '@/lib/supabase'
+import { StockService } from '@/features/purchases/services/stockService'
 import { QuoteService } from '@/features/quotes/services/quoteService'
 import { ConfigService } from '@/features/config/services/configService'
 import { useAuth } from '@/app/providers/AuthProvider'
@@ -53,74 +53,61 @@ export default function AdminDashboard() {
 
 
   useEffect(() => {
-    const loadData = async () => {
-      // Cargar stock desde Supabase
-      const { data: stockData, error } = await supabase
-        .from('stock_items')
-        .select('*')
-        .order('articulo')
-      if (error) {
-        console.error('Error cargando stock:', error)
-        setStock([])
-        setStockLoaded(false)
-      } else {
-        const formattedStock = (stockData || []).map(item => ({
-          REFERENCIA: item.referencia,
-          FAMILIA: item.familia,
-          CATEGORIA: item.categoria,
-          ARTICULO: item.articulo,
-          DESCRIPCION: item.descripcion,
-          CANTIDAD: item.cantidad,
-          STOCK_MINIMO: item.stock_minimo,
-          UNIDAD: item.unidad,
-          COSTE_IVA_INCLUIDO: item.coste_iva_incluido,
-          UBICACION: item.ubicacion,
-          PROVEEDOR: item.proveedor
-        }))
-        setStock(formattedStock)
-        setStockLoaded(formattedStock.length > 0)
-        loadCompleteStats(formattedStock)
-      }
-    }
-    loadData()
+    loadAllStats()
   }, [])
 
-  const loadCompleteStats = async (stockArg) => {
+  const loadAllStats = async () => {
     try {
-      // Presupuestos (sincronizar desde Supabase)
-      await QuoteService.syncFromSupabase()
-      const quotes = QuoteService.getQuotesByCategory()
+      // Cargar todo en paralelo para máxima velocidad
+      const [quotesResult, projectsResult, purchasesResult, stockResult, employeesResult] = await Promise.allSettled([
+        // 1. Presupuestos
+        (async () => {
+          await QuoteService.syncFromSupabase()
+          return QuoteService.getQuotesByCategory()
+        })(),
+        // 2. Producción (proyectos + tareas)
+        (async () => {
+          const allProjects = await ProductionService.getProjects()
+          const tasksArrays = await Promise.all(
+            allProjects.map(p => ProductionService.getProjectTasks(p.id))
+          )
+          return { projects: allProjects, tasks: tasksArrays.flat() }
+        })(),
+        // 3. Compras
+        PurchaseService.getAllPurchases(),
+        // 4. Stock — cargar desde Supabase Storage (Excel)
+        StockService.loadFromSupabase(),
+        // 5. Personal
+        ConfigService.getEmployees(),
+      ])
+
+      // Extraer resultados (con fallback a vacío si falló)
+      const quotes = quotesResult.status === 'fulfilled' ? quotesResult.value : { active: [], approved: [], cancelled: [], expired: [] }
+      const { projects: allProjects, tasks: allTasks } = projectsResult.status === 'fulfilled' ? projectsResult.value : { projects: [], tasks: [] }
+      const purchases = purchasesResult.status === 'fulfilled' ? purchasesResult.value : []
+      const stockItems = stockResult.status === 'fulfilled' ? stockResult.value : StockService.getStock()
+      const employees = employeesResult.status === 'fulfilled' ? employeesResult.value : []
+
+      setStock(stockItems as any)
+      setStockLoaded(stockItems.length > 0)
+
+      // Cálculos
       const allQuotes = [...quotes.active, ...quotes.approved, ...quotes.cancelled, ...quotes.expired]
       const totalQuotesValue = allQuotes.reduce((sum, q) => sum + q.total, 0)
       const approvedValue = quotes.approved.reduce((sum, q) => sum + q.total, 0)
-
-      // Producción
-      const allProjects = await ProductionService.getProjects()
-      const tasksPromises = allProjects.map(p => ProductionService.getProjectTasks(p.id))
-      const tasksArrays = await Promise.all(tasksPromises)
-      const allTasks = tasksArrays.flat()
-      
       const totalHoursPlanned = allProjects.reduce((sum, p) => sum + p.total_hours, 0)
       const totalHoursWorked = allTasks.reduce((sum, t) => sum + (t.actual_hours || 0), 0)
-      
       const delayed = allProjects.filter(p => {
         if (!p.end_date || p.status === 'COMPLETED') return false
         return differenceInDays(parseISO(p.end_date), new Date()) < 0
       }).length
-      
       const blocked = allTasks.filter(t => t.status === 'BLOCKED').length
-
-      // Compras y Stock
-      const purchases = await PurchaseService.getAllPurchases()
-      const lowStock = (stockArg || []).filter(item =>
+      const lowStock = stockItems.filter(item =>
         item.STOCK_MINIMO && item.CANTIDAD < item.STOCK_MINIMO
       )
-      const totalValue = (stockArg || []).reduce((sum, item) => {
+      const totalValue = stockItems.reduce((sum, item) => {
         return sum + ((item.COSTE_IVA_INCLUIDO || 0) * item.CANTIDAD)
       }, 0)
-
-      // Personal
-      const employees = await ConfigService.getEmployees()
 
       setStats({
         totalQuotes: allQuotes.length,
@@ -135,7 +122,7 @@ export default function AdminDashboard() {
         totalHoursWorked,
         totalPurchases: purchases.length,
         pendingPurchases: purchases.filter(p => p.status === 'PENDING').length,
-        totalStockItems: (stockArg || []).length,
+        totalStockItems: stockItems.length,
         lowStockItems: lowStock.length,
         totalInventoryValue: totalValue,
         totalEmployees: employees.length,

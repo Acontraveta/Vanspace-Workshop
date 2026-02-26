@@ -24,9 +24,22 @@ export default function ComprasDashboard() {
   }, [])
 
   const loadData = async () => {
-    setPurchases(await PurchaseService.getAllPurchases())
-    setStock(StockService.getStock())
-    setLoading(false)
+    try {
+      const [purchasesResult, stockResult] = await Promise.allSettled([
+        PurchaseService.getAllPurchases(),
+        StockService.loadFromSupabase(),
+      ])
+      if (purchasesResult.status === 'fulfilled') setPurchases(purchasesResult.value)
+      if (stockResult.status === 'fulfilled') {
+        setStock(stockResult.value)
+      } else {
+        setStock(StockService.getStock())
+      }
+    } catch (error) {
+      console.error('Error cargando datos compras:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const pendingPurchases = purchases.filter(p => p.status === 'PENDING')

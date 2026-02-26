@@ -36,36 +36,50 @@ export default function EncargadoDashboard() {
 
   const loadAllStats = async () => {
     try {
-      // Presupuestos (sincronizar desde Supabase)
-      await QuoteService.syncFromSupabase()
-      const quotes = QuoteService.getQuotesByCategory()
-      
-      // Producción
-      const allProjects = await ProductionService.getProjects()
-      const activeProjects = allProjects.filter(p => 
-        p.status === 'IN_PROGRESS' || p.status === 'SCHEDULED'
-      )
-      
+      // Cargar todo en paralelo — cada uno independiente
+      const [quotesResult, projectsResult, purchasesResult, stockResult] = await Promise.allSettled([
+        // 1. Presupuestos
+        (async () => {
+          await QuoteService.syncFromSupabase()
+          return QuoteService.getQuotesByCategory()
+        })(),
+        // 2. Producción (proyectos + tareas)
+        (async () => {
+          const allProjects = await ProductionService.getProjects()
+          const activeProjects = allProjects.filter(p => 
+            p.status === 'IN_PROGRESS' || p.status === 'SCHEDULED'
+          )
+          const tasksArrays = await Promise.all(
+            activeProjects.map(p => ProductionService.getProjectTasks(p.id))
+          )
+          return { projects: allProjects, tasks: tasksArrays.flat() }
+        })(),
+        // 3. Compras
+        PurchaseService.getAllPurchases(),
+        // 4. Stock — cargar desde Supabase Storage (Excel)
+        StockService.loadFromSupabase(),
+      ])
+
+      // Extraer resultados con fallback
+      const quotes = quotesResult.status === 'fulfilled' ? quotesResult.value : { active: [], approved: [] }
+      const { projects: allProjects, tasks: allTasks } = projectsResult.status === 'fulfilled' ? projectsResult.value : { projects: [], tasks: [] }
+      const purchases = purchasesResult.status === 'fulfilled' ? purchasesResult.value : []
+      const stockItems = stockResult.status === 'fulfilled' ? stockResult.value : StockService.getStock()
+
       // Tareas bloqueadas
-      const tasksPromises = activeProjects.map(p => ProductionService.getProjectTasks(p.id))
-      const tasksArrays = await Promise.all(tasksPromises)
-      const allTasks = tasksArrays.flat()
       const blocked = allTasks.filter(t => t.status === 'BLOCKED').length
 
       // Proyectos atrasados
       const delayed = allProjects.filter(p => {
         if (!p.end_date || p.status === 'COMPLETED') return false
-        const daysUntilEnd = differenceInDays(parseISO(p.end_date), new Date())
-        return daysUntilEnd < 0
+        return differenceInDays(parseISO(p.end_date), new Date()) < 0
       }).length
 
-      // Pedidos
-      const purchases = await PurchaseService.getAllPurchases()
-      
       // Stock
-      const stock = StockService.getStock()
-      const lowStock = StockService.getLowStockItems()
-      const totalValue = stock.reduce((sum, item) => {
+      const lowStock = stockItems.filter(item =>
+        item.STOCK_MINIMO && item.CANTIDAD < item.STOCK_MINIMO
+      )
+      const totalValue = stockItems.reduce((sum, item) => {
         return sum + ((item.COSTE_IVA_INCLUIDO || 0) * item.CANTIDAD)
       }, 0)
 

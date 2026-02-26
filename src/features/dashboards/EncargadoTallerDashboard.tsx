@@ -27,21 +27,30 @@ export default function EncargadoTallerDashboard() {
 
   const loadData = async () => {
     try {
-      const allProjects = await ProductionService.getProjects()
-      const activeProjects = allProjects.filter(p => 
-        p.status === 'SCHEDULED' || p.status === 'IN_PROGRESS'
-      )
+      const [projectsResult, employeesResult] = await Promise.allSettled([
+        (async () => {
+          const allProjects = await ProductionService.getProjects()
+          const activeProjects = allProjects.filter(p => 
+            p.status === 'SCHEDULED' || p.status === 'IN_PROGRESS' || p.status === 'WAITING'
+          )
+          const tasksArrays = await Promise.all(
+            activeProjects.filter(p => p.status !== 'WAITING').map(p => ProductionService.getProjectTasks(p.id))
+          )
+          return { projects: activeProjects, tasks: tasksArrays.flat() }
+        })(),
+        (async () => {
+          const employeeData = await ConfigService.getEmployees()
+          return employeeData.filter(e => e.activo)
+        })(),
+      ])
 
-      const tasksPromises = activeProjects.map(p => ProductionService.getProjectTasks(p.id))
-      const tasksArrays = await Promise.all(tasksPromises)
-      const tasks = tasksArrays.flat()
-
-      const employeeData = await ConfigService.getEmployees()
-      const activeEmployees = employeeData.filter(e => e.activo)
-
-      setProjects(activeProjects)
-      setAllTasks(tasks)
-      setEmployees(activeEmployees)
+      if (projectsResult.status === 'fulfilled') {
+        setProjects(projectsResult.value.projects)
+        setAllTasks(projectsResult.value.tasks)
+      }
+      if (employeesResult.status === 'fulfilled') {
+        setEmployees(employeesResult.value)
+      }
     } catch (error) {
       console.error('Error cargando datos:', error)
     } finally {
