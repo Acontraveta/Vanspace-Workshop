@@ -363,8 +363,22 @@ export default function TaskBoard({
   const handlePauseTask = async (task: ProductionTask) => {
     confirm('¿Pausar esta tarea?', async () => {
       try {
-        await ProductionService.updateTask(task.id, { status: 'PENDING' })
-        toast.success('⏸ Tarea pausada')
+        // Calcular horas del tramo actual
+        const startTime = taskStartTime[task.id] || (task as any).started_at
+        let periodHours = 0
+        if (startTime) {
+          const diffMs = new Date().getTime() - new Date(startTime).getTime()
+          periodHours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10
+        }
+        // Sumar al acumulado de tramos anteriores
+        const prevAccumulated = (task as any).accumulated_hours || 0
+        const totalAccumulated = Math.round((prevAccumulated + periodHours) * 10) / 10
+
+        await ProductionService.updateTask(task.id, {
+          status: 'PENDING',
+          accumulated_hours: totalAccumulated
+        } as any)
+        toast.success(`⏸ Tarea pausada (⏱️ ${fmtHours(totalAccumulated)}h acumuladas)`)
         loadData()
         onRefresh()
       } catch {
@@ -380,11 +394,13 @@ export default function TaskBoard({
       toast.error('Error: esta tarea no tiene hora de inicio registrada')
       return
     }
-    // Calcular tiempo transcurrido
+    // Calcular tiempo del tramo actual + acumulado de pausas anteriores
     const now = new Date()
     const start = new Date(startTime)
     const diffMs = now.getTime() - start.getTime()
-    const diffHours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10
+    const currentPeriod = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10
+    const accumulated = (task as any).accumulated_hours || 0
+    const diffHours = Math.round((accumulated + currentPeriod) * 10) / 10
     confirm(`¿Completar esta tarea?\n\n${task.task_name}\n⏱️ Tiempo trabajado: ${diffHours}h`, async () => {
       // Completar directamente
       const endTime = new Date().toISOString()
