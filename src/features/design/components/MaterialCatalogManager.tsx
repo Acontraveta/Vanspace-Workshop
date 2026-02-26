@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { CatalogMaterial } from '../types/furniture.types'
 import { MaterialCatalogService } from '../services/materialCatalogService'
 import { MATERIAL_CATEGORIES } from '../constants/furniture.constants'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 type CategoryFilter = CatalogMaterial['category'] | 'all'
@@ -12,6 +13,7 @@ export function MaterialCatalogManager() {
   const [filter, setFilter]          = useState<CategoryFilter>('all')
   const [editing, setEditing]        = useState<CatalogMaterial | null>(null)
   const [showForm, setShowForm]      = useState(false)
+  const [ConfirmDialog, confirm] = useConfirm()
 
   const load = async () => {
     setLoading(true)
@@ -41,15 +43,16 @@ export function MaterialCatalogManager() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este material del catálogo?')) return
-    try {
-      await MaterialCatalogService.delete(id)
-      toast.success('Material eliminado')
-      MaterialCatalogService.invalidateCache()
-      await load()
-    } catch (err: any) {
-      toast.error(err.message)
-    }
+    confirm('¿Eliminar este material del catálogo?', async () => {
+      try {
+        await MaterialCatalogService.delete(id)
+        toast.success('Material eliminado')
+        MaterialCatalogService.invalidateCache()
+        await load()
+      } catch (err: any) {
+        toast.error(err.message)
+      }
+    })
   }
 
   const openNew = () => {
@@ -78,6 +81,7 @@ export function MaterialCatalogManager() {
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
+      {ConfirmDialog}
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white shadow-sm">
         <div>

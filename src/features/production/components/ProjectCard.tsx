@@ -84,10 +84,7 @@ export default function ProjectCard({
                 project.status === 'ON_HOLD' ? 'warning' :
                 'secondary'
               }>
-                {project.status === 'IN_PROGRESS' && '🟢 En Progreso'}
-                {project.status === 'SCHEDULED' && '📅 Planificado'}
-                {project.status === 'ON_HOLD' && '⏸ Pausado'}
-                {project.status === 'COMPLETED' && '✅ Completado'}
+                {{ IN_PROGRESS: '🟢 En Progreso', SCHEDULED: '📅 Planificado', ON_HOLD: '⏸ Pausado', COMPLETED: '✅ Completado' }[project.status] ?? project.status}
               </Badge>
             </div>
             <p className="text-xl font-semibold text-gray-900">{project.client_name}</p>

@@ -234,7 +234,7 @@ export function AlertsPanel({
                           disabled={actioning === alert.id}
                           className="text-xs px-2.5 py-1 rounded border border-gray-200 text-gray-400 hover:bg-gray-50 transition disabled:opacity-50"
                         >
-                          Ignorar {isLive && "(24h)"}
+                          {isLive ? 'Ignorar (24h)' : 'Ignorar'}
                         </button>
                       </div>
                     )}

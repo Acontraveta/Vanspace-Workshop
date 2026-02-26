@@ -15,11 +15,13 @@ import { CatalogProduct } from '@/features/quotes/types/quote.types'
 import { CatalogService } from '@/features/quotes/services/catalogService'
 import { supabase } from '@/lib/supabase'
 import { CONFIG } from '@/shared/utils/constants'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 export default function PurchaseList() {
   const location = useLocation()
   const navigate = useNavigate()
+  const [ConfirmDialog, confirm] = useConfirm()
 
   const [purchases, setPurchases] = useState<PurchaseItem[]>([])
   const [stock, setStock] = useState<StockItem[]>([])
@@ -925,12 +927,13 @@ export default function PurchaseList() {
     }
 
     const handleRemoveAttach = async (url: string) => {
-      if (!confirm('¿Eliminar este documento?')) return
-      try {
-        await PurchaseService.removeAttachment(item.id, url)
-        toast.success('Documento eliminado')
-        refreshData()
-      } catch { toast.error('Error eliminando') }
+      confirm('¿Eliminar este documento?', async () => {
+        try {
+          await PurchaseService.removeAttachment(item.id, url)
+          toast.success('Documento eliminado')
+          refreshData()
+        } catch { toast.error('Error eliminando') }
+      })
     }
 
     return (
@@ -1114,6 +1117,7 @@ export default function PurchaseList() {
 
   return (
     <PageLayout>
+      {ConfirmDialog}
       <Header
         title="Pedidos y Stock"
         description="Gestión de compras, inventario y catálogo de productos"

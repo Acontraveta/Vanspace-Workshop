@@ -213,9 +213,7 @@ export default function TimeclockPanel() {
     const link = document.createElement('a')
     link.href = url
     link.download = `fichajes_${dateFrom}_${dateTo}.csv`
-    document.body.appendChild(link)
     link.click()
-    document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
     toast.success('✅ Informe exportado correctamente')
@@ -359,9 +357,7 @@ export default function TimeclockPanel() {
     const link = document.createElement('a')
     link.href = url
     link.download = `fichajes_${dateFrom}_${dateTo}.html`
-    document.body.appendChild(link)
     link.click()
-    document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
     toast.success('✅ Informe HTML exportado')

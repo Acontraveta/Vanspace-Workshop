@@ -619,14 +619,11 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">
-                      {isEditing ? '✏️ Editando' : ''} Presupuesto: {currentQuote.quoteNumber}
+                      {isEditing ? '✏️ Editando ' : ''}Presupuesto: {currentQuote.quoteNumber}
                     </p>
                     <p className="text-sm text-gray-600">
                       Estado: <Badge variant={currentQuote.status === 'APPROVED' ? 'success' : 'secondary'}>
-                        {currentQuote.status === 'DRAFT' && '📝 Borrador'}
-                        {currentQuote.status === 'SENT' && '📤 Enviado'}
-                        {currentQuote.status === 'APPROVED' && '✅ Aprobado'}
-                        {currentQuote.status === 'EXPIRED' && '⏰ Caducado'}
+                        {{ DRAFT: '📝 Borrador', SENT: '📤 Enviado', APPROVED: '✅ Aprobado', EXPIRED: '⏰ Caducado', REJECTED: '❌ Rechazado', CANCELLED: '❌ Cancelado' }[currentQuote.status] ?? currentQuote.status}
                       </Badge>
                     </p>
                   </div>
@@ -783,11 +780,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                           >
                             <div className="flex items-center gap-3">
                               <span className="text-2xl">
-                                {family === 'electricidad' && '⚡'}
-                                {family === 'fontaneria' && '🚰'}
-                                {family === 'muebles' && '🪑'}
-                                {family === 'ventanas' && '🪟'}
-                                {!['electricidad', 'fontaneria', 'muebles', 'ventanas'].includes(family) && '📦'}
+                                {{ electricidad: '⚡', fontaneria: '🚰', muebles: '🪑', ventanas: '🪟' }[family] ?? '📦'}
                               </span>
                               <span className="font-medium capitalize">{family}</span>
                               <Badge variant="secondary" className="text-xs">

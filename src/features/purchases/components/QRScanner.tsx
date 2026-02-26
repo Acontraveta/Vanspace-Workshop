@@ -5,6 +5,7 @@ import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { StockItem } from '../types/purchase.types'
 import { supabase } from '@/lib/supabase'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 import QRCode from 'qrcode'
 
@@ -24,6 +25,7 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   const [generatingQR, setGeneratingQR] = useState(false)
   const [qrPreview, setQrPreview] = useState<string | null>(null)
   const [qrPreviewItem, setQrPreviewItem] = useState<StockItem | null>(null)
+  const [ConfirmDialog, confirm] = useConfirm()
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const scannerContainerId = 'qr-reader-container'
@@ -287,6 +289,7 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
 
   return (
     <div className="space-y-4">
+      {ConfirmDialog}
       {/* Camera Scanner */}
       <Card>
         <CardHeader className="pb-3">
@@ -508,7 +511,10 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
                 return
               }
               if (stock.length > 100) {
-                if (!confirm(`¿Generar ${stock.length} etiquetas? Puede tardar unos segundos.`)) return
+                confirm(`¿Generar ${stock.length} etiquetas? Puede tardar unos segundos.`, () => {
+                  printMultipleLabels(stock)
+                })
+                return
               }
               printMultipleLabels(stock)
             }}>

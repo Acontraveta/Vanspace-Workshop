@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import toast from 'react-hot-toast'
 import { RentalService } from '../services/rentalService'
 import type {
   RentalVehicle,
@@ -169,7 +170,7 @@ function FlotaTab({ vehicles, bookings, onRefresh }: { vehicles: RentalVehicle[]
       setEditingVehicle(null)
       await onRefresh()
     } catch (err: any) {
-      alert('Error: ' + (err.message || 'No se pudo guardar'))
+      toast.error('Error: ' + (err.message || 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -180,7 +181,7 @@ function FlotaTab({ vehicles, bookings, onRefresh }: { vehicles: RentalVehicle[]
       await RentalService.updateVehicleStatus(v.id, status)
       await onRefresh()
     } catch (err: any) {
-      alert('Error: ' + err.message)
+      toast.error('Error: ' + err.message)
     }
   }
 
@@ -412,7 +413,7 @@ function VehicleForm({ vehicle, saving, onSave, onCancel }: {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!nombre || !matricula || !modelo || !precioDia) {
-      alert('Rellena los campos obligatorios (nombre, matrícula, modelo, precio/día)')
+      toast.error('Rellena los campos obligatorios (nombre, matrícula, modelo, precio/día)')
       return
     }
     onSave({
@@ -572,7 +573,7 @@ function ReservasTab({ vehicles, bookings, onRefresh }: { vehicles: RentalVehicl
       setEditingBooking(null)
       await onRefresh()
     } catch (err: any) {
-      alert('Error: ' + (err.message || 'No se pudo guardar'))
+      toast.error('Error: ' + (err.message || 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -583,7 +584,7 @@ function ReservasTab({ vehicles, bookings, onRefresh }: { vehicles: RentalVehicl
       await RentalService.updateBookingStatus(b.id, status, b.vehicle_id)
       await onRefresh()
     } catch (err: any) {
-      alert('Error: ' + err.message)
+      toast.error('Error: ' + err.message)
     }
   }
 
@@ -856,11 +857,11 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!vehicleId || !clienteNombre || !fechaInicio || !fechaFin) {
-      alert('Rellena los campos obligatorios')
+      toast.error('Rellena los campos obligatorios')
       return
     }
     if (!disponibilidadOk) {
-      alert('El vehículo no está disponible en esas fechas')
+      toast.error('El vehículo no está disponible en esas fechas')
       return
     }
     onSave({
@@ -1146,7 +1147,7 @@ function PhotoUploadSection({ bookingId, phase, label, existingUrls }: {
       const updated = await RentalService.uploadBookingPhotos(bookingId, imageFiles, phase)
       setPhotos(updated)
     } catch (err: any) {
-      alert('Error subiendo fotos: ' + (err.message || 'Error desconocido'))
+      toast.error('Error subiendo fotos: ' + (err.message || 'Error desconocido'))
     } finally {
       setUploading(false)
       // Reset inputs
@@ -1169,7 +1170,7 @@ function PhotoUploadSection({ bookingId, phase, label, existingUrls }: {
       const updated = await RentalService.deleteBookingPhoto(bookingId, url, phase)
       setPhotos(updated)
     } catch (err: any) {
-      alert('Error eliminando foto: ' + err.message)
+      toast.error('Error eliminando foto: ' + err.message)
     }
   }
 

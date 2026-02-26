@@ -67,7 +67,7 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
 
   const handleSubmit = () => {
     if (!formData.nombre) {
-      alert('El nombre es obligatorio')
+      toast.error('El nombre es obligatorio')
       return
     }
 

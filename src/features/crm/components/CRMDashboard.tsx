@@ -159,9 +159,7 @@ export default function CRMDashboard() {
       {(syncStatus.isImporting || syncStatus.isExporting || log.length > 0) && (
         <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
           <div className="text-xs font-semibold text-blue-700 mb-1">
-            {syncStatus.isImporting && '⏳ Importando...'}
-            {syncStatus.isExporting && '⏳ Exportando...'}
-            {!syncStatus.isImporting && !syncStatus.isExporting && '✅ Completado'}
+            {syncStatus.isImporting ? '⏳ Importando...' : syncStatus.isExporting ? '⏳ Exportando...' : '✅ Completado'}
           </div>
           <div className="text-xs text-blue-600 space-y-0.5 max-h-24 overflow-y-auto">
             {log.map((line, i) => <div key={i}>{line}</div>)}

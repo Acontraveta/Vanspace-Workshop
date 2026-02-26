@@ -22,6 +22,7 @@ import {
 import { FurnitureDesignService } from '@/features/design/services/furnitureDesignService'
 import type { FurnitureDesign } from '@/features/design/types/furniture.types'
 import type { Lead } from '../types/crm.types'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 interface LeadDocumentsProps {
@@ -40,6 +41,7 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
+  const [ConfirmDialog, confirm] = useConfirm()
 
   const refresh = async () => {
     try {
@@ -106,17 +108,18 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
   // ── Delete ──────────────────────────────────────────────
 
   const handleDelete = async (doc: LeadDocument) => {
-    if (!confirm(`¿Eliminar "${doc.file_name}"?`)) return
-    setDeletingId(doc.id)
-    try {
-      await LeadDocumentsService.delete(doc.id, doc.file_path)
-      setDocs(prev => prev.filter(d => d.id !== doc.id))
-      toast.success('Documento eliminado')
-    } catch (err: any) {
-      toast.error('Error al eliminar')
-    } finally {
-      setDeletingId(null)
-    }
+    confirm(`¿Eliminar "${doc.file_name}"?`, async () => {
+      setDeletingId(doc.id)
+      try {
+        await LeadDocumentsService.delete(doc.id, doc.file_path)
+        setDocs(prev => prev.filter(d => d.id !== doc.id))
+        toast.success('Documento eliminado')
+      } catch (err: any) {
+        toast.error('Error al eliminar')
+      } finally {
+        setDeletingId(null)
+      }
+    })
   }
 
   // ── Render ──────────────────────────────────────────────
@@ -126,6 +129,7 @@ export function LeadDocuments({ lead }: LeadDocumentsProps) {
 
   return (
     <div className="space-y-4">
+      {ConfirmDialog}
 
       {/* ── Upload zone ──────────────────────────────── */}
       <div className="space-y-3">

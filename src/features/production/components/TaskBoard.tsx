@@ -11,6 +11,7 @@ import { ConfigService } from '@/features/config/services/configService'
 import { DesignFilesService } from '../services/designFilesService'
 import TaskStartModal from './TaskStartModal'
 import TaskInstructionsModal from './TaskInstructionsModal'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 
@@ -51,6 +52,7 @@ export default function TaskBoard({
   const [expandedBlock, setExpandedBlock] = useState<string | null>(null)
   const [furnitureWorkOrders, setFurnitureWorkOrders] = useState<Record<string, string>>({})
   const navigate = useNavigate()
+  const [ConfirmDialog, confirm] = useConfirm()
   
   // Modales
   const [taskToStart, setTaskToStart] = useState<ProductionTask | null>(null) // Modal materiales
@@ -339,15 +341,16 @@ export default function TaskBoard({
   }
 
   const handlePauseTask = async (task: ProductionTask) => {
-    if (!confirm('¿Pausar esta tarea?')) return
-    try {
-      await ProductionService.updateTask(task.id, { status: 'PENDING' })
-      toast.success('⏸ Tarea pausada')
-      loadData()
-      onRefresh()
-    } catch {
-      toast.error('Error pausando tarea')
-    }
+    confirm('¿Pausar esta tarea?', async () => {
+      try {
+        await ProductionService.updateTask(task.id, { status: 'PENDING' })
+        toast.success('⏸ Tarea pausada')
+        loadData()
+        onRefresh()
+      } catch {
+        toast.error('Error pausando tarea')
+      }
+    })
   }
 
   const handleCompleteTask = async (task: ProductionTask) => {
@@ -362,53 +365,52 @@ export default function TaskBoard({
     const start = new Date(startTime)
     const diffMs = now.getTime() - start.getTime()
     const diffHours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10
-    if (!confirm(`¿Completar esta tarea?\n\n${task.task_name}\n⏱️ Tiempo trabajado: ${diffHours}h`)) {
-      return
-    }
-    // Completar directamente
-    const endTime = new Date().toISOString()
-    try {
-      await ProductionService.updateTask(task.id, {
-        status: 'COMPLETED',
-        actual_hours: diffHours,
-        completed_at: endTime
-      })
+    confirm(`¿Completar esta tarea?\n\n${task.task_name}\n⏱️ Tiempo trabajado: ${diffHours}h`, async () => {
+      // Completar directamente
+      const endTime = new Date().toISOString()
+      try {
+        await ProductionService.updateTask(task.id, {
+          status: 'COMPLETED',
+          actual_hours: diffHours,
+          completed_at: endTime
+        })
 
-      // Marcar los materiales en uso como consumidos
-      await supabase
-        .from('task_material_usage')
-        .update({ status: 'consumed', consumed_at: endTime })
-        .eq('task_id', task.id)
-        .eq('status', 'in_use')
-      // Comparación con tiempo estimado
-      const diff = diffHours - task.estimated_hours
-      const diffPercent = Math.round((diff / task.estimated_hours) * 100)
-      const diffText = diff > 0 
-        ? `${diff.toFixed(1)}h más (+${diffPercent}%)` 
-        : `${Math.abs(diff).toFixed(1)}h menos (${diffPercent}%)`
-      toast.success(
-        `✅ ${task.task_name} completada\n⏱️ ${diffHours.toFixed(1)}h (${diffText})`,
-        { duration: 5000 }
-      )
-      // Buscar siguiente tarea del bloque
-      const block = blocks.find(b => b.tasks.some(t => t.id === task.id))
-      if (block) {
-        const nextTask = block.tasks.find(t => t.status === 'PENDING')
-        if (nextTask) {
-          setTimeout(() => {
-            if (confirm(`¿Continuar con la siguiente tarea?\n\n${nextTask.task_name}`)) {
-              setTaskToShowInstructions(nextTask)
-            }
-          }, 500)
-        } else {
-          toast.success('🎉 ¡Bloque completado!', { duration: 3000 })
+        // Marcar los materiales en uso como consumidos
+        await supabase
+          .from('task_material_usage')
+          .update({ status: 'consumed', consumed_at: endTime })
+          .eq('task_id', task.id)
+          .eq('status', 'in_use')
+        // Comparación con tiempo estimado
+        const diff = diffHours - task.estimated_hours
+        const diffPercent = Math.round((diff / task.estimated_hours) * 100)
+        const diffText = diff > 0 
+          ? `${diff.toFixed(1)}h más (+${diffPercent}%)` 
+          : `${Math.abs(diff).toFixed(1)}h menos (${diffPercent}%)`
+        toast.success(
+          `✅ ${task.task_name} completada\n⏱️ ${diffHours.toFixed(1)}h (${diffText})`,
+          { duration: 5000 }
+        )
+        // Buscar siguiente tarea del bloque
+        const block = blocks.find(b => b.tasks.some(t => t.id === task.id))
+        if (block) {
+          const nextTask = block.tasks.find(t => t.status === 'PENDING')
+          if (nextTask) {
+            setTimeout(() => {
+              confirm(`¿Continuar con la siguiente tarea?\n\n${nextTask.task_name}`, () => {
+                setTaskToShowInstructions(nextTask)
+              })
+            }, 500)
+          } else {
+            toast.success('🎉 ¡Bloque completado!', { duration: 3000 })
+          }
         }
+        loadData()
+        onRefresh()
+      } catch {
+        toast.error('Error completando tarea')
       }
-      loadData()
-      onRefresh()
-    } catch {
-      toast.error('Error completando tarea')
-    }
+    })
   }
 
 
@@ -449,6 +451,7 @@ export default function TaskBoard({
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KpiCard label="Bloques pendientes" value={pendingBlocks.length} color="orange" />

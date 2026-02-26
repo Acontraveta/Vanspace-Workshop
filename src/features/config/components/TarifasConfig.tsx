@@ -3,11 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import { ConfigService } from '../services/configService'
 import { Tarifa } from '../types/config.types'
 import toast from 'react-hot-toast'
 
 export default function TarifasConfig() {
+  const [ConfirmDialog, confirm] = useConfirm()
   const [tarifas, setTarifas] = useState<Tarifa[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<string | null>(null)
@@ -90,14 +92,15 @@ export default function TarifasConfig() {
   }
 
   const handleDelete = async (id: string, nombre: string) => {
-    if (!confirm(`¿Eliminar la tarifa "${nombre}"? Esta acción no se puede deshacer.`)) return
-    try {
-      await ConfigService.deleteTarifa(id)
-      toast.success('Tarifa eliminada')
-      loadTarifas()
-    } catch (error: any) {
-      toast.error('Error eliminando tarifa: ' + error.message)
-    }
+    confirm(`¿Eliminar la tarifa "${nombre}"? Esta acción no se puede deshacer.`, async () => {
+      try {
+        await ConfigService.deleteTarifa(id)
+        toast.success('Tarifa eliminada')
+        loadTarifas()
+      } catch (error: any) {
+        toast.error('Error eliminando tarifa: ' + error.message)
+      }
+    })
   }
 
   if (loading) {
@@ -106,6 +109,7 @@ export default function TarifasConfig() {
 
   return (
     <div className="space-y-4">
+      {ConfirmDialog}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold">Tarifas</h2>
         <Button onClick={() => setShowCreateModal(true)}>

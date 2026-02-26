@@ -6,6 +6,7 @@ import { Input } from '@/shared/components/ui/input'
 import { StockItem } from '../types/purchase.types'
 import { StockService } from '../services/stockService'
 import { supabase } from '@/lib/supabase'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 interface WarehouseViewProps {
@@ -28,6 +29,7 @@ interface Shelf {
 export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, highlightLocation }: WarehouseViewProps) {
   const [shelves, setShelves] = useState<Shelf[]>([])
   const [selectedShelf, setSelectedShelf] = useState<string | null>(null)
+  const [ConfirmDialog, confirm] = useConfirm()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingShelf, setEditingShelf] = useState<Shelf | null>(null)
@@ -377,34 +379,34 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
       ? `Esta estantería tiene ${itemsInShelf.length} productos. Se moverán a "Sin asignar". ¿Continuar?`
       : `¿Eliminar la estantería "${shelf.name}"?`
 
-    if (!confirm(confirmMsg)) return
+    confirm(confirmMsg, async () => {
+      try {
+        // Mover productos a sin asignar
+        for (const item of itemsInShelf) {
+          await StockService.updateLocation(item.REFERENCIA, '')
+        }
 
-    try {
-      // Mover productos a sin asignar
-      for (const item of itemsInShelf) {
-        await StockService.updateLocation(item.REFERENCIA, '')
+        // Desactivar estantería
+        const { error } = await supabase
+          .from('warehouse_shelves')
+          .update({ activa: false })
+          .eq('id', shelf.id)
+
+        if (error) throw error
+
+        toast.success('Estantería eliminada. Productos movidos a "Sin asignar".')
+        
+        // Si era la seleccionada, cambiar a otra
+        if (selectedShelf === shelf.id) {
+          setSelectedShelf(null)
+        }
+        
+        loadShelves()
+        onRefresh()
+      } catch (error: any) {
+        toast.error('Error: ' + error.message)
       }
-
-      // Desactivar estantería
-      const { error } = await supabase
-        .from('warehouse_shelves')
-        .update({ activa: false })
-        .eq('id', shelf.id)
-
-      if (error) throw error
-
-      toast.success('Estantería eliminada. Productos movidos a "Sin asignar".')
-      
-      // Si era la seleccionada, cambiar a otra
-      if (selectedShelf === shelf.id) {
-        setSelectedShelf(null)
-      }
-      
-      loadShelves()
-      onRefresh()
-    } catch (error: any) {
-      toast.error('Error: ' + error.message)
-    }
+    })
   }
 
   const getItemsInLocation = (shelfCode: string, nivel: number, hueco: number) => {
@@ -663,6 +665,7 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>

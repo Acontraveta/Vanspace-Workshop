@@ -10,6 +10,7 @@ import { ProductionEmployee } from '@/features/config/types/config.types'
 import { ConfigService } from '@/features/config/services/configService'
 import ProjectCard from './ProjectCard'
 import TaskBoard from './TaskBoard'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 export default function ProductionDashboard() {
@@ -18,6 +19,7 @@ export default function ProductionDashboard() {
   const [selectedProject, setSelectedProject] = useState<ProductionProject | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeView, setActiveView] = useState<'projects' | 'tasks'>('projects')
+  const [ConfirmDialog, confirm] = useConfirm()
 
   useEffect(() => {
     loadData()
@@ -68,19 +70,19 @@ export default function ProductionDashboard() {
   }
 
   const handleCompleteProject = async (projectId: string) => {
-    if (!confirm('¿Marcar este proyecto como completado?')) return
-
-    try {
-      await ProductionService.updateProject(projectId, {
-        status: 'COMPLETED',
-        actual_end_date: new Date().toISOString().split('T')[0]
-      })
-      
-      toast.success('🎉 Proyecto completado')
-      loadData()
-    } catch (error) {
-      toast.error('Error completando proyecto')
-    }
+    confirm('¿Marcar este proyecto como completado?', async () => {
+      try {
+        await ProductionService.updateProject(projectId, {
+          status: 'COMPLETED',
+          actual_end_date: new Date().toISOString().split('T')[0]
+        })
+        
+        toast.success('🎉 Proyecto completado')
+        loadData()
+      } catch (error) {
+        toast.error('Error completando proyecto')
+      }
+    })
   }
 
   const inProgressProjects = projects.filter(p => p.status === 'IN_PROGRESS')
@@ -101,6 +103,7 @@ export default function ProductionDashboard() {
 
   return (
     <PageLayout>
+      {ConfirmDialog}
       <Header
         title="🏭 Producción"
         description="Gestión de proyectos y tareas del taller"

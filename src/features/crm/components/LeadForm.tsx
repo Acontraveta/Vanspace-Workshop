@@ -11,6 +11,7 @@ import VehicleDepositReceipt from './VehicleDepositReceipt'
 import { openWhatsApp } from '../utils/whatsappHelper'
 import { UnifiedCalendarService } from '@/features/calendar/services/calendarService'
 import type { CalendarEventForm } from '@/features/calendar/types/calendar.types'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 interface LeadFormProps {
@@ -47,6 +48,7 @@ const EMPTY_FORM: LeadFormData = {
 export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
   const navigate = useNavigate()
   const { leads, createLead, updateLead } = useCRMStore()
+  const [ConfirmDialog, confirm] = useConfirm()
 
   // Live lead from store — stays in sync after updateLead calls (e.g. reception reset)
   const lead = leadProp ? (leads.find(l => l.id === leadProp.id) ?? leadProp) : leadProp
@@ -210,21 +212,24 @@ export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
   }
 
   const handleDeleteOpp = async (oppId: string) => {
-    if (!lead || !confirm('¿Eliminar este estado comercial del historial?')) return
-    const updated = opportunities.filter(o => o.id !== oppId)
-    setSaving(true)
-    try {
-      await updateLead(lead.id, { oportunidades: updated as any })
-      if (editingOppId === oppId) { setEditingOppId(null); setOppForm({}) }
-    } catch (err: any) {
-      setError(err?.message ?? 'Error eliminando')
-    } finally {
-      setSaving(false)
-    }
+    if (!lead) return
+    confirm('¿Eliminar este estado comercial del historial?', async () => {
+      const updated = opportunities.filter(o => o.id !== oppId)
+      setSaving(true)
+      try {
+        await updateLead(lead.id, { oportunidades: updated as any })
+        if (editingOppId === oppId) { setEditingOppId(null); setOppForm({}) }
+      } catch (err: any) {
+        setError(err?.message ?? 'Error eliminando')
+      } finally {
+        setSaving(false)
+      }
+    })
   }
 
   return (
     <>
+    {ConfirmDialog}
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}

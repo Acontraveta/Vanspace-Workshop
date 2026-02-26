@@ -16,6 +16,7 @@ import { QuickDocService } from '../services/quickDocService'
 import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
 import { generatePdfBlob } from '../services/pdfGenerator'
 import { loadCompanyInfo, LOGO_URL } from '@/shared/utils/companyInfo'
+import toast from 'react-hot-toast'
 
 // ─── Tipos ───────────────────────────────────────────────────
 
@@ -208,7 +209,7 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
     const elem = printRef.current
     if (!elem) return
     const pw = window.open('', '_blank', 'width=900,height=700')
-    if (!pw) { alert('Activa las ventanas emergentes para imprimir.'); return }
+    if (!pw) { toast.error('Activa las ventanas emergentes para imprimir.'); return }
     pw.document.write(`<!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8"/>

@@ -6,6 +6,7 @@ import { Badge } from '@/shared/components/ui/badge'
 import { ROLE_DESCRIPTIONS } from '../types/config.types'
 import { ConfigService } from '../services/configService'
 import { ProductionEmployee } from '../types/config.types'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 // Dummy permissions for demonstration; replace with real fetch if needed
@@ -13,19 +14,21 @@ const allPermissions: { permission_key: string; permission_name: string; categor
 const setAllPermissions = () => {};
 
 export default function EmployeesConfig() {
+    const [ConfirmDialog, confirm] = useConfirm()
     // Estado para mostrar contraseña temporal
     const [tempPassword, setTempPassword] = useState<{id: string, password: string} | null>(null)
 
     // Función de reset
     const handleResetPassword = async (emp: ProductionEmployee) => {
-      if (!confirm(`¿Resetear la contraseña de ${emp.nombre}? Se generará una contraseña temporal.`)) return
-      try {
-        const newPassword = await ConfigService.resetPassword(emp.id)
-        setTempPassword({ id: emp.id, password: newPassword })
-        toast.success('Contraseña reseteada')
-      } catch (error: any) {
-        toast.error('Error reseteando contraseña: ' + error.message)
-      }
+      confirm(`¿Resetear la contraseña de ${emp.nombre}? Se generará una contraseña temporal.`, async () => {
+        try {
+          const newPassword = await ConfigService.resetPassword(emp.id)
+          setTempPassword({ id: emp.id, password: newPassword })
+          toast.success('Contraseña reseteada')
+        } catch (error: any) {
+          toast.error('Error reseteando contraseña: ' + error.message)
+        }
+      })
     }
   const [employees, setEmployees] = useState<ProductionEmployee[]>([])
   const [loading, setLoading] = useState(true)
@@ -175,14 +178,15 @@ export default function EmployeesConfig() {
   }
 
   const handleDelete = async (id: string, nombre: string) => {
-    if (!confirm(`¿Eliminar al empleado "${nombre}"? Esta acción no se puede deshacer.`)) return
-    try {
-      await ConfigService.deleteEmployee(id)
-      toast.success('Empleado eliminado')
-      loadEmployees()
-    } catch (error: any) {
-      toast.error('Error eliminando empleado: ' + error.message)
-    }
+    confirm(`¿Eliminar al empleado "${nombre}"? Esta acción no se puede deshacer.`, async () => {
+      try {
+        await ConfigService.deleteEmployee(id)
+        toast.success('Empleado eliminado')
+        loadEmployees()
+      } catch (error: any) {
+        toast.error('Error eliminando empleado: ' + error.message)
+      }
+    })
   }
 
   if (loading) {
@@ -191,6 +195,7 @@ export default function EmployeesConfig() {
 
   return (
     <div className="space-y-4">
+      {ConfirmDialog}
       {/* Modal para mostrar la contraseña temporal */}
       {tempPassword && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

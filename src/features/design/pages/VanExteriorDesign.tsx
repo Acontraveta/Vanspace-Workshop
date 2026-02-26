@@ -1189,10 +1189,10 @@ export default function VanExteriorDesign() {
           >
             <CotaMarkers />
 
-            {activeView === 'side-left' && <VanSideLeftSVG van={van} />}
-            {activeView === 'side-right' && <VanSideRightSVG van={van} />}
-            {activeView === 'top' && <VanTopSVG van={van} />}
-            {activeView === 'rear' && <VanRearSVG van={van} />}
+            {activeView === 'side-left' && <VanSideLeftSVG van={van} key="side-left" />}
+            {activeView === 'side-right' && <VanSideRightSVG van={van} key="side-right" />}
+            {activeView === 'top' && <VanTopSVG van={van} key="top" />}
+            {activeView === 'rear' && <VanRearSVG van={van} key="rear" />}
 
             {/* Placed elements with symbols */}
             {viewElements.map(el => {

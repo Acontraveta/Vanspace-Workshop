@@ -10,6 +10,7 @@
 
 import { Fragment } from 'react'
 import { Quote, QuoteItem } from '../types/quote.types'
+import toast from 'react-hot-toast'
 
 export interface QuoteDocumentData {
   quote: Quote
@@ -355,7 +356,7 @@ export function printQuoteDocument(data: QuoteDocumentData) {
 
   const printWindow = window.open('', '_blank', 'width=900,height=700')
   if (!printWindow) {
-    alert('Activa las ventanas emergentes para imprimir.')
+    toast.error('Activa las ventanas emergentes para imprimir.')
     return
   }
 

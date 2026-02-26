@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FurnitureWorkOrderService, FurnitureDesignService } from '../services/furnitureDesignService'
 import { FurnitureWorkOrder, FurnitureDesign } from '../types/furniture.types'
 import { MaterialCatalogManager } from '../components/MaterialCatalogManager'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 type ActiveTab = 'orders' | 'library' | 'materials'
@@ -19,6 +20,7 @@ export default function FurnitureDesignList() {
   const [designs, setDesigns] = useState<FurnitureDesign[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const [ConfirmDialog, confirm] = useConfirm()
 
   useEffect(() => { load() }, [])
 
@@ -39,14 +41,15 @@ export default function FurnitureDesignList() {
   }
 
   const deleteDesign = async (id: string) => {
-    if (!confirm('¿Eliminar este diseño de la biblioteca?')) return
-    try {
-      await FurnitureDesignService.delete(id)
-      setDesigns(prev => prev.filter(d => d.id !== id))
-      toast.success('Diseño eliminado')
-    } catch {
-      toast.error('Error eliminando diseño')
-    }
+    confirm('¿Eliminar este diseño de la biblioteca?', async () => {
+      try {
+        await FurnitureDesignService.delete(id)
+        setDesigns(prev => prev.filter(d => d.id !== id))
+        toast.success('Diseño eliminado')
+      } catch {
+        toast.error('Error eliminando diseño')
+      }
+    })
   }
 
   if (loading) {
@@ -59,6 +62,7 @@ export default function FurnitureDesignList() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6">
+      {ConfirmDialog}
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>

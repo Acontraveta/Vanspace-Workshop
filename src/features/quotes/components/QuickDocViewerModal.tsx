@@ -10,6 +10,7 @@ import { Button } from '@/shared/components/ui/button'
 import { QuickDocRecord } from '../services/quickDocService'
 import { generatePdfBlob } from '../services/pdfGenerator'
 import { loadCompanyInfo, LOGO_URL } from '@/shared/utils/companyInfo'
+import toast from 'react-hot-toast'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ export default function QuickDocViewerModal({ doc, onClose }: QuickDocViewerModa
     const elem = printRef.current
     if (!elem) return
     const pw = window.open('', '_blank', 'width=900,height=700')
-    if (!pw) { alert('Activa las ventanas emergentes para imprimir.'); return }
+    if (!pw) { toast.error('Activa las ventanas emergentes para imprimir.'); return }
     pw.document.write(`<!DOCTYPE html>
 <html lang="es"><head>
 <meta charset="UTF-8"/>
@@ -113,9 +114,7 @@ ${elem.outerHTML}
       const a = document.createElement('a')
       a.href = url
       a.download = `${doc.docNumber}.pdf`
-      document.body.appendChild(a)
       a.click()
-      document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (err) {
       console.error('PDF generation failed:', err)
