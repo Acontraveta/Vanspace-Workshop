@@ -355,18 +355,6 @@ export default function PurchaseList() {
   // Abrir modal para editar un producto existente del catálogo
   const handleEditProduct = (product: CatalogProduct) => {
     setEditingProduct(product)
-
-  const handleDeleteProduct = (product: CatalogProduct) => {
-    confirm(`¿Eliminar "${product.NOMBRE}" (${product.SKU}) del catálogo? Esta acción es irreversible.`, async () => {
-      try {
-        await CatalogService.deleteProduct(product.SKU)
-        toast.success('🗑️ Producto eliminado del catálogo')
-        loadCatalog()
-      } catch {
-        toast.error('Error al eliminar producto')
-      }
-    })
-  }
     // Poblar el formulario con los datos del producto
     setNewProductForm({
       articulo: product.NOMBRE || '',
@@ -425,6 +413,18 @@ export default function PurchaseList() {
       }))
     }
     setShowNewProductModal(true)
+  }
+
+  const handleDeleteProduct = (product: CatalogProduct) => {
+    confirm(`¿Eliminar "${product.NOMBRE}" (${product.SKU}) del catálogo? Esta acción es irreversible.`, async () => {
+      try {
+        await CatalogService.deleteProduct(product.SKU)
+        toast.success('🗑️ Producto eliminado del catálogo')
+        loadCatalog()
+      } catch {
+        toast.error('Error al eliminar producto')
+      }
+    })
   }
 
   // Crear o actualizar producto en el catálogo (y opcionalmente en stock)
