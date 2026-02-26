@@ -24,6 +24,7 @@ import { Quote } from '../types/quote.types'
 import { supabase } from '@/lib/supabase'
 import QuotePreview from './QuotePreview'
 import QuickDocViewerModal from './QuickDocViewerModal'
+import FiscalReportModal from './FiscalReportModal'
 import toast from 'react-hot-toast'
 import { fmtHours } from '@/shared/utils/formatters'
 
@@ -63,6 +64,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   // ── Viewer state ─────────────────────────────────────────
   const [viewingQuote, setViewingQuote] = useState<Quote | null>(null)
   const [viewingDoc, setViewingDoc]     = useState<QuickDocRecord | null>(null)
+  const [showFiscalReport, setShowFiscalReport] = useState(false)
 
   // ── Search ────────────────────────────────────────────────
   const [searchText, setSearchText]     = useState('')
@@ -179,6 +181,20 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   const handleDelete = (quoteId: string) => {
     setConfirmAction({
       message: '¿Eliminar este presupuesto? Esta acción no se puede deshacer.',
+      action: () => {
+        try {
+          QuoteService.deleteQuote(quoteId)
+          refresh()
+        } catch (error: any) {
+          toast.error(error.message)
+        }
+      }
+    })
+  }
+
+  const handleDeleteFactura = (quoteId: string) => {
+    setConfirmAction({
+      message: '⚠️ ¿Eliminar esta factura del sistema? Esta acción es irreversible y eliminará la factura, su proyecto asociado y todas las compras/tareas generadas.',
       action: () => {
         try {
           QuoteService.deleteQuote(quoteId)
@@ -345,9 +361,14 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
               <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(quote.id)}>🗑️ Eliminar</Button>
             )}
             {isFactura && (
-              <Button size="sm" variant="outline" className="flex-1" onClick={() => setViewingQuote(quote)}>
-                👁️ Ver documento
-              </Button>
+              <>
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => setViewingQuote(quote)}>
+                  👁️ Ver documento
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => handleDeleteFactura(quote.id)}>
+                  🗑️
+                </Button>
+              </>
             )}
           </div>
         </CardContent>
@@ -529,6 +550,16 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
                   ✕ Limpiar
                 </Button>
               )}
+
+              {/* Fiscal report button */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowFiscalReport(true)}
+                className="shrink-0 border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                🏛️ Informes
+              </Button>
             </div>
           </div>
 
@@ -632,6 +663,16 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           </div>
         </div>,
         getPortalRoot()
+      )}
+
+      {/* ── Fiscal report modal ──── */}
+      {showFiscalReport && (
+        <FiscalReportModal
+          facturas={allQuotes.filter(q => q.status === 'APPROVED')}
+          simplificadas={simplificadas}
+          proformas={proformas}
+          onClose={() => setShowFiscalReport(false)}
+        />
       )}
     </div>
   )

@@ -267,14 +267,11 @@ export class QuoteService {
     return quote
   }
 
-  // Eliminar presupuesto
+  // Eliminar presupuesto o factura
   static deleteQuote(quoteId: string): void {
     const quotes = this.getAllQuotes()
     const quote = quotes.find(q => q.id === quoteId)
-    
-    if (quote?.status === 'APPROVED') {
-      throw new Error('No se puede eliminar un presupuesto aprobado')
-    }
+    const wasFactura = quote?.status === 'APPROVED'
     
     const filtered = quotes.filter(q => q.id !== quoteId)
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered))
@@ -282,7 +279,7 @@ export class QuoteService {
     supabase.from('quotes').delete().eq('id', quoteId).then(({ error }) => {
       if (error) console.error('❌ Supabase quote delete failed:', error.message)
     })
-    toast.success('Presupuesto eliminado')
+    toast.success(wasFactura ? 'Factura eliminada del sistema' : 'Presupuesto eliminado')
   }
 
   // Obtener presupuestos por estado
