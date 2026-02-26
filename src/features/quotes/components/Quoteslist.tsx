@@ -5,6 +5,7 @@ import { Badge } from '@/shared/components/ui/badge'
 import { QuoteService } from '../services/quoteService'
 import { QuoteAutomation } from '../services/quoteAutomation'
 import { Quote } from '../types/quote.types'
+import { supabase } from '@/lib/supabase'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
@@ -22,7 +23,8 @@ export default function QuotesList({ onEditQuote }: QuotesListProps) {
   }
 
   useEffect(() => {
-    refreshQuotes()
+    // Sincronizar desde Supabase al montar
+    QuoteService.syncFromSupabase().then(() => refreshQuotes())
   }, [])
 
   const handleApprove = async (quote: Quote) => {
@@ -58,22 +60,32 @@ export default function QuotesList({ onEditQuote }: QuotesListProps) {
   }
 
   // Función para obtener progreso del proyecto
-  const getProjectProgress = (quote: Quote) => {
-    // Obtener tareas del proyecto
-    const allTasks = JSON.parse(localStorage.getItem('production_tasks') || '[]')
-    const projectTasks = allTasks.filter((t: any) => {
-      // Encontrar tareas que pertenecen a este presupuesto
-      // (asumiendo que el projectId se guardó con el quoteId)
-      return t.projectId && t.projectId.includes(quote.id.slice(-5))
-    })
+  const getProjectProgress = async (quote: Quote) => {
+    try {
+      // Buscar proyecto en Supabase por quote_number
+      const { data: projects } = await supabase
+        .from('production_projects')
+        .select('id')
+        .eq('quote_number', quote.quoteNumber)
+        .limit(1)
 
-    if (projectTasks.length === 0) return { completed: 0, total: 0, percentage: 0 }
+      if (!projects?.length) return { completed: 0, total: 0, percentage: 0 }
 
-    const completed = projectTasks.filter((t: any) => t.status === 'COMPLETED').length
-    const total = projectTasks.length
-    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
+      const { data: tasks } = await supabase
+        .from('production_tasks')
+        .select('status')
+        .eq('project_id', projects[0].id)
 
-    return { completed, total, percentage }
+      if (!tasks?.length) return { completed: 0, total: 0, percentage: 0 }
+
+      const completed = tasks.filter((t: any) => t.status === 'COMPLETED').length
+      const total = tasks.length
+      const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
+
+      return { completed, total, percentage }
+    } catch {
+      return { completed: 0, total: 0, percentage: 0 }
+    }
   }
 
   const tabs = [
@@ -88,7 +100,13 @@ export default function QuotesList({ onEditQuote }: QuotesListProps) {
   const QuoteCard = ({ quote }: { quote: Quote }) => {
     const daysLeft = QuoteService.getDaysUntilExpiration(quote)
     const isExpiringSoon = daysLeft <= 3 && quote.status !== 'APPROVED' && quote.status !== 'REJECTED' && quote.status !== 'EXPIRED'
-    const progress = quote.status === 'APPROVED' ? getProjectProgress(quote) : null
+    const [progress, setProgress] = useState<{ completed: number; total: number; percentage: number } | null>(null)
+
+    useEffect(() => {
+      if (quote.status === 'APPROVED') {
+        getProjectProgress(quote).then(setProgress)
+      }
+    }, [quote.id, quote.status])
 
     return (
       <Card className={`hover:shadow-lg transition ${

@@ -33,8 +33,102 @@ function toDb(q: Quote) {
   }
 }
 
+// Map Supabase row → Quote
+function fromDb(row: any): Quote {
+  return {
+    id: row.id,
+    quoteNumber: row.quote_number ?? '',
+    lead_id: row.lead_id ?? undefined,
+    clientName: row.client_name ?? '',
+    clientEmail: row.client_email ?? undefined,
+    clientPhone: row.client_phone ?? undefined,
+    vehicleModel: row.vehicle_model ?? undefined,
+    billingData: row.billing_data ?? undefined,
+    tarifa: row.tarifa ?? {},
+    items: row.items ?? [],
+    subtotalMaterials: Number(row.subtotal_materials ?? 0),
+    subtotalLabor: Number(row.subtotal_labor ?? 0),
+    subtotal: Number(row.subtotal ?? 0),
+    profitMargin: Number(row.profit_margin ?? 0),
+    profitAmount: Number(row.profit_amount ?? 0),
+    total: Number(row.total ?? 0),
+    totalHours: Number(row.total_hours ?? 0),
+    validUntil: new Date(row.valid_until ?? row.created_at),
+    approvedAt: row.approved_at ? new Date(row.approved_at) : undefined,
+    cancelledAt: row.cancelled_at ? new Date(row.cancelled_at) : undefined,
+    status: row.status ?? 'DRAFT',
+    documentData: row.document_data ?? undefined,
+    createdAt: new Date(row.created_at),
+  } as Quote
+}
+
+/** Aplicar auto-expiración a un quote */
+function applyExpiration(q: Quote): Quote {
+  if (q.status === 'DRAFT' || q.status === 'SENT') {
+    const now = new Date()
+    const daysSinceCreation = Math.floor((now.getTime() - q.createdAt.getTime()) / (1000 * 60 * 60 * 24))
+    if (daysSinceCreation > 15) {
+      q.status = 'EXPIRED'
+    }
+  }
+  return q
+}
+
+/** Parsear fechas de un objeto Quote crudo */
+function parseDates(q: any): Quote {
+  return {
+    ...q,
+    createdAt: new Date(q.createdAt),
+    validUntil: new Date(q.validUntil),
+    approvedAt: q.approvedAt ? new Date(q.approvedAt) : undefined,
+    cancelledAt: q.cancelledAt ? new Date(q.cancelledAt) : undefined,
+  }
+}
+
 export class QuoteService {
   private static STORAGE_KEY = 'saved_quotes'
+
+  // ── Sincronización con Supabase ────────────────────────
+
+  /**
+   * Descarga todos los presupuestos de Supabase, fusiona con localStorage
+   * y actualiza el caché local.  Llamar al montar la vista de presupuestos.
+   */
+  static async syncFromSupabase(): Promise<Quote[]> {
+    try {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.warn('⚠️ QuoteService.syncFromSupabase error:', error.message)
+        return this.getAllQuotes()
+      }
+
+      const sbQuotes = (data || []).map(fromDb).map(applyExpiration)
+      const sbIds = new Set(sbQuotes.map(q => q.id))
+
+      // Detectar quotes en localStorage que NO estén en Supabase (creados offline)
+      const localQuotes = this.getAllQuotes()
+      const localOnly = localQuotes.filter(q => !sbIds.has(q.id))
+
+      // Subir registros solo-locales a Supabase (recuperación)
+      for (const local of localOnly) {
+        supabase.from('quotes').upsert(toDb(local))
+          .then(({ error: upErr }) => {
+            if (upErr) console.warn('⚠️ Failed to sync local quote to Supabase:', local.quoteNumber, upErr.message)
+          })
+      }
+
+      const merged = [...sbQuotes, ...localOnly]
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(merged))
+      return merged
+    } catch (err) {
+      console.error('❌ syncFromSupabase failed:', err)
+      return this.getAllQuotes()
+    }
+  }
 
   // Guardar presupuesto
   static saveQuote(quote: Quote): void {
@@ -56,41 +150,17 @@ export class QuoteService {
     toast.success('Presupuesto guardado')
   }
 
-  // Obtener todos los presupuestos (actualiza estados expirados automáticamente)
+  // Obtener todos los presupuestos (desde caché localStorage)
+  // Para datos frescos de Supabase, llamar antes a syncFromSupabase()
   static getAllQuotes(): Quote[] {
     const stored = localStorage.getItem(this.STORAGE_KEY)
     if (stored) {
       try {
         const quotes = JSON.parse(stored)
-        
-        // Convertir strings a Date y actualizar estados expirados
-        const updatedQuotes = quotes.map((q: any) => {
-          const quote: Quote = {
-            ...q,
-            createdAt: new Date(q.createdAt),
-            validUntil: new Date(q.validUntil),
-            approvedAt: q.approvedAt ? new Date(q.approvedAt) : undefined,
-            cancelledAt: q.cancelledAt ? new Date(q.cancelledAt) : undefined,
-          }
-          
-          // Auto-marcar como expirado si pasaron 15 días y no está aprobado/cancelado
-          if (
-            quote.status === 'DRAFT' || 
-            quote.status === 'SENT'
-          ) {
-            const now = new Date()
-            const daysSinceCreation = Math.floor((now.getTime() - quote.createdAt.getTime()) / (1000 * 60 * 60 * 24))
-            
-            if (daysSinceCreation > 15) {
-              quote.status = 'EXPIRED'
-            }
-          }
-          
-          return quote
-        })
+        const updatedQuotes = quotes.map((q: any) => applyExpiration(parseDates(q)))
         
         // Guardar cambios si hubo expirados
-        const hasExpired = updatedQuotes.some((q, i) => q.status !== quotes[i].status)
+        const hasExpired = updatedQuotes.some((q: Quote, i: number) => q.status !== quotes[i].status)
         if (hasExpired) {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updatedQuotes))
         }
@@ -225,6 +295,17 @@ export class QuoteService {
       cancelled: all.filter(q => q.status === 'REJECTED'),
       expired: all.filter(q => q.status === 'EXPIRED'),
     }
+  }
+
+  /** Versión async que sincroniza desde Supabase antes de agrupar */
+  static async fetchQuotesByCategory(): Promise<{
+    active: Quote[]
+    approved: Quote[]
+    cancelled: Quote[]
+    expired: Quote[]
+  }> {
+    await this.syncFromSupabase()
+    return this.getQuotesByCategory()
   }
 
   // Obtener días restantes hasta expiración

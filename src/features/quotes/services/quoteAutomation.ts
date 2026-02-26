@@ -45,10 +45,8 @@ export class QuoteAutomation {
       const tasks = this.generateProductionTasks(quote)
       totalTasks = tasks.length
       
-      // Guardar tareas
-      const existingTasks = JSON.parse(localStorage.getItem('production_tasks') || '[]')
-      const allTasks = [...existingTasks, ...tasks]
-      localStorage.setItem('production_tasks', JSON.stringify(allTasks))
+      // Las tareas se persisten en Supabase en el paso 5 (createTask)
+      // localStorage ya no es necesario para cross-device sync
       
       console.log(`⚙️ ${totalTasks} tareas de producción generadas`)
       
@@ -56,10 +54,7 @@ export class QuoteAutomation {
       const designInstructions = this.generateDesignInstructions(quote)
       totalDesignInstructions = designInstructions.length
       
-      // Guardar instrucciones
-      const existingDesigns = JSON.parse(localStorage.getItem('design_instructions') || '[]')
-      const allDesigns = [...existingDesigns, ...designInstructions]
-      localStorage.setItem('design_instructions', JSON.stringify(allDesigns))
+      // Las instrucciones se persisten en Supabase como parte de las tareas (instructions_design)
       
       console.log(`📐 ${totalDesignInstructions} instrucciones de diseño generadas`)
       

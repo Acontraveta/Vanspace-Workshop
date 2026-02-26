@@ -30,6 +30,7 @@ function daysUntil(dateStr?: string | null): number {
 
 function quotesFromStorage(): Quote[] {
   try {
+    // Sincronizar desde Supabase si hay caché
     return JSON.parse(localStorage.getItem('saved_quotes') ?? '[]') as Quote[]
   } catch {
     return []

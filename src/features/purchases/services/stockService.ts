@@ -133,6 +133,9 @@ export class StockService {
       item.CANTIDAD = newQuantity
       localStorage.setItem('stock_items', JSON.stringify(items))
       this.stock = items
+      // Sincronizar con Supabase en background
+      supabase.from('stock_items').update({ cantidad: newQuantity }).eq('referencia', referencia)
+        .then(({ error }) => { if (error) console.warn('⚠️ Stock updateStock sync failed:', error.message) })
     }
   }
 
@@ -173,8 +176,35 @@ export class StockService {
       if (!existing.FAMILIA && newItem.FAMILIA) existing.FAMILIA = newItem.FAMILIA
       if (!existing.CATEGORIA && newItem.CATEGORIA) existing.CATEGORIA = newItem.CATEGORIA
       if (!existing.DESCRIPCION && newItem.DESCRIPCION) existing.DESCRIPCION = newItem.DESCRIPCION
+
+      // Sincronizar con Supabase
+      supabase.from('stock_items').upsert({
+        referencia: existing.REFERENCIA,
+        articulo: existing.ARTICULO ?? null,
+        descripcion: existing.DESCRIPCION ?? null,
+        cantidad: existing.CANTIDAD,
+        stock_minimo: existing.STOCK_MINIMO ?? null,
+        ubicacion: existing.UBICACION ?? null,
+        familia: existing.FAMILIA ?? null,
+        categoria: existing.CATEGORIA ?? null,
+      }, { onConflict: 'referencia' })
+        .then(({ error }) => { if (error) console.warn('⚠️ Stock addStockItem merge sync failed:', error.message) })
+
     } else {
       items.push(newItem)
+
+      // Insertar en Supabase
+      supabase.from('stock_items').upsert({
+        referencia: newItem.REFERENCIA,
+        articulo: newItem.ARTICULO ?? null,
+        descripcion: newItem.DESCRIPCION ?? null,
+        cantidad: newItem.CANTIDAD,
+        stock_minimo: newItem.STOCK_MINIMO ?? null,
+        ubicacion: newItem.UBICACION ?? null,
+        familia: newItem.FAMILIA ?? null,
+        categoria: newItem.CATEGORIA ?? null,
+      }, { onConflict: 'referencia' })
+        .then(({ error }) => { if (error) console.warn('⚠️ Stock addStockItem insert sync failed:', error.message) })
     }
 
     localStorage.setItem('stock_items', JSON.stringify(items))

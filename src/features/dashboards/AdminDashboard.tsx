@@ -86,7 +86,8 @@ export default function AdminDashboard() {
 
   const loadCompleteStats = async (stockArg) => {
     try {
-      // Presupuestos
+      // Presupuestos (sincronizar desde Supabase)
+      await QuoteService.syncFromSupabase()
       const quotes = QuoteService.getQuotesByCategory()
       const allQuotes = [...quotes.active, ...quotes.approved, ...quotes.cancelled, ...quotes.expired]
       const totalQuotesValue = allQuotes.reduce((sum, q) => sum + q.total, 0)

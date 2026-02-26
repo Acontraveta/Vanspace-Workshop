@@ -35,7 +35,8 @@ export default function EncargadoDashboard() {
 
   const loadAllStats = async () => {
     try {
-      // Presupuestos
+      // Presupuestos (sincronizar desde Supabase)
+      await QuoteService.syncFromSupabase()
       const quotes = QuoteService.getQuotesByCategory()
       
       // Producción

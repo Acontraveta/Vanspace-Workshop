@@ -16,6 +16,7 @@ import { QuickDocService } from '../services/quickDocService'
 import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
 import { generatePdfBlob } from '../services/pdfGenerator'
 import { loadCompanyInfo, LOGO_URL } from '@/shared/utils/companyInfo'
+import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 // ─── Tipos ───────────────────────────────────────────────────
@@ -87,12 +88,45 @@ function fmtDate(d: Date) {
   return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function nextDocNumber(prefix: string): string {
+/**
+ * Genera el siguiente número de documento consultando Supabase para evitar
+ * duplicados entre dispositivos.  Fallback a localStorage si Supabase falla.
+ */
+async function nextDocNumber(prefix: string): Promise<string> {
   const year = new Date().getFullYear()
-  const key = `quick_doc_seq_${prefix}_${year}`
-  const seq = parseInt(localStorage.getItem(key) ?? '0', 10) + 1
-  localStorage.setItem(key, String(seq))
-  return `${prefix}-${year}-${String(seq).padStart(3, '0')}`
+  const pattern = `${prefix}-${year}-%`
+
+  try {
+    // Buscar el doc_number más alto en Supabase para este prefijo+año
+    const { data } = await supabase
+      .from('quick_docs')
+      .select('doc_number')
+      .like('doc_number', pattern)
+      .order('doc_number', { ascending: false })
+      .limit(1)
+
+    let seq = 1
+    if (data && data.length > 0) {
+      // Extraer el número secuencial del doc_number existente (ej: "FS-2026-003" → 3)
+      const parts = data[0].doc_number.split('-')
+      const lastSeq = parseInt(parts[parts.length - 1], 10)
+      if (!isNaN(lastSeq)) seq = lastSeq + 1
+    }
+
+    // También comprobar localStorage por si hay docs aún no sincronizados
+    const lsKey = `quick_doc_seq_${prefix}_${year}`
+    const lsSeq = parseInt(localStorage.getItem(lsKey) ?? '0', 10)
+    if (lsSeq >= seq) seq = lsSeq + 1
+
+    localStorage.setItem(lsKey, String(seq))
+    return `${prefix}-${year}-${String(seq).padStart(3, '0')}`
+  } catch {
+    // Fallback puro localStorage
+    const lsKey = `quick_doc_seq_${prefix}_${year}`
+    const seq = parseInt(localStorage.getItem(lsKey) ?? '0', 10) + 1
+    localStorage.setItem(lsKey, String(seq))
+    return `${prefix}-${year}-${String(seq).padStart(3, '0')}`
+  }
 }
 
 function emptyLine(): QuickLine {
@@ -106,7 +140,7 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
   const printRef = useRef<HTMLDivElement>(null)
 
   // Form state
-  const [docNumber] = useState(() => nextDocNumber(meta.prefix))
+  const [docNumber, setDocNumber] = useState('')
   const [docDate] = useState(() => new Date())
   const [clientName, setClientName] = useState(initialData?.clientName ?? '')
   const [clientNif, setClientNif] = useState(initialData?.clientNif ?? '')
@@ -121,6 +155,11 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
       : 'Este documento es una proforma y no tiene validez fiscal. Precios sujetos a confirmación.'
   )
   const [company, setCompany] = useState<CompanyInfo>(DEFAULT_COMPANY)
+
+  // Generar número de documento desde Supabase (async)
+  useEffect(() => {
+    nextDocNumber(meta.prefix).then(setDocNumber)
+  }, [meta.prefix])
 
   // Load company from Supabase
   useEffect(() => {

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { supabase } from '@/lib/supabase'
 import { Security } from '@/lib/security'
 import { TimeclockService } from '@/features/timeclock/services/timeclockService'
+import { QuoteService } from '@/features/quotes/services/quoteService'
 // Definición de usuario extendido
 export interface User {
   id: string
@@ -33,6 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const parsed = JSON.parse(storedUser)
         setUser(parsed)
+        // Sincronizar datos desde Supabase al abrir la app
+        QuoteService.syncFromSupabase().catch(() => {})
       } catch (error) {
         console.error('Error parsing stored user:', error)
         localStorage.removeItem('auth_user')

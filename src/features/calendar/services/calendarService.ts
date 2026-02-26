@@ -219,6 +219,38 @@ export class UnifiedCalendarService {
 
   static async getQuoteEvents(): Promise<CalendarEvent[]> {
     try {
+      // Intentar traer quotes de Supabase primero
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('id,quote_number,client_name,client_email,client_phone,vehicle_model,status,total,created_at,valid_until,lead_id')
+        .order('created_at', { ascending: false })
+
+      if (!error && data && data.length > 0) {
+        const quotes: Quote[] = data.map((r: any) => ({
+          id: r.id,
+          quoteNumber: r.quote_number ?? '',
+          clientName: r.client_name ?? '',
+          clientEmail: r.client_email,
+          clientPhone: r.client_phone,
+          vehicleModel: r.vehicle_model,
+          status: r.status,
+          total: Number(r.total ?? 0),
+          createdAt: new Date(r.created_at),
+          validUntil: new Date(r.valid_until ?? r.created_at),
+          lead_id: r.lead_id,
+          items: [],
+          subtotalMaterials: 0,
+          subtotalLabor: 0,
+          subtotal: 0,
+          profitMargin: 0,
+          profitAmount: 0,
+          totalHours: 0,
+          tarifa: {},
+        } as Quote))
+        return quotes.flatMap((q) => quoteToEvent(q) ?? [])
+      }
+
+      // Fallback a localStorage
       const stored = localStorage.getItem('saved_quotes')
       if (!stored) return []
       const quotes: Quote[] = JSON.parse(stored)
