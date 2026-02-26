@@ -10,6 +10,7 @@ import WaitingList from './WaitingList'
 import CalendarView from './CalendarView'
 import ProjectDetails from './ProjectDetails'
 import { useCalendarEvents } from '../hooks/useCalendarEvents'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 export default function ProductionCalendar() {
@@ -17,6 +18,7 @@ export default function ProductionCalendar() {
   const [selectedProject, setSelectedProject] = useState<ProductionProject | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(true)
+  const [ConfirmDialog, confirm] = useConfirm()
 
   // Unified calendar events hook
   const {
@@ -64,6 +66,18 @@ export default function ProductionCalendar() {
     setShowScheduleModal(true)
   }
 
+  const handleDeleteProject = (project: ProductionProject) => {
+    confirm('¿Eliminar este proyecto de la lista de espera? Se borrarán todas sus tareas y datos asociados.', async () => {
+      try {
+        await ProductionService.deleteProject(project.id)
+        toast.success('Proyecto eliminado')
+        handleRefresh()
+      } catch (error) {
+        toast.error('Error eliminando proyecto')
+      }
+    })
+  }
+
   const handleProjectScheduled = async () => {
     await handleRefresh()
     setShowScheduleModal(false)
@@ -89,6 +103,7 @@ export default function ProductionCalendar() {
 
   return (
     <PageLayout>
+      {ConfirmDialog}
       <Header
         title="📅 Calendario"
         description="Planificación, recepciones, pedidos y eventos del taller"
@@ -126,6 +141,7 @@ export default function ProductionCalendar() {
           <WaitingList
             projects={waitingProjects}
             onSchedule={handleSchedule}
+            onDelete={handleDeleteProject}
             onRefresh={loadProjects}
           />
         ) : (

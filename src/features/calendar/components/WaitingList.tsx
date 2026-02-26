@@ -6,10 +6,11 @@ import { ProductionProject } from '../types/production.types'
 interface WaitingListProps {
   projects: ProductionProject[]
   onSchedule: (project: ProductionProject) => void
+  onDelete: (project: ProductionProject) => void
   onRefresh: () => void
 }
 
-export default function WaitingList({ projects, onSchedule }: WaitingListProps) {
+export default function WaitingList({ projects, onSchedule, onDelete }: WaitingListProps) {
   const getPriorityColor = (priority: number) => {
     if (priority >= 8) return 'destructive'
     if (priority >= 5) return 'warning'
@@ -130,12 +131,21 @@ export default function WaitingList({ projects, onSchedule }: WaitingListProps) 
               )}
 
               {/* Botón de planificar */}
-              <Button
-                onClick={() => onSchedule(project)}
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                📅 Planificar en Calendario
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => onSchedule(project)}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                >
+                  📅 Planificar en Calendario
+                </Button>
+                <Button
+                  onClick={() => onDelete(project)}
+                  variant="outline"
+                  className="text-red-500 hover:bg-red-50 hover:text-red-700 border-red-200"
+                >
+                  🗑️
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}

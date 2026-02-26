@@ -391,6 +391,31 @@ export class FurnitureWorkOrderService {
   static _lsGetAll(): FurnitureWorkOrder[] {
     try { return JSON.parse(localStorage.getItem(LS_WO_KEY) || '[]') } catch { return [] }
   }
+
+  /** Delete a work order (CASCADE handles child designs in Supabase) */
+  static async deleteWorkOrder(id: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from(WO_TABLE)
+        .delete()
+        .eq('id', id)
+      if (error) throw error
+    } catch (err: any) {
+      if (isTableMissing(err)) {
+        // Fallback: remove from localStorage
+        const all = FurnitureWorkOrderService._lsGetAll().filter(w => w.id !== id)
+        localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
+        return
+      }
+      throw err
+    }
+
+    // Also clean localStorage copy if it exists
+    try {
+      const all = FurnitureWorkOrderService._lsGetAll().filter(w => w.id !== id)
+      localStorage.setItem(LS_WO_KEY, JSON.stringify(all))
+    } catch { /* best-effort */ }
+  }
 }
 
 const LS_KEY = 'vanspace_furniture_designs'

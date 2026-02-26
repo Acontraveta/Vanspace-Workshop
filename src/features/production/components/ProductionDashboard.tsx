@@ -86,6 +86,18 @@ export default function ProductionDashboard() {
     })
   }
 
+  const handleDeleteProject = async (projectId: string) => {
+    confirm('¿Eliminar este proyecto? Se borrarán todas sus tareas, eventos del calendario y órdenes de diseño asociadas.', async () => {
+      try {
+        await ProductionService.deleteProject(projectId)
+        toast.success('Proyecto eliminado')
+        loadData()
+      } catch (error) {
+        toast.error('Error eliminando proyecto')
+      }
+    })
+  }
+
   const inProgressProjects = projects.filter(p => p.status === 'IN_PROGRESS')
   const scheduledProjects = projects.filter(p => p.status === 'SCHEDULED')
 
@@ -193,6 +205,7 @@ export default function ProductionDashboard() {
                       onPause={() => handlePauseProject(project.id)}
                       onComplete={() => handleCompleteProject(project.id)}
                       onViewTasks={() => setSelectedProject(project)}
+                      onDelete={() => handleDeleteProject(project.id)}
                       onRefresh={loadData}
                     />
                   ))}
@@ -216,6 +229,7 @@ export default function ProductionDashboard() {
                       onPause={() => handlePauseProject(project.id)}
                       onComplete={() => handleCompleteProject(project.id)}
                       onViewTasks={() => setSelectedProject(project)}
+                      onDelete={() => handleDeleteProject(project.id)}
                       onRefresh={loadData}
                     />
                   ))}

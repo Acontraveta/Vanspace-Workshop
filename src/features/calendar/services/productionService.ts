@@ -372,4 +372,34 @@ export class ProductionService {
     
     if (error) throw error
   }
+
+  // ============================================
+  // ELIMINAR PROYECTO
+  // ============================================
+
+  /** Delete a production project and all related data (tasks, calendar events, work orders) */
+  static async deleteProject(id: string): Promise<void> {
+    // 1. Delete production tasks
+    try {
+      await supabase.from('production_tasks').delete().eq('project_id', id)
+    } catch { /* tasks may not exist */ }
+
+    // 2. Delete calendar events linked to this project
+    try {
+      await supabase.from('calendar_events').delete().eq('source_id', id)
+    } catch { /* calendar events may not exist */ }
+
+    // 3. Delete furniture work orders (CASCADE deletes furniture_designs, exterior_designs, interior_designs)
+    try {
+      await supabase.from('furniture_work_orders').delete().eq('project_id', id)
+    } catch { /* work orders may not exist */ }
+
+    // 4. Delete the project itself
+    const { error } = await supabase
+      .from('production_projects')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+  }
 }

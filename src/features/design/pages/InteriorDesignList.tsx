@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FurnitureWorkOrderService } from '../services/furnitureDesignService'
 import { FurnitureWorkOrder } from '../types/furniture.types'
+import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 const STATUS = {
@@ -14,6 +15,7 @@ export default function InteriorDesignList() {
   const [orders, setOrders] = useState<FurnitureWorkOrder[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const [ConfirmDialog, confirm] = useConfirm()
 
   useEffect(() => { load() }, [])
 
@@ -29,6 +31,18 @@ export default function InteriorDesignList() {
     }
   }
 
+  const deleteWorkOrder = async (id: string) => {
+    confirm('¿Eliminar esta orden de trabajo? Se borrarán todos los diseños asociados.', async () => {
+      try {
+        await FurnitureWorkOrderService.deleteWorkOrder(id)
+        setOrders(prev => prev.filter(o => o.id !== id))
+        toast.success('Orden eliminada')
+      } catch {
+        toast.error('Error eliminando orden')
+      }
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -39,6 +53,7 @@ export default function InteriorDesignList() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6">
+      {ConfirmDialog}
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
@@ -119,6 +134,13 @@ export default function InteriorDesignList() {
                   </div>
                 </div>
                 <span className="text-slate-300 text-lg flex-shrink-0">›</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteWorkOrder(wo.id) }}
+                  className="ml-1 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all flex-shrink-0"
+                  title="Eliminar orden"
+                >
+                  🗑️
+                </button>
               </div>
             )
           })}

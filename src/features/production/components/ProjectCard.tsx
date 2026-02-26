@@ -16,6 +16,7 @@ interface ProjectCardProps {
   onPause: () => void
   onComplete: () => void
   onViewTasks: () => void
+  onDelete: () => void
   onRefresh: () => void
 }
 
@@ -26,6 +27,7 @@ export default function ProjectCard({
   onPause,
   onComplete,
   onViewTasks,
+  onDelete,
   onRefresh
 }: ProjectCardProps) {
   const [tasks, setTasks] = useState<ProductionTask[]>([])
@@ -233,6 +235,15 @@ export default function ProjectCard({
             size="sm"
           >
             📋 Ver Tareas ({totalTasks})
+          </Button>
+
+          <Button
+            onClick={onDelete}
+            variant="outline"
+            size="sm"
+            className="text-red-500 hover:bg-red-50 hover:text-red-700 border-red-200"
+          >
+            🗑️
           </Button>
         </div>
       </CardContent>
