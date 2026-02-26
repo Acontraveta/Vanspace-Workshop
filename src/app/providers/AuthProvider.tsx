@@ -20,6 +20,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   signUp: (email: string, password: string) => Promise<void>
+  pauseShift: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -142,9 +143,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut()
       localStorage.removeItem('auth_user')
       setUser(null)
-      toast.success('Sesión cerrada')
+      toast.success('Jornada finalizada')
     } catch (error: any) {
       toast.error('Error al cerrar sesión')
+      throw error
+    }
+  }
+
+  const pauseShift = async () => {
+    // Pausar jornada sin finalizarla
+    if (user && user.id !== 'admin') {
+      try {
+        await TimeclockService.registerPause(user.id, user.name || user.email)
+      } catch (error) {
+        console.error('Error pausando jornada:', error)
+      }
+    }
+    try {
+      await supabase.auth.signOut()
+      localStorage.removeItem('auth_user')
+      setUser(null)
+      toast.success('⏸ Jornada pausada — al volver el reloj continuará')
+    } catch (error: any) {
+      toast.error('Error al pausar sesión')
       throw error
     }
   }
@@ -174,6 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signOut,
     signUp,
+    pauseShift,
   }
 
   if (loading) {

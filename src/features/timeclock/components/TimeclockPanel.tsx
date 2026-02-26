@@ -363,7 +363,7 @@ export default function TimeclockPanel() {
     toast.success('✅ Informe HTML exportado')
   }
 
-  const activeSessions = todaySessions.filter(s => s.status === 'active')
+  const activeSessions = todaySessions.filter(s => s.status === 'active' || s.status === 'paused')
   const finishedSessions = todaySessions.filter(s => s.status === 'finished')
   const totalMinutesToday = finishedSessions.reduce((sum, s) => sum + s.total_minutes, 0)
 
@@ -429,11 +429,17 @@ export default function TimeclockPanel() {
               <CardContent>
                 <div className="space-y-3">
                   {activeSessions.map(session => {
-                    const minutes = Math.round(
-                      (new Date().getTime() - new Date(session.login_time).getTime()) / 60000
-                    )
+                    const accumulated = session.total_minutes || 0
+                    const currentPeriod = session.status === 'active'
+                      ? Math.round((new Date().getTime() - new Date(session.login_time).getTime()) / 60000)
+                      : 0
+                    const minutes = accumulated + currentPeriod
                     return (
-                      <div key={session.id} className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <div key={session.id} className={`flex items-center justify-between p-4 rounded-lg ${
+                        session.status === 'paused'
+                          ? 'bg-yellow-50 border border-yellow-200'
+                          : 'bg-green-50 border border-green-200'
+                      }`}>
                         <div>
                           <p className="font-bold text-lg">{session.employee_name}</p>
                           <p className="text-sm text-gray-600">
@@ -443,10 +449,15 @@ export default function TimeclockPanel() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-2xl font-bold text-green-600 font-mono">
+                          <p className={`text-2xl font-bold font-mono ${
+                            session.status === 'paused' ? 'text-yellow-600' : 'text-green-600'
+                          }`}>
                             {TimeclockService.formatMinutes(minutes)}
                           </p>
-                          <Badge className="bg-green-600">🟢 Activo</Badge>
+                          {session.status === 'paused'
+                            ? <Badge className="bg-yellow-500">⏸ Pausado</Badge>
+                            : <Badge className="bg-green-600">🟢 Activo</Badge>
+                          }
                         </div>
                       </div>
                     )

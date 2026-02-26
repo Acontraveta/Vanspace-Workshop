@@ -12,7 +12,7 @@ interface SidebarProps {
 
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   useLocation() // re-render on route change
-  const { user, signOut } = useAuth()
+  const { user, signOut, pauseShift } = useAuth()
   const { canAccessModule, hasPermission } = usePermissions()
 
   const getDashboardPath = () => {
@@ -105,9 +105,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       )}
 
       {/* Footer */}
-      <div className="p-4 border-t border-gray-200 bg-gray-50">
-        <Button onClick={signOut} variant="outline" className="w-full text-sm">
-          🚪 Finalizar/pausar jornada
+      <div className="p-4 border-t border-gray-200 bg-gray-50 space-y-2">
+        {user?.id !== 'admin' && (
+          <Button onClick={pauseShift} variant="outline" className="w-full text-sm">
+            ⏸ Pausar jornada
+          </Button>
+        )}
+        <Button onClick={signOut} variant="outline" className="w-full text-sm text-red-600 border-red-200 hover:bg-red-50">
+          🚪 Finalizar jornada
         </Button>
       </div>
     </aside>

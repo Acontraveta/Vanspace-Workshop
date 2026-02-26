@@ -21,10 +21,18 @@ export default function MyHoursWidget() {
   useEffect(() => {
     if (!activeSession) return
     const update = () => {
-      const mins = Math.round(
+      // Minutos acumulados de tramos anteriores (pausas)
+      const accumulated = activeSession.total_minutes || 0
+      if (activeSession.status === 'paused') {
+        // Pausada: solo mostrar lo acumulado
+        setElapsed(accumulated)
+        return
+      }
+      // Activa: acumulado + tramo actual
+      const currentPeriod = Math.round(
         (new Date().getTime() - new Date(activeSession.login_time).getTime()) / 60000
       )
-      setElapsed(mins)
+      setElapsed(accumulated + currentPeriod)
     }
     update()
     const interval = setInterval(update, 60000)
