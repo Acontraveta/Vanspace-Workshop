@@ -355,6 +355,18 @@ export default function PurchaseList() {
   // Abrir modal para editar un producto existente del catálogo
   const handleEditProduct = (product: CatalogProduct) => {
     setEditingProduct(product)
+
+  const handleDeleteProduct = (product: CatalogProduct) => {
+    confirm(`¿Eliminar "${product.NOMBRE}" (${product.SKU}) del catálogo? Esta acción es irreversible.`, async () => {
+      try {
+        await CatalogService.deleteProduct(product.SKU)
+        toast.success('🗑️ Producto eliminado del catálogo')
+        loadCatalog()
+      } catch {
+        toast.error('Error al eliminar producto')
+      }
+    })
+  }
     // Poblar el formulario con los datos del producto
     setNewProductForm({
       articulo: product.NOMBRE || '',
@@ -1927,6 +1939,13 @@ export default function PurchaseList() {
                         {product.TIEMPO_TOTAL_MIN > 0 && (
                           <span className="text-xs text-gray-400">{product.TIEMPO_TOTAL_MIN}min</span>
                         )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product) }}
+                          className="p-1.5 rounded-lg border border-red-200 hover:bg-red-50 text-red-400 hover:text-red-600 transition"
+                          title="Eliminar producto"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     </div>
                   )
@@ -1998,6 +2017,7 @@ export default function PurchaseList() {
                                           <th className="w-[10%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tiempo</th>
                                           <th className="w-[12%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Proveedor</th>
                                           <th className="w-[12%] px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Info</th>
+                                          <th className="w-[5%] px-2 py-2"></th>
                                         </tr>
                                       </thead>
                                       <tbody className="bg-white divide-y divide-gray-200">
@@ -2032,6 +2052,15 @@ export default function PurchaseList() {
                                                   {hasTasks && <span title="Tareas producción">⚙️</span>}
                                                   {product.REQUIERE_DISEÑO === 'SÍ' && <span title={`Diseño: ${(product.TIPO_DISEÑO || '').split(',').filter(Boolean).map(d => d === 'furniture' ? '🪑 Muebles' : d === 'exterior' ? '🚐 Exterior' : d === 'interior' ? '🏠 Interior' : d).join(', ') || 'Sin asignar'}`}>📐</span>}
                                                 </div>
+                                              </td>
+                                              <td className="px-2 py-3 text-center">
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product) }}
+                                                  className="p-1 rounded hover:bg-red-50 text-red-400 hover:text-red-600 transition"
+                                                  title="Eliminar producto"
+                                                >
+                                                  🗑️
+                                                </button>
                                               </td>
                                             </tr>
                                           )

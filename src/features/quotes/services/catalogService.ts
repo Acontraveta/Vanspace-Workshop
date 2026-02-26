@@ -255,6 +255,29 @@ export class CatalogService {
     this.reExportExcel().catch(err => console.warn('Re-export Excel failed:', err))
   }
 
+  /**
+   * Eliminar un producto del catálogo por SKU.
+   * 1. Borra de Supabase catalog_products
+   * 2. Elimina de memoria local y localStorage
+   * 3. Re-exporta el Excel sin ese producto
+   */
+  static async deleteProduct(sku: string): Promise<void> {
+    // Borrar de Supabase
+    const { error } = await supabase.from('catalog_products').delete().eq('sku', sku)
+    if (error) {
+      console.warn('⚠️ Error borrando de catalog_products:', error.message)
+      // Puede que el producto solo existiera en el Excel, continuar igualmente
+    }
+
+    // Eliminar de memoria local
+    this.products = this.products.filter(p => p.SKU !== sku)
+    localStorage.setItem('catalog_products', JSON.stringify(this.products))
+    localStorage.setItem('catalog_last_sync', new Date().toISOString())
+
+    // Re-exportar el Excel sin ese producto
+    this.reExportExcel().catch(err => console.warn('Re-export Excel failed:', err))
+  }
+
   /** Re-genera el Excel de catálogo fusionando el Excel existente con los productos de la BD */
   private static async reExportExcel(): Promise<void> {
     // 1. Load existing products from the current Excel in Storage
