@@ -213,15 +213,22 @@ export class QuoteService {
   // Para datos frescos de Supabase, llamar antes a syncFromSupabase()
   static getAllQuotes(): Quote[] {
     const stored = localStorage.getItem(this.STORAGE_KEY)
+    const deletedIds = this.getDeletedIds()
     if (stored) {
       try {
         const quotes = JSON.parse(stored)
-        const updatedQuotes = quotes.map((q: any) => applyExpiration(parseDates(q)))
+        const updatedQuotes = quotes
+          .filter((q: any) => !deletedIds.has(q.id))
+          .map((q: any) => applyExpiration(parseDates(q)))
         
-        // Guardar cambios si hubo expirados
-        const hasExpired = updatedQuotes.some((q: Quote, i: number) => q.status !== quotes[i].status)
-        if (hasExpired) {
+        // Guardar cambios si hubo filtrados o expirados
+        if (updatedQuotes.length !== quotes.length) {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updatedQuotes))
+        } else {
+          const hasExpired = updatedQuotes.some((q: Quote, i: number) => q.status !== quotes[i].status)
+          if (hasExpired) {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updatedQuotes))
+          }
         }
         
         return updatedQuotes

@@ -185,9 +185,9 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   const handleDelete = (quoteId: string) => {
     setConfirmAction({
       message: '¿Eliminar este presupuesto? Esta acción no se puede deshacer.',
-      action: () => {
+      action: async () => {
         try {
-          QuoteService.deleteQuote(quoteId)
+          await QuoteService.deleteQuote(quoteId)
           refresh()
         } catch (error: any) {
           toast.error(error.message)
@@ -662,7 +662,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
             <p className="text-sm font-medium text-gray-800 mb-4">{confirmAction.message}</p>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setConfirmAction(null)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
-              <button type="button" onClick={() => { confirmAction.action(); setConfirmAction(null) }} className="text-sm px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600">Confirmar</button>
+              <button type="button" onClick={async () => { await confirmAction.action(); setConfirmAction(null) }} className="text-sm px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600">Confirmar</button>
             </div>
           </div>
         </div>,
