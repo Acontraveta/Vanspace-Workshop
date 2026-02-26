@@ -234,4 +234,26 @@ export class StockService {
       .then(({ exportStockToExcel }) => exportStockToExcel())
       .catch(e => console.warn('⚠️ No se pudo actualizar stock.xlsx tras ubicación:', e))
   }
+
+  /**
+   * Elimina un item del stock por referencia.
+   * Borra de Supabase, memoria, localStorage y re-exporta Excel.
+   */
+  static async deleteItem(referencia: string): Promise<void> {
+    // 1. Borrar de Supabase
+    const { error } = await supabase
+      .from('stock_items')
+      .delete()
+      .eq('referencia', referencia)
+    if (error) console.warn('⚠️ Error borrando stock_items de Supabase:', error.message)
+
+    // 2. Eliminar de memoria y localStorage
+    this.stock = this.stock.filter(i => i.REFERENCIA !== referencia)
+    localStorage.setItem('stock_items', JSON.stringify(this.stock))
+
+    // 3. Re-exportar stock.xlsx en Storage (no-blocking)
+    import('@/lib/excelSync')
+      .then(({ exportStockToExcel }) => exportStockToExcel())
+      .catch(e => console.warn('⚠️ No se pudo actualizar stock.xlsx tras eliminar:', e))
+  }
 }

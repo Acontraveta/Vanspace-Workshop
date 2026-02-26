@@ -232,6 +232,18 @@ export default function PurchaseList() {
     }
   }
 
+  const handleDeleteStockItem = (item: StockItem) => {
+    confirm(`¿Eliminar "${item.ARTICULO}" (${item.REFERENCIA}) del stock? Esta acción es irreversible.`, async () => {
+      try {
+        await StockService.deleteItem(item.REFERENCIA)
+        toast.success('🗑️ Producto eliminado del stock')
+        refreshData()
+      } catch {
+        toast.error('Error al eliminar del stock')
+      }
+    })
+  }
+
   // Note: stock import now handled via /setup page (sync from Supabase)
 
   const handleMarkAsOrdered = async (itemId: string) => {
@@ -1761,7 +1773,8 @@ export default function PurchaseList() {
                                             <th className="w-[15%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Referencia</th>
                                             <th className="w-[15%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Cantidad ✏️</th>
                                             <th className="w-[17%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">📍 Ubicación</th>
-                                            <th className="w-[18%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Coste</th>
+                                            <th className="w-[15%] px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Coste</th>
+                                            <th className="w-[3%] px-2 py-2"></th>
                                           </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-200">
@@ -1853,6 +1866,15 @@ export default function PurchaseList() {
                                                   ) : (
                                                     <span className="text-gray-400">-</span>
                                                   )}
+                                                </td>
+                                                <td className="px-2 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                                                  <button
+                                                    onClick={() => handleDeleteStockItem(item)}
+                                                    className="p-1 text-red-300 hover:text-red-600 transition"
+                                                    title="Eliminar del stock"
+                                                  >
+                                                    🗑️
+                                                  </button>
                                                 </td>
                                               </tr>
                                             )
