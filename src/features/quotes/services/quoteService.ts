@@ -88,6 +88,31 @@ function parseDates(q: any): Quote {
 
 export class QuoteService {
   private static STORAGE_KEY = 'saved_quotes'
+  private static DELETED_IDS_KEY = 'deleted_quote_ids'
+
+  // ── Gestión de IDs eliminados ──────────────────────────
+  // Persiste IDs de facturas/presupuestos eliminados para que
+  // syncFromSupabase nunca los restaure, incluso si Supabase
+  // no pudo borrar la fila (type mismatch, FK constraint, etc.)
+
+  private static getDeletedIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem(this.DELETED_IDS_KEY)
+      return raw ? new Set(JSON.parse(raw)) : new Set()
+    } catch { return new Set() }
+  }
+
+  private static addDeletedId(id: string): void {
+    const ids = this.getDeletedIds()
+    ids.add(id)
+    localStorage.setItem(this.DELETED_IDS_KEY, JSON.stringify([...ids]))
+  }
+
+  private static removeDeletedId(id: string): void {
+    const ids = this.getDeletedIds()
+    ids.delete(id)
+    localStorage.setItem(this.DELETED_IDS_KEY, JSON.stringify([...ids]))
+  }
 
   // ── Sincronización con Supabase ────────────────────────
 
@@ -107,12 +132,36 @@ export class QuoteService {
         return this.getAllQuotes()
       }
 
-      const sbQuotes = (data || []).map(fromDb).map(applyExpiration)
+      // IDs marcados para eliminar localmente
+      const deletedIds = this.getDeletedIds()
+
+      // Filtrar resultados de Supabase: excluir cualquier ID marcado como eliminado
+      const sbQuotes = (data || [])
+        .filter((row: any) => !deletedIds.has(row.id))
+        .map(fromDb)
+        .map(applyExpiration)
       const sbIds = new Set(sbQuotes.map(q => q.id))
+
+      // Reintentar eliminación en Supabase de IDs pendientes
+      if (deletedIds.size > 0) {
+        for (const delId of deletedIds) {
+          const { error: retryErr } = await supabase
+            .from('quotes')
+            .delete()
+            .eq('id', delId)
+          if (!retryErr) {
+            // También intentar con cast por si el campo es UUID
+            await supabase
+              .from('quotes')
+              .delete()
+              .filter('id', 'eq', delId)
+          }
+        }
+      }
 
       // Detectar quotes en localStorage que NO estén en Supabase (creados offline)
       const localQuotes = this.getAllQuotes()
-      const localOnly = localQuotes.filter(q => !sbIds.has(q.id))
+      const localOnly = localQuotes.filter(q => !sbIds.has(q.id) && !deletedIds.has(q.id))
 
       // Subir registros solo-locales a Supabase (recuperación)
       let syncedCount = 0
@@ -273,17 +322,21 @@ export class QuoteService {
     const quote = quotes.find(q => q.id === quoteId)
     const wasFactura = quote?.status === 'APPROVED'
 
-    // 1. Eliminar de Supabase primero (await para asegurar que se completa)
-    const { error } = await supabase.from('quotes').delete().eq('id', quoteId)
-    if (error) {
-      console.error('❌ Supabase quote delete failed:', error.message)
-      toast.error('Error eliminando de la base de datos')
-      return
-    }
+    // 1. Registrar ID como eliminado (SIEMPRE, antes de intentar Supabase)
+    // Esto garantiza que syncFromSupabase nunca lo restaure
+    this.addDeletedId(quoteId)
 
-    // 2. Solo si Supabase confirmó, eliminar de localStorage
+    // 2. Eliminar de localStorage inmediatamente
     const filtered = quotes.filter(q => q.id !== quoteId)
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered))
+
+    // 3. Intentar eliminar de Supabase (best effort)
+    try {
+      await supabase.from('quotes').delete().eq('id', quoteId)
+    } catch (err) {
+      console.warn('⚠️ Supabase delete attempt failed (will retry on next sync):', err)
+    }
+
     toast.success(wasFactura ? 'Factura eliminada del sistema' : 'Presupuesto eliminado')
   }
 
