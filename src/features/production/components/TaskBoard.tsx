@@ -60,6 +60,8 @@ export default function TaskBoard({
   const [taskToShowInstructions, setTaskToShowInstructions] = useState<ProductionTask | null>(null) // Modal instrucciones
   const [taskToViewPlans, setTaskToViewPlans] = useState<ProductionTask | null>(null) // Modal ver planos (durante trabajo)
   const [assignModalBlock, setAssignModalBlock] = useState<TaskBlock | null>(null) // Modal asignar
+  const [incidentTask, setIncidentTask] = useState<ProductionTask | null>(null) // Modal incidencia
+  const [incidentReason, setIncidentReason] = useState('')
   
   // Estados
     const [uploadingFiles, setUploadingFiles] = useState<File[]>([])
@@ -341,6 +343,23 @@ export default function TaskBoard({
     }
   }
 
+  const handleIncidentTask = async () => {
+    if (!incidentTask || !incidentReason.trim()) return
+    try {
+      await ProductionService.updateTask(incidentTask.id, {
+        status: 'BLOCKED',
+        blocked_reason: incidentReason.trim()
+      })
+      toast.success('⚠️ Incidencia registrada')
+      setIncidentTask(null)
+      setIncidentReason('')
+      loadData()
+      onRefresh()
+    } catch {
+      toast.error('Error registrando incidencia')
+    }
+  }
+
   const handlePauseTask = async (task: ProductionTask) => {
     confirm('¿Pausar esta tarea?', async () => {
       try {
@@ -479,6 +498,7 @@ export default function TaskBoard({
                 onStart={() => handleStartBlock(block)}
                 onPause={handlePauseTask}
                 onComplete={handleCompleteTask}
+                onIncident={t => { setIncidentTask(t); setIncidentReason('') }}
                 onViewPlans={t => setTaskToViewPlans(t)}
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
@@ -511,6 +531,7 @@ export default function TaskBoard({
                 onStart={() => handleStartBlock(block)}
                 onPause={handlePauseTask}
                 onComplete={handleCompleteTask}
+                onIncident={t => { setIncidentTask(t); setIncidentReason('') }}
                 onViewPlans={t => setTaskToViewPlans(t)}
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
@@ -540,6 +561,7 @@ export default function TaskBoard({
                 onStart={() => handleStartBlock(block)}
                 onPause={handlePauseTask}
                 onComplete={handleCompleteTask}
+                onIncident={t => { setIncidentTask(t); setIncidentReason('') }}
                 onViewPlans={t => setTaskToViewPlans(t)}
                 canAssign={canAssignTasks}
                 onAssign={() => setAssignModalBlock(block)}
@@ -572,8 +594,51 @@ export default function TaskBoard({
         </Card>
       )}
 
-      {/* Modal completar tarea */}
-
+      {/* Modal incidencia */}
+      {incidentTask && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setIncidentTask(null)}>
+          <Card className="max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white">
+              <CardTitle className="flex items-center gap-2">
+                <span className="text-2xl">⚠️</span>
+                Registrar incidencia
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 space-y-4">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                <p className="font-semibold text-sm text-gray-800">{incidentTask.task_name}</p>
+                <p className="text-xs text-gray-500 mt-1">{incidentTask.product_name}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  ¿Cuál es el motivo de la incidencia?
+                </label>
+                <textarea
+                  value={incidentReason}
+                  onChange={e => setIncidentReason(e.target.value)}
+                  placeholder="Describe el problema encontrado..."
+                  rows={3}
+                  autoFocus
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleIncidentTask}
+                  disabled={!incidentReason.trim()}
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                >
+                  ⚠️ Registrar incidencia
+                </Button>
+                <Button onClick={() => setIncidentTask(null)} variant="outline" className="flex-1">
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Modal asignar bloque */}
       {assignModalBlock && (
@@ -743,7 +808,7 @@ function KpiCard({ label, value, color }: { label: string; value: number | strin
 }
 
 function BlockCard({
-  block, expanded, onToggle, onStart, onPause, onComplete, onViewPlans, canAssign, onAssign, employees, onFurnitureDesign
+  block, expanded, onToggle, onStart, onPause, onComplete, onIncident, onViewPlans, canAssign, onAssign, employees, onFurnitureDesign
 }: {
   block: TaskBlock
   expanded: boolean
@@ -751,6 +816,7 @@ function BlockCard({
   onStart: () => void
   onPause: (task: ProductionTask) => void
   onComplete: (task: ProductionTask) => void
+  onIncident: (task: ProductionTask) => void
   onViewPlans: (task: ProductionTask) => void
   canAssign?: boolean
   onAssign?: () => void
@@ -829,6 +895,9 @@ function BlockCard({
               <>
                 <Button onClick={() => onViewPlans(currentTask)} variant="outline" size="sm"
                   title="Ver planos">📐</Button>
+                <Button onClick={() => onIncident(currentTask)} variant="outline" size="sm"
+                  className="border-orange-300 text-orange-600 hover:bg-orange-50"
+                  title="Registrar incidencia">⚠️</Button>
                 <Button onClick={() => onPause(currentTask)} variant="outline" size="sm">⏸</Button>
                 <Button onClick={() => onComplete(currentTask)} size="sm"
                   className="bg-green-600 hover:bg-green-700">✅</Button>

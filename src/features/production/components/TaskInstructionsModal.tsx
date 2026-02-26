@@ -4,11 +4,152 @@ import { Button } from '@/shared/components/ui/button'
 import { ProductionTask } from '@/features/calendar/types/production.types'
 import { useEffect, useState } from 'react'
 import { DesignFilesService, DesignFile } from '../services/designFilesService'
+import { supabase } from '@/lib/supabase'
+
+/* ── SVG generation helpers ─────────────────────────────────────────── */
+
+const EXT_VISUALS: Record<string, { short: string; fill: string; stroke: string }> = {
+  ventana:     { short: 'V',  fill: '#dbeafe', stroke: '#2563eb' },
+  claraboya:   { short: 'CL', fill: '#ede9fe', stroke: '#7c3aed' },
+  aireador:    { short: 'A',  fill: '#d1fae5', stroke: '#059669' },
+  rejilla:     { short: 'R',  fill: '#fef3c7', stroke: '#d97706' },
+  placa_solar: { short: 'PS', fill: '#1e3a5f20', stroke: '#1e3a5f' },
+  toldo:       { short: 'T',  fill: '#fce7f3', stroke: '#be185d' },
+  portabicis:  { short: 'PB', fill: '#f1f5f9', stroke: '#475569' },
+  custom:      { short: '?',  fill: '#f1f5f9', stroke: '#64748b' },
+}
+
+const VIEW_LABELS: Record<string, string> = {
+  'side-left': 'Lateral izquierdo',
+  'side-right': 'Lateral derecho',
+  top: 'Techo',
+  rear: 'Trasera',
+}
+
+function generateExteriorSvg(elements: any[]): string {
+  // Group elements by view
+  const byView: Record<string, any[]> = {}
+  for (const el of elements) {
+    const v = el.view || 'side-left'
+    ;(byView[v] ??= []).push(el)
+  }
+  const views = Object.keys(byView)
+  if (!views.length) return ''
+
+  const viewW = 500
+  const viewH = 200
+  const pad = 20
+  const headerH = 30
+  const sectionH = headerH + viewH + pad
+  const totalH = views.length * sectionH + pad
+  const totalW = viewW + pad * 2
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="${totalW}" height="${totalH}" style="font-family:system-ui,sans-serif">`
+  svg += `<rect width="${totalW}" height="${totalH}" fill="#f8fafc" rx="8"/>`
+
+  views.forEach((view, vi) => {
+    const yOff = pad + vi * sectionH
+    // View label
+    svg += `<text x="${pad}" y="${yOff + 18}" font-size="14" font-weight="bold" fill="#334155">${VIEW_LABELS[view] || view}</text>`
+    // View background (van silhouette area)
+    svg += `<rect x="${pad}" y="${yOff + headerH}" width="${viewW}" height="${viewH}" fill="#e2e8f0" rx="6" stroke="#94a3b8" stroke-width="1"/>`
+
+    // Scale elements: find bounding box, then fit into viewW x viewH
+    const elems = byView[view]
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const el of elems) {
+      const ex = el.x ?? 0, ey = el.y ?? 0, ew = el.w ?? 50, eh = el.h ?? 50
+      minX = Math.min(minX, ex); minY = Math.min(minY, ey)
+      maxX = Math.max(maxX, ex + ew); maxY = Math.max(maxY, ey + eh)
+    }
+    const bw = maxX - minX || 1, bh = maxY - minY || 1
+    const scale = Math.min((viewW - 40) / bw, (viewH - 40) / bh, 1)
+    const offX = pad + 20 + ((viewW - 40) - bw * scale) / 2
+    const offY = yOff + headerH + 20 + ((viewH - 40) - bh * scale) / 2
+
+    for (const el of elems) {
+      const vis = EXT_VISUALS[el.type] || EXT_VISUALS.custom
+      const rx = offX + (el.x - minX) * scale
+      const ry = offY + (el.y - minY) * scale
+      const rw = (el.w ?? 50) * scale
+      const rh = (el.h ?? 50) * scale
+      svg += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="${vis.fill}" stroke="${vis.stroke}" stroke-width="2" rx="3"/>`
+      // Label
+      const label = el.label || vis.short
+      const fontSize = Math.min(12, rw / label.length * 1.4, rh * 0.5)
+      if (fontSize > 5) {
+        svg += `<text x="${rx + rw / 2}" y="${ry + rh / 2 + fontSize * 0.35}" text-anchor="middle" font-size="${fontSize.toFixed(1)}" fill="${vis.stroke}" font-weight="600">${label}</text>`
+      }
+      // Dimensions
+      const dimMM = `${Math.round(el.w ?? 0)}×${Math.round(el.h ?? 0)}`
+      if (rh > 18) {
+        svg += `<text x="${rx + rw / 2}" y="${ry + rh - 4}" text-anchor="middle" font-size="8" fill="#64748b">${dimMM}mm</text>`
+      }
+    }
+  })
+
+  svg += '</svg>'
+  return svg
+}
+
+const INT_LAYER_COLORS: Record<string, { fill: string; stroke: string }> = {
+  furniture:  { fill: '#fef3c7', stroke: '#d97706' },
+  electrical: { fill: '#dbeafe', stroke: '#2563eb' },
+  plumbing:   { fill: '#d1fae5', stroke: '#059669' },
+}
+
+function generateInteriorSvg(items: any[]): string {
+  if (!items?.length) return ''
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const it of items) {
+    const ix = it.x ?? 0, iy = it.y ?? 0, iw = it.w ?? 50, ih = it.h ?? 50
+    minX = Math.min(minX, ix); minY = Math.min(minY, iy)
+    maxX = Math.max(maxX, ix + iw); maxY = Math.max(maxY, iy + ih)
+  }
+  const bw = maxX - minX || 1, bh = maxY - minY || 1
+  const pad = 40
+  const maxW = 600
+  const scale = Math.min((maxW - pad * 2) / bw, 400 / bh, 1)
+  const svgW = bw * scale + pad * 2
+  const svgH = bh * scale + pad * 2 + 30
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}" style="font-family:system-ui,sans-serif">`
+  svg += `<rect width="${svgW}" height="${svgH}" fill="#f8fafc" rx="8"/>`
+  svg += `<text x="${svgW / 2}" y="22" text-anchor="middle" font-size="14" font-weight="bold" fill="#334155">Planta interior</text>`
+
+  for (const it of items) {
+    const lc = INT_LAYER_COLORS[it.layer] || INT_LAYER_COLORS.furniture
+    const rx = pad + (it.x - minX) * scale
+    const ry = 30 + pad + (it.y - minY) * scale
+    const rw = (it.w ?? 50) * scale
+    const rh = (it.h ?? 50) * scale
+    svg += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="${lc.fill}" stroke="${lc.stroke}" stroke-width="2" rx="3"/>`
+    const label = it.label || it.type || ''
+    const fontSize = Math.min(11, rw / Math.max(label.length, 1) * 1.4, rh * 0.4)
+    if (fontSize > 5 && label) {
+      svg += `<text x="${rx + rw / 2}" y="${ry + rh / 2 + fontSize * 0.35}" text-anchor="middle" font-size="${fontSize.toFixed(1)}" fill="${lc.stroke}" font-weight="600">${label}</text>`
+    }
+  }
+
+  // Legend
+  const legendY = svgH - 16
+  let lx = pad
+  for (const [key, colors] of Object.entries(INT_LAYER_COLORS)) {
+    svg += `<rect x="${lx}" y="${legendY - 8}" width="10" height="10" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1" rx="2"/>`
+    const lbl = key === 'furniture' ? 'Mobiliario' : key === 'electrical' ? 'Eléctrico' : 'Fontanería'
+    svg += `<text x="${lx + 14}" y="${legendY}" font-size="9" fill="#475569">${lbl}</text>`
+    lx += 14 + lbl.length * 5.5 + 16
+  }
+
+  svg += '</svg>'
+  return svg
+}
 
 interface BlueprintInfo {
   itemName: string
   svg: string
-  type: 'cutlist' | 'assembly'  // cutlist = despiece, assembly = plano de montaje
+  type: 'cutlist' | 'assembly' | 'exterior' | 'interior'
 }
 
 interface TaskInstructionsModalProps {
@@ -166,6 +307,44 @@ export default function TaskInstructionsModal({
         }
       }
 
+      // ── Cargar diseños exteriores e interiores ──────────────────────────
+      if (task.project_id) {
+        try {
+          const bps = [...blueprints]
+          // Exterior designs — query by project_id OR production_project_id
+          const { data: extDesigns } = await supabase
+            .from('exterior_designs')
+            .select('elements')
+            .or(`project_id.eq.${task.project_id},production_project_id.eq.${task.project_id}`)
+
+          for (const ed of (extDesigns ?? [])) {
+            const elems = ed.elements as any[]
+            if (!elems?.length) continue
+            const svg = generateExteriorSvg(elems)
+            if (svg) {
+              setBlueprints(prev => [...prev, { itemName: 'Diseño exterior', svg, type: 'exterior' }])
+            }
+          }
+
+          // Interior designs — query by project_id OR production_project_id
+          const { data: intDesigns } = await supabase
+            .from('interior_designs')
+            .select('items')
+            .or(`project_id.eq.${task.project_id},production_project_id.eq.${task.project_id}`)
+
+          for (const id of (intDesigns ?? [])) {
+            const items = id.items as any[]
+            if (!items?.length) continue
+            const svg = generateInteriorSvg(items)
+            if (svg) {
+              setBlueprints(prev => [...prev, { itemName: 'Diseño interior', svg, type: 'interior' }])
+            }
+          }
+        } catch (err) {
+          console.error('📐 Error cargando diseños ext/int:', err)
+        }
+      }
+
       setLoadingFiles(false)
     }
     loadFiles()
@@ -236,11 +415,18 @@ export default function TaskInstructionsModal({
               <div className="space-y-3">
                 {blueprints.map(bp => {
                   const isExpanded = expandedBlueprint === bp.itemName
-                  const icon = bp.type === 'cutlist' ? '📋' : '🪑'
-                  const borderColor = bp.type === 'cutlist' ? 'border-blue-200' : 'border-green-200'
-                  const bgColor = bp.type === 'cutlist' ? 'bg-blue-50 hover:bg-blue-100' : 'bg-green-50 hover:bg-green-100'
-                  const textColor = bp.type === 'cutlist' ? 'text-blue-800' : 'text-green-800'
-                  const labelColor = bp.type === 'cutlist' ? 'text-blue-600' : 'text-green-600'
+                  const styleMap: Record<string, { icon: string; border: string; bg: string; text: string; label: string }> = {
+                    cutlist:  { icon: '📋', border: 'border-blue-200',   bg: 'bg-blue-50 hover:bg-blue-100',   text: 'text-blue-800',   label: 'text-blue-600'   },
+                    assembly: { icon: '🪑', border: 'border-green-200',  bg: 'bg-green-50 hover:bg-green-100',  text: 'text-green-800',  label: 'text-green-600'  },
+                    exterior: { icon: '🚐', border: 'border-indigo-200', bg: 'bg-indigo-50 hover:bg-indigo-100', text: 'text-indigo-800', label: 'text-indigo-600' },
+                    interior: { icon: '🏠', border: 'border-amber-200',  bg: 'bg-amber-50 hover:bg-amber-100',  text: 'text-amber-800',  label: 'text-amber-600'  },
+                  }
+                  const s = styleMap[bp.type] || styleMap.assembly
+                  const icon = s.icon
+                  const borderColor = s.border
+                  const bgColor = s.bg
+                  const textColor = s.text
+                  const labelColor = s.label
                   return (
                     <div key={bp.itemName} className={`border-2 ${borderColor} rounded-xl overflow-hidden bg-white`}>
                       <button

@@ -1040,6 +1040,13 @@ export default function VanExteriorDesign() {
           .from('exterior_designs')
           .upsert({ project_id: projectId, elements, updated_at: new Date().toISOString() })
       }
+      // ── Marcar design_ready en el proyecto de producción ──────────
+      const ppId = linkedPP?.id || workOrder?.project_id || linkedWO?.project_id || projectId
+      if (ppId) {
+        try {
+          await ProductionService.updateProject(ppId, { design_ready: true })
+        } catch { /* non-critical */ }
+      }
       toast.success('Diseño exterior guardado')
     } catch (err: any) {
       toast.error('Error guardando: ' + (err.message ?? err))
