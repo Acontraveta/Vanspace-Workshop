@@ -20,6 +20,8 @@ import { Input } from '@/shared/components/ui/input'
 import { QuoteService } from '../services/quoteService'
 import { QuoteAutomation } from '../services/quoteAutomation'
 import { QuickDocService, QuickDocRecord } from '../services/quickDocService'
+import { PurchaseService } from '@/features/purchases/services/purchaseService'
+import { PurchaseItem } from '@/features/purchases/types/purchase.types'
 import { Quote } from '../types/quote.types'
 import { supabase } from '@/lib/supabase'
 import QuotePreview from './QuotePreview'
@@ -75,6 +77,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   const [refreshKey, setRefreshKey]     = useState(0)
   const [proformas, setProformas]       = useState<QuickDocRecord[]>(() => QuickDocService.getByType('PROFORMA'))
   const [simplificadas, setSimplificadas] = useState<QuickDocRecord[]>(() => QuickDocService.getByType('FACTURA_SIMPLIFICADA'))
+  const [purchaseItems, setPurchaseItems] = useState<PurchaseItem[]>([])
 
   const allQuotes     = useMemo(() => QuoteService.getAllQuotes(), [refreshKey])
 
@@ -86,6 +89,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
       setProformas(all.filter(d => d.type === 'PROFORMA'))
       setSimplificadas(all.filter(d => d.type === 'FACTURA_SIMPLIFICADA'))
     })
+    PurchaseService.getAllPurchases().then(setPurchaseItems)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -671,6 +675,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           facturas={allQuotes.filter(q => q.status === 'APPROVED')}
           simplificadas={simplificadas}
           proformas={proformas}
+          purchaseItems={purchaseItems}
           onClose={() => setShowFiscalReport(false)}
         />
       )}

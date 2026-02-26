@@ -45,6 +45,15 @@ export interface PurchaseItem {
   
   // Documentación adjunta (albaranes, facturas, etc.)
   attachments?: string[] // URLs en Supabase Storage
+
+  // ── Bloque de pedido (agrupación) ──
+  orderGroupId?: string       // ID compartido entre items pedidos juntos
+  invoiceNumber?: string      // Nº factura del proveedor
+  invoiceDate?: string        // Fecha factura proveedor (yyyy-MM-dd)
+  invoiceAmount?: number      // Importe total de la factura de compra
+  invoiceVatPct?: number      // % IVA de la factura de compra
+  invoiceVatAmount?: number   // Cuota IVA de la factura de compra
+  invoiceProviderNif?: string // NIF/CIF del proveedor
 }
 
 // Agrupación de pedidos por proveedor

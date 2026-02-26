@@ -6,9 +6,10 @@
  *
  * Tipos de informe:
  *  1. Libro de Facturas Emitidas  — listado completo con desglose IVA
- *  2. Resumen IVA Trimestral      — para modelo 303
- *  3. Resumen Anual               — para modelo 390
- *  4. Desglose por Cliente
+ *  2. Facturas Recibidas (compras) — facturas de proveedores
+ *  3. Resumen IVA Trimestral      — para modelo 303 (emitidas − recibidas)
+ *  4. Resumen Anual               — para modelo 390
+ *  5. Desglose por Cliente
  */
 
 import { useState, useMemo } from 'react'
@@ -18,15 +19,17 @@ import { Button } from '@/shared/components/ui/button'
 import { Card, CardContent } from '@/shared/components/ui/card'
 import { Quote } from '../types/quote.types'
 import { QuickDocRecord } from '../services/quickDocService'
+import { PurchaseItem } from '@/features/purchases/types/purchase.types'
 
 // ─── Types ───────────────────────────────────────────────────
 
-type ReportType = 'libro-facturas' | 'iva-trimestral' | 'resumen-anual' | 'por-cliente'
+type ReportType = 'libro-facturas' | 'facturas-recibidas' | 'iva-trimestral' | 'resumen-anual' | 'por-cliente'
 
 interface FiscalReportModalProps {
   facturas: Quote[]
   simplificadas: QuickDocRecord[]
   proformas: QuickDocRecord[]
+  purchaseItems: PurchaseItem[]
   onClose: () => void
 }
 
@@ -104,14 +107,14 @@ function docToRow(d: QuickDocRecord): InvoiceRow {
 
 // ─── Component ───────────────────────────────────────────────
 
-export default function FiscalReportModal({ facturas, simplificadas, proformas, onClose }: FiscalReportModalProps) {
+export default function FiscalReportModal({ facturas, simplificadas, proformas, purchaseItems, onClose }: FiscalReportModalProps) {
   const [reportType, setReportType] = useState<ReportType>('libro-facturas')
   const [year, setYear] = useState<number>(new Date().getFullYear())
   const [quarter, setQuarter] = useState<number>(getQuarter(new Date()))
   const [includeSimp, setIncludeSimp] = useState(true)
   const [includeProformas, setIncludeProformas] = useState(false)
 
-  // Build unified rows
+  // Build unified rows (emitidas)
   const allRows = useMemo(() => {
     const rows: InvoiceRow[] = [
       ...facturas.map(quoteToRow),
@@ -121,18 +124,83 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
     return rows.sort((a, b) => a.date.getTime() - b.date.getTime())
   }, [facturas, simplificadas, proformas, includeSimp, includeProformas])
 
+  // ── Purchase invoice rows (recibidas) ─────────────────────
+  // Group purchase items by orderGroupId. Items without a group
+  // that still have invoice data get their own row.
+  const purchaseInvoiceRows = useMemo(() => {
+    const rows: InvoiceRow[] = []
+    const groups = new Map<string, PurchaseItem[]>()
+    const ungrouped: PurchaseItem[] = []
+
+    for (const p of purchaseItems) {
+      if (p.orderGroupId) {
+        const arr = groups.get(p.orderGroupId) || []
+        arr.push(p)
+        groups.set(p.orderGroupId, arr)
+      } else if (p.invoiceNumber || p.invoiceAmount != null) {
+        ungrouped.push(p)
+      }
+    }
+
+    // Grouped → one row per group
+    for (const [, items] of groups) {
+      const first = items[0]
+      const vatPct = first.invoiceVatPct ?? 21
+      const total = first.invoiceAmount ?? 0
+      const base = total / (1 + vatPct / 100)
+      const vatAmt = total - base
+      rows.push({
+        number: first.invoiceNumber || first.orderGroupId || '—',
+        date: first.invoiceDate ? new Date(first.invoiceDate) : (first.orderedAt ? new Date(first.orderedAt) : new Date(first.createdAt)),
+        client: first.provider || 'Sin proveedor',
+        nif: first.invoiceProviderNif || '',
+        base: Math.round(base * 100) / 100,
+        vatPct,
+        vatAmount: Math.round(vatAmt * 100) / 100,
+        total,
+        type: 'factura', // reused type for display
+      })
+    }
+
+    // Ungrouped with invoice data
+    for (const p of ungrouped) {
+      const vatPct = p.invoiceVatPct ?? 21
+      const total = p.invoiceAmount ?? 0
+      const base = total / (1 + vatPct / 100)
+      const vatAmt = total - base
+      rows.push({
+        number: p.invoiceNumber || '—',
+        date: p.invoiceDate ? new Date(p.invoiceDate) : (p.orderedAt ? new Date(p.orderedAt) : new Date(p.createdAt)),
+        client: p.provider || 'Sin proveedor',
+        nif: p.invoiceProviderNif || '',
+        base: Math.round(base * 100) / 100,
+        vatPct,
+        vatAmount: Math.round(vatAmt * 100) / 100,
+        total,
+        type: 'factura',
+      })
+    }
+
+    return rows.sort((a, b) => a.date.getTime() - b.date.getTime())
+  }, [purchaseItems])
+
   // Available years
   const availableYears = useMemo(() => {
     const years = new Set<number>()
     allRows.forEach(r => years.add(r.date.getFullYear()))
+    purchaseInvoiceRows.forEach(r => years.add(r.date.getFullYear()))
     years.add(new Date().getFullYear())
     return Array.from(years).sort((a, b) => b - a)
-  }, [allRows])
+  }, [allRows, purchaseInvoiceRows])
 
   // Filtered by year
   const yearRows = useMemo(() =>
     allRows.filter(r => r.date.getFullYear() === year)
   , [allRows, year])
+
+  const yearPurchaseRows = useMemo(() =>
+    purchaseInvoiceRows.filter(r => r.date.getFullYear() === year)
+  , [purchaseInvoiceRows, year])
 
   // Filtered by year + quarter
   const quarterRows = useMemo(() => {
@@ -262,19 +330,25 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
   }
 
   const renderIVATrimestral = () => {
-    // Group by quarter for the selected year
+    // Group emitidas and recibidas by quarter for the selected year
     const quarters = [1, 2, 3, 4].map(q => {
       const { start, end } = getQuarterDates(year, q)
-      const rows = allRows.filter(r => r.date.getFullYear() === year && r.date >= start && r.date <= end)
-      const base = rows.reduce((s, r) => s + r.base, 0)
-      const vat = rows.reduce((s, r) => s + r.vatAmount, 0)
-      const total = rows.reduce((s, r) => s + r.total, 0)
-      return { q, rows, base, vat, total }
+      // Emitidas (IVA repercutido)
+      const emitRows = allRows.filter(r => r.date.getFullYear() === year && r.date >= start && r.date <= end)
+      const emitBase = emitRows.reduce((s, r) => s + r.base, 0)
+      const emitVat = emitRows.reduce((s, r) => s + r.vatAmount, 0)
+      // Recibidas (IVA soportado)
+      const recRows = purchaseInvoiceRows.filter(r => r.date.getFullYear() === year && r.date >= start && r.date <= end)
+      const recBase = recRows.reduce((s, r) => s + r.base, 0)
+      const recVat = recRows.reduce((s, r) => s + r.vatAmount, 0)
+      // Resultado (a ingresar o a compensar)
+      const resultado = emitVat - recVat
+      return { q, emitRows, emitBase, emitVat, recRows, recBase, recVat, resultado }
     })
 
-    const annualBase = quarters.reduce((s, q) => s + q.base, 0)
-    const annualVat = quarters.reduce((s, q) => s + q.vat, 0)
-    const annualTotal = quarters.reduce((s, q) => s + q.total, 0)
+    const annualEmitVat = quarters.reduce((s, q) => s + q.emitVat, 0)
+    const annualRecVat = quarters.reduce((s, q) => s + q.recVat, 0)
+    const annualResultado = annualEmitVat - annualRecVat
 
     return (
       <div className="space-y-4">
@@ -291,21 +365,25 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
               <CardContent className="p-4">
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="font-bold text-gray-700">{getQuarterLabel(qData.q)} Trimestre</h4>
-                  <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">{qData.rows.length} facturas</span>
+                  <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                    {qData.emitRows.length} emit. / {qData.recRows.length} recib.
+                  </span>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Base imponible</span>
-                    <span className="font-semibold">{fmt(qData.base)} €</span>
+                    <span className="text-gray-500">IVA repercutido (ventas)</span>
+                    <span className="font-semibold text-orange-600">{fmt(qData.emitVat)} €</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">IVA repercutido</span>
-                    <span className="font-semibold text-orange-600">{fmt(qData.vat)} €</span>
+                    <span className="text-gray-500">IVA soportado (compras)</span>
+                    <span className="font-semibold text-blue-600">−{fmt(qData.recVat)} €</span>
                   </div>
                   <div className="h-px bg-gray-200" />
                   <div className="flex justify-between">
-                    <span className="text-gray-600 font-medium">Total</span>
-                    <span className="font-bold text-green-700">{fmt(qData.total)} €</span>
+                    <span className="text-gray-600 font-medium">Resultado</span>
+                    <span className={`font-bold ${qData.resultado >= 0 ? 'text-red-600' : 'text-green-700'}`}>
+                      {qData.resultado >= 0 ? `A ingresar: ${fmt(qData.resultado)} €` : `A compensar: ${fmt(Math.abs(qData.resultado))} €`}
+                    </span>
                   </div>
                 </div>
               </CardContent>
@@ -316,11 +394,15 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
         {/* Annual summary */}
         <Card className="bg-blue-50 border-blue-200">
           <CardContent className="p-4">
-            <h4 className="font-bold text-blue-800 mb-3">📋 Resumen Anual {year}</h4>
+            <h4 className="font-bold text-blue-800 mb-3">📋 Resumen Anual {year} — Modelo 303</h4>
             <div className="grid grid-cols-3 gap-4">
-              <SummaryBlock label="Base imponible total" value={`${fmt(annualBase)} €`} />
-              <SummaryBlock label="IVA repercutido total" value={`${fmt(annualVat)} €`} color="text-orange-600" />
-              <SummaryBlock label="Total facturado" value={`${fmt(annualTotal)} €`} color="text-green-700" />
+              <SummaryBlock label="IVA repercutido total" value={`${fmt(annualEmitVat)} €`} color="text-orange-600" />
+              <SummaryBlock label="IVA soportado total" value={`${fmt(annualRecVat)} €`} color="text-blue-600" />
+              <SummaryBlock
+                label={annualResultado >= 0 ? 'A ingresar (Hacienda)' : 'A compensar'}
+                value={`${fmt(Math.abs(annualResultado))} €`}
+                color={annualResultado >= 0 ? 'text-red-600' : 'text-green-700'}
+              />
             </div>
           </CardContent>
         </Card>
@@ -481,13 +563,90 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
     )
   }
 
+  const renderFacturasRecibidas = () => {
+    const rows = yearPurchaseRows
+    const totals = rows.reduce(
+      (acc, r) => ({ base: acc.base + r.base, vat: acc.vat + r.vatAmount, total: acc.total + r.total }),
+      { base: 0, vat: 0, total: 0 }
+    )
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-gray-800">🧾 Facturas Recibidas (Compras) — {year}</h3>
+          <Button size="sm" variant="outline" onClick={() => downloadCSV(rows, `facturas-recibidas-${year}`)}>
+            📥 Exportar CSV
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3">
+          <SummaryBlock label="Total facturas" value={String(rows.length)} />
+          <SummaryBlock label="Base imponible" value={`${fmt(totals.base)} €`} />
+          <SummaryBlock label="IVA soportado" value={`${fmt(totals.vat)} €`} color="text-blue-600" />
+          <SummaryBlock label="Total compras" value={`${fmt(totals.total)} €`} color="text-red-600" />
+        </div>
+
+        <div className="max-h-[350px] overflow-y-auto border rounded-lg">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-100 sticky top-0">
+              <tr>
+                <th className="px-3 py-2 text-left">Nº Factura</th>
+                <th className="px-3 py-2 text-left">Fecha</th>
+                <th className="px-3 py-2 text-left">Proveedor</th>
+                <th className="px-3 py-2 text-left">NIF</th>
+                <th className="px-3 py-2 text-right">Base</th>
+                <th className="px-3 py-2 text-center">IVA%</th>
+                <th className="px-3 py-2 text-right">Cuota IVA</th>
+                <th className="px-3 py-2 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-t hover:bg-gray-50">
+                  <td className="px-3 py-1.5 font-mono">{r.number}</td>
+                  <td className="px-3 py-1.5">{r.date.toLocaleDateString('es-ES')}</td>
+                  <td className="px-3 py-1.5 truncate max-w-[160px]">{r.client}</td>
+                  <td className="px-3 py-1.5 font-mono text-gray-500">{r.nif || '—'}</td>
+                  <td className="px-3 py-1.5 text-right">{fmt(r.base)} €</td>
+                  <td className="px-3 py-1.5 text-center">{r.vatPct}%</td>
+                  <td className="px-3 py-1.5 text-right text-blue-600">{fmt(r.vatAmount)} €</td>
+                  <td className="px-3 py-1.5 text-right font-semibold">{fmt(r.total)} €</td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center text-gray-400 py-8">
+                    No hay facturas de compra registradas en {year}.
+                    <br /><span className="text-xs">Registra datos de factura al marcar pedidos como enviados.</span>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot className="bg-gray-50 font-semibold border-t-2">
+                <tr>
+                  <td colSpan={4} className="px-3 py-2 text-right">TOTALES</td>
+                  <td className="px-3 py-2 text-right">{fmt(totals.base)} €</td>
+                  <td />
+                  <td className="px-3 py-2 text-right text-blue-600">{fmt(totals.vat)} €</td>
+                  <td className="px-3 py-2 text-right text-red-600">{fmt(totals.total)} €</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+    )
+  }
+
   // ── Report selector ────────────────────────────────────────
 
   const reportButtons: { key: ReportType; label: string; icon: string; desc: string }[] = [
-    { key: 'libro-facturas',  label: 'Libro de Facturas', icon: '📒', desc: 'Listado completo con desglose IVA' },
-    { key: 'iva-trimestral',  label: 'IVA Trimestral',    icon: '📊', desc: 'Resumen para Modelo 303' },
-    { key: 'resumen-anual',   label: 'Resumen Anual',     icon: '📈', desc: 'Desglose mensual — Modelo 390' },
-    { key: 'por-cliente',     label: 'Por Cliente',        icon: '👥', desc: 'Desglose de facturación por cliente' },
+    { key: 'libro-facturas',     label: 'Facturas Emitidas', icon: '📒', desc: 'Libro de facturas emitidas' },
+    { key: 'facturas-recibidas', label: 'Facturas Recibidas', icon: '🧾', desc: 'Facturas de compra (proveedores)' },
+    { key: 'iva-trimestral',     label: 'IVA Trimestral',    icon: '📊', desc: 'Resumen para Modelo 303' },
+    { key: 'resumen-anual',      label: 'Resumen Anual',     icon: '📈', desc: 'Desglose mensual — Modelo 390' },
+    { key: 'por-cliente',        label: 'Por Cliente',        icon: '👥', desc: 'Desglose de facturación por cliente' },
   ]
 
   return createPortal(
@@ -580,6 +739,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
         {/* Report content */}
         <div className="flex-1 overflow-y-auto p-6">
           {reportType === 'libro-facturas' && renderLibroFacturas()}
+          {reportType === 'facturas-recibidas' && renderFacturasRecibidas()}
           {reportType === 'iva-trimestral' && renderIVATrimestral()}
           {reportType === 'resumen-anual' && renderResumenAnual()}
           {reportType === 'por-cliente' && renderPorCliente()}

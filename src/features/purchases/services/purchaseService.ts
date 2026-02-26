@@ -25,6 +25,13 @@ function toDb(item: PurchaseItem): Record<string, any> {
     notes:          item.notes ?? null,
     attachments:    item.attachments && item.attachments.length > 0 ? JSON.stringify(item.attachments) : null,
     created_at:     item.createdAt instanceof Date ? item.createdAt.toISOString() : new Date().toISOString(),
+    order_group_id:      item.orderGroupId ?? null,
+    invoice_number:      item.invoiceNumber ?? null,
+    invoice_date:        item.invoiceDate ?? null,
+    invoice_amount:      item.invoiceAmount ?? null,
+    invoice_vat_pct:     item.invoiceVatPct ?? null,
+    invoice_vat_amount:  item.invoiceVatAmount ?? null,
+    invoice_provider_nif: item.invoiceProviderNif ?? null,
   }
 }
 
@@ -48,6 +55,13 @@ function fromDb(row: any): PurchaseItem {
     notes:         row.notes ?? undefined,
     attachments:   row.attachments ? (typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments) : undefined,
     createdAt:     new Date(row.created_at ?? Date.now()),
+    orderGroupId:      row.order_group_id ?? undefined,
+    invoiceNumber:     row.invoice_number ?? undefined,
+    invoiceDate:       row.invoice_date ?? undefined,
+    invoiceAmount:     row.invoice_amount != null ? Number(row.invoice_amount) : undefined,
+    invoiceVatPct:     row.invoice_vat_pct != null ? Number(row.invoice_vat_pct) : undefined,
+    invoiceVatAmount:  row.invoice_vat_amount != null ? Number(row.invoice_vat_amount) : undefined,
+    invoiceProviderNif: row.invoice_provider_nif ?? undefined,
   }
 }
 
@@ -105,6 +119,44 @@ export class PurchaseService {
       .eq('id', itemId)
     if (error) throw error
     toast.success('Marcado como pedido')
+  }
+
+  /**
+   * Marcar varios items como pedidos agrupados en un bloque de pedido,
+   * con datos de factura de compra compartidos.
+   */
+  static async markOrderGroup(
+    itemIds: string[],
+    invoiceData: {
+      invoiceNumber?: string
+      invoiceDate?: string
+      invoiceAmount?: number
+      invoiceVatPct?: number
+      invoiceVatAmount?: number
+      invoiceProviderNif?: string
+    }
+  ): Promise<void> {
+    if (itemIds.length === 0) return
+    const groupId = `grp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const now = new Date().toISOString()
+
+    const { error } = await supabase
+      .from('purchase_items')
+      .update({
+        status: 'ORDERED',
+        ordered_at: now,
+        order_group_id: groupId,
+        invoice_number: invoiceData.invoiceNumber || null,
+        invoice_date: invoiceData.invoiceDate || null,
+        invoice_amount: invoiceData.invoiceAmount ?? null,
+        invoice_vat_pct: invoiceData.invoiceVatPct ?? null,
+        invoice_vat_amount: invoiceData.invoiceVatAmount ?? null,
+        invoice_provider_nif: invoiceData.invoiceProviderNif || null,
+      })
+      .in('id', itemIds)
+    if (error) throw error
+
+    toast.success(`📦 ${itemIds.length} artículo(s) marcados como pedidos`)
   }
 
   // Marcar como recibido y generar QR

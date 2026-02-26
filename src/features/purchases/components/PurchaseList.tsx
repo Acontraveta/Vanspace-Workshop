@@ -55,6 +55,17 @@ export default function PurchaseList() {
   })
   const [groupByProvider, setGroupByProvider] = useState(false)
   const [expandedStockFamily, setExpandedStockFamily] = useState<string | null>(null)
+
+  // ── Bloque de pedido (selección múltiple) ──
+  const [selectedPendingIds, setSelectedPendingIds] = useState<Set<string>>(new Set())
+  const [showOrderGroupModal, setShowOrderGroupModal] = useState(false)
+  const [orderGroupInvoice, setOrderGroupInvoice] = useState({
+    invoiceNumber: '',
+    invoiceDate: '',
+    invoiceAmount: '',
+    invoiceVatPct: '21',
+    invoiceProviderNif: '',
+  })
   const [expandedStockCategory, setExpandedStockCategory] = useState<string | null>(null)
   const [showNewProductModal, setShowNewProductModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(null)
@@ -226,6 +237,52 @@ export default function PurchaseList() {
   const handleMarkAsOrdered = async (itemId: string) => {
     await PurchaseService.markAsOrdered(itemId)
     refreshData()
+  }
+
+  const togglePendingSelection = (id: string) => {
+    setSelectedPendingIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectAllPendingByProvider = (provider: string) => {
+    const ids = purchases.filter(p => p.status === 'PENDING' && (p.provider || 'Sin proveedor') === provider).map(p => p.id)
+    setSelectedPendingIds(prev => {
+      const next = new Set(prev)
+      const allSelected = ids.every(id => next.has(id))
+      if (allSelected) { ids.forEach(id => next.delete(id)) }
+      else { ids.forEach(id => next.add(id)) }
+      return next
+    })
+  }
+
+  const handleOrderGroup = async () => {
+    if (selectedPendingIds.size === 0) return
+    const amount = orderGroupInvoice.invoiceAmount ? parseFloat(orderGroupInvoice.invoiceAmount.replace(',', '.')) : undefined
+    const vatPct = orderGroupInvoice.invoiceVatPct ? parseFloat(orderGroupInvoice.invoiceVatPct.replace(',', '.')) : 21
+    const vatAmount = amount != null ? amount - (amount / (1 + vatPct / 100)) : undefined
+    try {
+      await PurchaseService.markOrderGroup(
+        Array.from(selectedPendingIds),
+        {
+          invoiceNumber: orderGroupInvoice.invoiceNumber || undefined,
+          invoiceDate: orderGroupInvoice.invoiceDate || undefined,
+          invoiceAmount: amount,
+          invoiceVatPct: vatPct,
+          invoiceVatAmount: vatAmount != null ? Math.round(vatAmount * 100) / 100 : undefined,
+          invoiceProviderNif: orderGroupInvoice.invoiceProviderNif || undefined,
+        }
+      )
+      setSelectedPendingIds(new Set())
+      setShowOrderGroupModal(false)
+      setOrderGroupInvoice({ invoiceNumber: '', invoiceDate: '', invoiceAmount: '', invoiceVatPct: '21', invoiceProviderNif: '' })
+      refreshData()
+    } catch (err: any) {
+      toast.error('Error al registrar bloque: ' + err.message)
+    }
   }
 
   const handleCreateManualPurchase = async () => {
@@ -711,11 +768,19 @@ export default function PurchaseList() {
 
     // ── PENDING: prominent supplier banner ──
     if (item.status === 'PENDING') {
+      const isSelected = selectedPendingIds.has(item.id)
       return (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
+        <div className={`bg-white rounded-xl border ${isSelected ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-100'} overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col`}>
           {/* Supplier banner */}
           {item.provider ? (
             <div className={`px-4 py-2.5 ${providerColor!.bg} flex items-center gap-2`}>
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => togglePendingSelection(item.id)}
+                className="rounded border-white/50 text-white accent-white w-4 h-4 cursor-pointer"
+                onClick={e => e.stopPropagation()}
+              />
               <span className="text-white/80">🏭</span>
               <span className="text-white font-semibold text-sm truncate">{item.provider}</span>
               {item.deliveryDays ? (
@@ -724,6 +789,13 @@ export default function PurchaseList() {
             </div>
           ) : (
             <div className="px-4 py-2.5 bg-gray-300 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => togglePendingSelection(item.id)}
+                className="rounded w-4 h-4 cursor-pointer"
+                onClick={e => e.stopPropagation()}
+              />
               <span className="text-gray-600">⚠️</span>
               <span className="text-gray-700 font-medium text-sm">Sin proveedor asignado</span>
             </div>
@@ -889,6 +961,21 @@ export default function PurchaseList() {
               </p>
             )}
 
+            {/* Invoice info (bloque de pedido) */}
+            {item.orderGroupId && (
+              <div className="bg-gray-50 rounded-lg p-2.5 mb-3 border border-gray-200 text-xs space-y-0.5">
+                <div className="flex items-center gap-1.5 text-gray-700 font-medium">
+                  🧾 Bloque de pedido
+                  {item.invoiceNumber && <span className="font-mono ml-1">{item.invoiceNumber}</span>}
+                </div>
+                {item.invoiceAmount != null && (
+                  <div className="text-gray-500">
+                    Importe: <span className="font-semibold text-gray-700">{item.invoiceAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Action */}
             <div className="mt-auto">
               <button
@@ -949,6 +1036,8 @@ export default function PurchaseList() {
               {item.productName && <span>Para: {item.productName}</span>}
               {item.provider && <span className="bg-gray-100 px-1.5 py-0.5 rounded">🏭 {item.provider}</span>}
               {item.projectNumber && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">📋 {item.projectNumber}</span>}
+              {item.invoiceNumber && <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">🧾 {item.invoiceNumber}</span>}
+              {item.invoiceAmount != null && <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded">{item.invoiceAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>}
             </div>
           </div>
 
@@ -1850,6 +1939,15 @@ export default function PurchaseList() {
                       <div className={`flex items-center gap-3 mb-3 px-4 py-2.5 rounded-lg ${
                         provColor ? `${provColor.bgLight} border ${provColor.border}` : 'bg-gray-100 border border-gray-200'
                       }`}>
+                        {selectedTab === 'pending' && (
+                          <input
+                            type="checkbox"
+                            checked={items.every(i => selectedPendingIds.has(i.id))}
+                            onChange={() => selectAllPendingByProvider(prov)}
+                            className="rounded w-4 h-4 cursor-pointer accent-blue-600"
+                            title={`Seleccionar todos de ${prov}`}
+                          />
+                        )}
                         <span className={`text-base font-bold ${provColor ? provColor.text : 'text-gray-600'}`}>
                           🏭 {prov}
                         </span>
@@ -2421,6 +2519,104 @@ export default function PurchaseList() {
                     Almacén Visual
                   </button>
                   {' '}para seleccionar gráficamente
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ═══ FLOATING SELECTION BAR ═══ */}
+        {selectedPendingIds.size > 0 && selectedTab === 'pending' && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-blue-700 text-white rounded-2xl shadow-2xl px-6 py-3 flex items-center gap-4 animate-in slide-in-from-bottom">
+            <span className="font-semibold text-sm">
+              📦 {selectedPendingIds.size} artículo{selectedPendingIds.size > 1 ? 's' : ''} seleccionado{selectedPendingIds.size > 1 ? 's' : ''}
+            </span>
+            <button
+              onClick={() => setShowOrderGroupModal(true)}
+              className="bg-white text-blue-700 font-bold text-sm px-4 py-2 rounded-xl hover:bg-blue-50 transition"
+            >
+              🚚 Registrar pedido en bloque
+            </button>
+            <button
+              onClick={() => setSelectedPendingIds(new Set())}
+              className="text-white/70 hover:text-white text-sm"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* ═══ ORDER GROUP MODAL ═══ */}
+        {showOrderGroupModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowOrderGroupModal(false)}>
+            <Card className="max-w-lg w-full" onClick={e => e.stopPropagation()}>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">📦 Registrar bloque de pedido</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800 font-medium mb-1">
+                    {selectedPendingIds.size} artículo{selectedPendingIds.size > 1 ? 's' : ''} seleccionado{selectedPendingIds.size > 1 ? 's' : ''}
+                  </p>
+                  <div className="text-xs text-blue-600 max-h-[100px] overflow-y-auto space-y-0.5">
+                    {purchases.filter(p => selectedPendingIds.has(p.id)).map(p => (
+                      <div key={p.id}>• {p.materialName} ({p.quantity} {p.unit})</div>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  Datos de la factura de compra (opcional — se pueden añadir después)
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">Nº Factura proveedor</label>
+                    <Input
+                      placeholder="Ej: FV-2026/0042"
+                      value={orderGroupInvoice.invoiceNumber}
+                      onChange={e => setOrderGroupInvoice(f => ({ ...f, invoiceNumber: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">Fecha factura</label>
+                    <Input
+                      type="date"
+                      value={orderGroupInvoice.invoiceDate}
+                      onChange={e => setOrderGroupInvoice(f => ({ ...f, invoiceDate: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">Importe total (IVA inc.)</label>
+                    <Input
+                      placeholder="0,00"
+                      value={orderGroupInvoice.invoiceAmount}
+                      onChange={e => setOrderGroupInvoice(f => ({ ...f, invoiceAmount: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">% IVA</label>
+                    <Input
+                      placeholder="21"
+                      value={orderGroupInvoice.invoiceVatPct}
+                      onChange={e => setOrderGroupInvoice(f => ({ ...f, invoiceVatPct: e.target.value }))}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">NIF/CIF proveedor</label>
+                    <Input
+                      placeholder="B12345678"
+                      value={orderGroupInvoice.invoiceProviderNif}
+                      onChange={e => setOrderGroupInvoice(f => ({ ...f, invoiceProviderNif: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setShowOrderGroupModal(false)}>Cancelar</Button>
+                  <Button onClick={handleOrderGroup} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    📦 Registrar pedido ({selectedPendingIds.size})
+                  </Button>
                 </div>
               </CardContent>
             </Card>
