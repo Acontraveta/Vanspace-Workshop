@@ -13,6 +13,7 @@ import { useState } from 'react'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
 import { CatalogProduct } from '../types/quote.types'
+import { fmtEur } from '@/shared/utils/formatters'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -196,7 +197,7 @@ export default function ConsumableResolverModal({
                             <p className="text-gray-400">{match.SKU} · {match.FAMILIA}</p>
                           </div>
                           {match.PRECIO_COMPRA != null && match.PRECIO_COMPRA > 0 && (
-                            <span className="text-gray-700 whitespace-nowrap">{match.PRECIO_COMPRA.toFixed(2)} €</span>
+                            <span className="text-gray-700 whitespace-nowrap">{fmtEur(match.PRECIO_COMPRA)} €</span>
                           )}
                         </label>
                       ))}

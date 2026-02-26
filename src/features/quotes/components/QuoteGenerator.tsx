@@ -13,6 +13,7 @@ import { QuoteService } from '../services/quoteService'
 import { QuoteAutomation } from '../services/quoteAutomation'
 import { CatalogService } from '../services/catalogService'
 import { QuotePDF, QuoteDocumentData, CustomLine, PaymentInstallment } from './QuotePDF'
+import { fmtEur, fmtHours } from '@/shared/utils/formatters'
 import { LeadDocumentsService } from '@/features/crm/services/leadDocumentsService'
 import { loadCompanyInfo } from '@/shared/utils/companyInfo'
 import ClientDataForm from './ClientDataForm'
@@ -735,10 +736,10 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                               <div className="flex items-center gap-2 ml-2 shrink-0">
                                 <div className="text-right text-sm">
                                   <p className="text-gray-700 font-semibold">
-                                    {product.PRECIO_COMPRA?.toFixed(2) || '0.00'}€
+                                    {fmtEur(product.PRECIO_COMPRA)}€
                                   </p>
                                   <p className="text-gray-500 text-xs">
-                                    ⏱️ {((product.TIEMPO_TOTAL_MIN || 0) / 60).toFixed(1)}h
+                                    ⏱️ {fmtHours((product.TIEMPO_TOTAL_MIN || 0) / 60)}h
                                   </p>
                                 </div>
                                 <Button
@@ -835,10 +836,10 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                                             <div className="flex items-center justify-between mb-2">
                                               <div className="text-sm space-y-1">
                                                 <p className="text-gray-700">
-                                                  💰 <strong>{product.PRECIO_COMPRA?.toFixed(2) || '0.00'}€</strong>
+                                                  💰 <strong>{fmtEur(product.PRECIO_COMPRA)}€</strong>
                                                 </p>
                                                 <p className="text-gray-600 text-xs">
-                                                  ⏱️ {((product.TIEMPO_TOTAL_MIN || 0) / 60).toFixed(1)}h
+                                                  ⏱️ {fmtHours((product.TIEMPO_TOTAL_MIN || 0) / 60)}h
                                                 </p>
                                               </div>
                                               <Button
@@ -886,7 +887,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                             <div className="flex-1">
                               <p className="font-medium text-sm">{item.productName}</p>
                               <p className="text-xs text-gray-500">
-                                {item.laborHours.toFixed(1)}h
+                                {fmtHours(item.laborHours)}h
                               </p>
                             </div>
                             <Button
@@ -908,7 +909,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                               className="w-16 h-8 text-sm"
                               disabled={currentQuote?.status === 'APPROVED'}
                             />
-                            <p className="font-bold text-sm">{item.totalCost.toFixed(2)}€</p>
+                            <p className="font-bold text-sm">{fmtEur(item.totalCost)}€</p>
                           </div>
                         </div>
                       ))}
@@ -927,23 +928,23 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span>Materiales:</span>
-                        <span>{totals.subtotalMaterials.toFixed(2)}€</span>
+                        <span>{fmtEur(totals.subtotalMaterials)}€</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Mano de Obra:</span>
-                        <span>{totals.subtotalLabor.toFixed(2)}€</span>
+                        <span>{fmtEur(totals.subtotalLabor)}€</span>
                       </div>
                       <div className="flex justify-between border-t pt-2">
                         <span>Subtotal:</span>
-                        <span>{totals.subtotal.toFixed(2)}€</span>
+                        <span>{fmtEur(totals.subtotal)}€</span>
                       </div>
                       <div className="flex justify-between text-green-700">
                         <span>Margen ({selectedTarifa.profitMargin}%):</span>
-                        <span>+{totals.profitAmount.toFixed(2)}€</span>
+                        <span>+{fmtEur(totals.profitAmount)}€</span>
                       </div>
                       <div className="flex justify-between border-t-2 pt-2 text-xl font-bold text-blue-900">
                         <span>TOTAL:</span>
-                        <span>{totals.total.toFixed(2)}€</span>
+                        <span>{fmtEur(totals.total)}€</span>
                       </div>
 
                       <div className="pt-4 space-y-2">

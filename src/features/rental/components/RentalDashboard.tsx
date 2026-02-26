@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
+import { fmtEur, fmtNum } from '@/shared/utils/formatters'
 import { RentalService } from '../services/rentalService'
 import type {
   RentalVehicle,
@@ -99,7 +100,7 @@ export default function RentalDashboard() {
         <StatCard label="Mantenimiento" value={stats.mantenimiento} color="text-orange-600" bg="bg-orange-50" icon="🔧" />
         <StatCard label="Res. activas" value={stats.reservasActivas} color="text-indigo-600" bg="bg-indigo-50" icon="📌" />
         <StatCard label="Pendientes" value={stats.pendientes} color="text-purple-600" bg="bg-purple-50" icon="⏳" />
-        <StatCard label="Ingresos mes" value={`${stats.ingresosMes.toLocaleString('es-ES')} €`} color="text-emerald-600" bg="bg-emerald-50" icon="💰" />
+        <StatCard label="Ingresos mes" value={`${fmtEur(stats.ingresosMes)} €`} color="text-emerald-600" bg="bg-emerald-50" icon="💰" />
       </div>
 
       {error && (
@@ -287,24 +288,24 @@ function VehicleCard({ vehicle, bookings, onEdit, onStatusChange }: {
         <div className="flex items-center gap-4 text-sm text-gray-600">
           <span>🪑 {vehicle.plazas} plazas</span>
           <span>🛏️ {vehicle.camas} camas</span>
-          {vehicle.km_actual && <span>📏 {vehicle.km_actual.toLocaleString()} km</span>}
+          {vehicle.km_actual && <span>📏 {vehicle.km_actual.toLocaleString('es-ES')} km</span>}
         </div>
 
         {/* Pricing */}
         <div className="bg-gray-50 rounded-lg p-3 flex flex-wrap items-center gap-4">
           <div>
             <p className="text-xs text-gray-500">Día</p>
-            <p className="text-lg font-bold text-blue-600">{vehicle.precio_dia_eur}€</p>
+            <p className="text-lg font-bold text-blue-600">{fmtEur(vehicle.precio_dia_eur)}€</p>
           </div>
           {vehicle.precio_semana_eur && (
             <div>
               <p className="text-xs text-gray-500">Semana</p>
-              <p className="text-lg font-bold text-green-600">{vehicle.precio_semana_eur}€</p>
+              <p className="text-lg font-bold text-green-600">{fmtEur(vehicle.precio_semana_eur)}€</p>
             </div>
           )}
           <div>
             <p className="text-xs text-gray-500">Fianza</p>
-            <p className="text-lg font-bold text-amber-600">{vehicle.fianza_eur}€</p>
+            <p className="text-lg font-bold text-amber-600">{fmtEur(vehicle.fianza_eur)}€</p>
           </div>
           {vehicle.km_incluidos && (
             <div>
@@ -315,7 +316,7 @@ function VehicleCard({ vehicle, bookings, onEdit, onStatusChange }: {
           {vehicle.precio_km_extra && (
             <div>
               <p className="text-xs text-gray-500">€/km extra</p>
-              <p className="text-sm font-bold text-red-500">{vehicle.precio_km_extra}€</p>
+              <p className="text-sm font-bold text-red-500">{fmtNum(vehicle.precio_km_extra)}€</p>
             </div>
           )}
         </div>
@@ -701,11 +702,11 @@ function BookingRow({ booking, onEdit, onStatusChange }: {
         {/* Right: price + actions */}
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-lg font-bold text-blue-600">{booking.precio_total?.toLocaleString('es-ES')}€</p>
+            <p className="text-lg font-bold text-blue-600">{fmtEur(booking.precio_total)}€</p>
             {(booking.coste_km_extra ?? 0) > 0 && (
-              <p className="text-xs text-red-500 font-medium">+ {booking.coste_km_extra}€ km extra</p>
+              <p className="text-xs text-red-500 font-medium">+ {fmtEur(booking.coste_km_extra)}€ km extra</p>
             )}
-            <p className="text-xs text-gray-400">Fianza: {booking.fianza}€</p>
+            <p className="text-xs text-gray-400">Fianza: {fmtEur(booking.fianza)}€</p>
           </div>
 
           <div className="flex items-center gap-1">
@@ -756,7 +757,7 @@ function BookingRow({ booking, onEdit, onStatusChange }: {
         <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-3 text-xs">
           {booking.km_salida != null && booking.km_llegada != null && (
             <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
-              📏 {(booking.km_llegada - booking.km_salida).toLocaleString()} km recorridos
+              📏 {(booking.km_llegada - booking.km_salida).toLocaleString('es-ES')} km recorridos
             </span>
           )}
           {booking.extras?.filter(e => e.incluido).map((e, i) => (
@@ -910,7 +911,7 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
           <option value="">Seleccionar vehículo...</option>
           {vehicles.map(v => (
             <option key={v.id} value={v.id}>
-              {VEHICLE_STATUS_CONFIG[v.status].icon} {v.nombre} ({v.matricula}) — {v.precio_dia_eur}€/día
+              {VEHICLE_STATUS_CONFIG[v.status].icon} {v.nombre} ({v.matricula}) — {fmtEur(v.precio_dia_eur)}€/día
             </option>
           ))}
         </select>
@@ -965,7 +966,7 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
           <div>
             <label className={labelCls}>Precio total calculado</label>
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-lg font-bold text-blue-700">
-              {precioCalc.toLocaleString('es-ES')} €
+              {fmtEur(precioCalc)} €
             </div>
           </div>
         </div>
@@ -991,7 +992,7 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
                 className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
               />
               <span>{ex.nombre}</span>
-              <span className="ml-auto text-xs font-medium">{ex.precio_dia}€/d</span>
+              <span className="ml-auto text-xs font-medium">{fmtEur(ex.precio_dia)}€/d</span>
             </label>
           ))}
         </div>
@@ -1047,12 +1048,12 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
               return (
                 <div className={`rounded-lg p-3 text-sm ${calc.kmExceso > 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    <span className="text-gray-600">Recorridos: <b>{calc.kmRecorridos.toLocaleString()} km</b></span>
-                    <span className="text-gray-600">Permitidos: <b>{calc.kmPermitidos.toLocaleString()} km</b></span>
+                    <span className="text-gray-600">Recorridos: <b>{calc.kmRecorridos.toLocaleString('es-ES')} km</b></span>
+                    <span className="text-gray-600">Permitidos: <b>{calc.kmPermitidos.toLocaleString('es-ES')} km</b></span>
                     {calc.kmExceso > 0 ? (
                       <>
-                        <span className="text-red-600">Exceso: <b>{calc.kmExceso.toLocaleString()} km</b></span>
-                        <span className="text-red-700 font-bold">Coste extra: {calc.coste.toLocaleString('es-ES')}€</span>
+                        <span className="text-red-600">Exceso: <b>{calc.kmExceso.toLocaleString('es-ES')} km</b></span>
+                        <span className="text-red-700 font-bold">Coste extra: {fmtEur(calc.coste)}€</span>
                       </>
                     ) : (
                       <span className="text-green-600 font-medium">✅ Dentro del límite</span>
@@ -1063,7 +1064,7 @@ function BookingForm({ booking, vehicles, allBookings, saving, onSave, onCancel 
             })() : (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-400">
                 {selectedVehicle?.km_incluidos
-                  ? `${selectedVehicle.km_incluidos} km/día incluidos · ${selectedVehicle.precio_km_extra ?? 0}€/km extra`
+                  ? `${selectedVehicle.km_incluidos} km/día incluidos · ${fmtNum(selectedVehicle.precio_km_extra ?? 0)}€/km extra`
                   : 'Sin límite de km configurado para este vehículo'}
               </div>
             )}
@@ -1483,7 +1484,7 @@ function CalendarioTab({ vehicles, bookings }: { vehicles: RentalVehicle[]; book
                           } ${isEnd ? 'mr-0.5 rounded-r-md' : ''} ${
                             isHovered ? 'ring-2 ring-offset-0 ring-gray-600/50 z-20' : ''
                           } transition-all`}
-                          title={`${seg.booking.cliente_nombre}\n${cfg.label} · ${seg.booking.fecha_inicio} → ${seg.booking.fecha_fin}\n${seg.booking.precio_total?.toLocaleString('es-ES')}€`}
+                          title={`${seg.booking.cliente_nombre}\n${cfg.label} · ${seg.booking.fecha_inicio} → ${seg.booking.fecha_fin}\n${fmtEur(seg.booking.precio_total)}€`}
                         >
                           {/* Show client name on start cell */}
                           {isStart && (
@@ -1526,7 +1527,7 @@ function CalendarioTab({ vehicles, bookings }: { vehicles: RentalVehicle[]; book
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs text-gray-600">
               <div>🚐 {b.vehicle?.nombre}</div>
               <div>📅 {dias} día{dias !== 1 ? 's' : ''}</div>
-              <div>💰 {b.precio_total?.toLocaleString('es-ES')}€</div>
+              <div>💰 {fmtEur(b.precio_total)}€</div>
               <div>
                 {b.fecha_inicio && new Date(b.fecha_inicio).toLocaleDateString('es-ES')}
                 {' → '}

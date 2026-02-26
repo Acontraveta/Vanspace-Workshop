@@ -7,6 +7,7 @@ import { ProductionEmployee } from '@/features/config/types/config.types'
 import { ProductionService } from '@/features/calendar/services/productionService'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { fmtHours } from '@/shared/utils/formatters'
 
 interface ProjectCardProps {
   project: ProductionProject
@@ -176,7 +177,7 @@ export default function ProjectCard({
 
           <div>
             <p className="text-gray-600">Horas trabajadas:</p>
-            <p className="font-bold text-lg text-green-700">{actualHours.toFixed(1)}h</p>
+            <p className="font-bold text-lg text-green-700">{fmtHours(actualHours)}h</p>
             <p className="text-xs text-gray-600">
               {project.total_hours > 0 
                 ? `${Math.round((actualHours / project.total_hours) * 100)}% del estimado`

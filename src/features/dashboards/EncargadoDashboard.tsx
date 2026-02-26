@@ -10,6 +10,7 @@ import { PurchaseService } from '@/features/purchases/services/purchaseService'
 import { StockService } from '@/features/purchases/services/stockService'
 import { QuoteService } from '@/features/quotes/services/quoteService'
 import { useAuth } from '@/app/providers/AuthProvider'
+import { fmtEurK } from '@/shared/utils/formatters'
 import { differenceInDays, parseISO } from 'date-fns'
 import MyHoursWidget from '@/features/timeclock/components/MyHoursWidget'
 
@@ -216,7 +217,7 @@ export default function EncargadoDashboard() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Valor inventario</span>
-                  <Badge className="bg-green-600">{(stats.totalInventoryValue / 1000).toFixed(1)}k€</Badge>
+                  <Badge className="bg-green-600">{fmtEurK(stats.totalInventoryValue)}€</Badge>
                 </div>
               </div>
               <Button 
@@ -262,7 +263,7 @@ export default function EncargadoDashboard() {
             <CardContent className="p-6 text-center">
               <p className="text-sm text-gray-600 mb-2">Valor Stock</p>
               <p className="text-4xl font-bold text-purple-600">
-                {(stats.totalInventoryValue / 1000).toFixed(0)}k€
+                {fmtEurK(stats.totalInventoryValue)}€
               </p>
             </CardContent>
           </Card>

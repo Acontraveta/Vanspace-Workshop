@@ -7,6 +7,7 @@ import { QuoteAutomation } from '../services/quoteAutomation'
 import { Quote } from '../types/quote.types'
 import { supabase } from '@/lib/supabase'
 import { useConfirm } from '@/shared/hooks/useConfirm'
+import { fmtEur, fmtHours } from '@/shared/utils/formatters'
 import toast from 'react-hot-toast'
 
 interface QuotesListProps {
@@ -138,9 +139,9 @@ export default function QuotesList({ onEditQuote }: QuotesListProps) {
               )}
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-blue-600">{quote.total.toFixed(2)}€</p>
+              <p className="text-2xl font-bold text-blue-600">{fmtEur(quote.total)}€</p>
               <p className="text-sm text-gray-500">{quote.items.length} productos</p>
-              <p className="text-xs text-gray-500">{quote.totalHours.toFixed(1)}h</p>
+              <p className="text-xs text-gray-500">{fmtHours(quote.totalHours)}h</p>
             </div>
           </div>
 

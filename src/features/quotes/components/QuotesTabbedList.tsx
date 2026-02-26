@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase'
 import QuotePreview from './QuotePreview'
 import QuickDocViewerModal from './QuickDocViewerModal'
 import toast from 'react-hot-toast'
+import { fmtHours } from '@/shared/utils/formatters'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -274,7 +275,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
             </div>
             <div className="text-right ml-2 shrink-0">
               <p className="text-xl font-bold text-blue-600">{fmt(quote.total)} €</p>
-              <p className="text-xs text-gray-400">{quote.items.length} líneas · {quote.totalHours.toFixed(1)}h</p>
+              <p className="text-xs text-gray-400">{quote.items.length} líneas · {fmtHours(quote.totalHours)}h</p>
             </div>
           </div>
 

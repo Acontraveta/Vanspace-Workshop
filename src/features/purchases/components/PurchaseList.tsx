@@ -8,6 +8,7 @@ import { Input } from '@/shared/components/ui/input'
 import { Badge } from '@/shared/components/ui/badge'
 import { PurchaseService } from '../services/purchaseService'
 import { StockService, parseUbicacion } from '../services/stockService'
+import { fmtEur, fmtHours } from '@/shared/utils/formatters'
 import WarehouseView from './WarehouseView'
 import QRScanner from './QRScanner'
 import { PurchaseItem, StockItem } from '../types/purchase.types'
@@ -1099,12 +1100,12 @@ export default function PurchaseList() {
               <>
                 <div>
                   <p className="text-gray-500">Coste ud:</p>
-                  <p className="font-semibold">{item.COSTE_IVA_INCLUIDO.toFixed(2)}€</p>
+                  <p className="font-semibold">{fmtEur(item.COSTE_IVA_INCLUIDO)}€</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Valor total:</p>
                   <p className="font-semibold text-blue-600">
-                    {(item.COSTE_IVA_INCLUIDO * item.CANTIDAD).toFixed(2)}€
+                    {fmtEur(item.COSTE_IVA_INCLUIDO * item.CANTIDAD)}€
                   </p>
                 </div>
               </>
@@ -1597,8 +1598,8 @@ export default function PurchaseList() {
                                                 <td className="px-4 py-3 whitespace-nowrap text-sm">
                                                   {item.COSTE_IVA_INCLUIDO && item.COSTE_IVA_INCLUIDO > 0 ? (
                                                     <div>
-                                                      <div className="font-medium">{item.COSTE_IVA_INCLUIDO.toFixed(2)}€</div>
-                                                      <div className="text-xs text-blue-600">Total: {(item.COSTE_IVA_INCLUIDO * item.CANTIDAD).toFixed(2)}€</div>
+                                                      <div className="font-medium">{fmtEur(item.COSTE_IVA_INCLUIDO)}€</div>
+                                                      <div className="text-xs text-blue-600">Total: {fmtEur(item.COSTE_IVA_INCLUIDO * item.CANTIDAD)}€</div>
                                                     </div>
                                                   ) : (
                                                     <span className="text-gray-400">-</span>
@@ -1679,9 +1680,9 @@ export default function PurchaseList() {
                       </div>
                       <div className="flex items-center gap-3 shrink-0 text-sm">
                         {product['PRECIO DE VENTA'] ? (
-                          <span className="font-semibold text-emerald-700">{Number(product['PRECIO DE VENTA']).toFixed(2)}€</span>
+                          <span className="font-semibold text-emerald-700">{fmtEur(Number(product['PRECIO DE VENTA']))}€</span>
                         ) : product.PRECIO_COMPRA ? (
-                          <span className="text-gray-500">{product.PRECIO_COMPRA.toFixed(2)}€ coste</span>
+                          <span className="text-gray-500">{fmtEur(product.PRECIO_COMPRA)}€ coste</span>
                         ) : null}
                         {hasRecipe && <span title="Tiene materiales/consumibles">🔩</span>}
                         {hasTasks && <span title="Tiene tareas de producción">⚙️</span>}
@@ -1776,11 +1777,11 @@ export default function PurchaseList() {
                                               <td className="px-4 py-3 text-sm text-gray-500 font-mono">{product.SKU}</td>
                                               <td className="px-4 py-3 text-sm">
                                                 {product['PRECIO DE VENTA'] ? (
-                                                  <span className="font-semibold text-emerald-700">{Number(product['PRECIO DE VENTA']).toFixed(2)}€</span>
+                                                  <span className="font-semibold text-emerald-700">{fmtEur(Number(product['PRECIO DE VENTA']))}€</span>
                                                 ) : <span className="text-gray-300">-</span>}
                                               </td>
                                               <td className="px-4 py-3 text-sm text-gray-500">
-                                                {product.PRECIO_COMPRA ? `${product.PRECIO_COMPRA.toFixed(2)}€` : '-'}
+                                                {product.PRECIO_COMPRA ? `${fmtEur(product.PRECIO_COMPRA)}€` : '-'}
                                               </td>
                                               <td className="px-4 py-3 text-sm text-gray-500">
                                                 {product.TIEMPO_TOTAL_MIN > 0 ? `${product.TIEMPO_TOTAL_MIN}min` : '-'}
@@ -2141,7 +2142,7 @@ export default function PurchaseList() {
                         onChange={e => setNewProductForm(f => ({ ...f, costeIva: parseFloat(e.target.value) || 0 }))} />
                       {newProductForm.costeIva > 0 && (
                         <p className="text-xs text-emerald-600 mt-1 font-medium">
-                          Con IVA ({CONFIG.IVA}%): {(newProductForm.costeIva * (1 + CONFIG.IVA / 100)).toFixed(2)}€
+                          Con IVA ({CONFIG.IVA}%): {fmtEur(newProductForm.costeIva * (1 + CONFIG.IVA / 100))}€
                         </p>
                       )}
                     </div>
@@ -2181,7 +2182,7 @@ export default function PurchaseList() {
                         onChange={e => setNewProductForm(f => ({ ...f, tiempoTotalMin: parseInt(e.target.value) || 0 }))} />
                     </div>
                     <div className="flex items-end pb-1">
-                      <span className="text-sm text-gray-500">= {(newProductForm.tiempoTotalMin / 60).toFixed(1)} horas</span>
+                      <span className="text-sm text-gray-500">= {fmtHours(newProductForm.tiempoTotalMin / 60)} horas</span>
                     </div>
                   </div>
                 </div>

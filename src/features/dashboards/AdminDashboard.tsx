@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { QuoteService } from '@/features/quotes/services/quoteService'
 import { ConfigService } from '@/features/config/services/configService'
 import { useAuth } from '@/app/providers/AuthProvider'
+import { fmtEurK, fmtNum } from '@/shared/utils/formatters'
 import { differenceInDays, parseISO } from 'date-fns'
 
 export default function AdminDashboard() {
@@ -177,21 +178,21 @@ export default function AdminDashboard() {
             <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
               <CardContent className="p-6">
                 <p className="text-sm opacity-90 mb-1">Valor Total Presupuestos</p>
-                <p className="text-4xl font-bold">{(stats.totalQuotesValue / 1000).toFixed(1)}k€</p>
+                <p className="text-4xl font-bold">{fmtEurK(stats.totalQuotesValue)}€</p>
                 <p className="text-xs opacity-75 mt-2">{stats.totalQuotes} presupuestos</p>
               </CardContent>
             </Card>
             <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
               <CardContent className="p-6">
                 <p className="text-sm opacity-90 mb-1">Presupuestos Aprobados</p>
-                <p className="text-4xl font-bold">{(stats.approvedValue / 1000).toFixed(1)}k€</p>
+                <p className="text-4xl font-bold">{fmtEurK(stats.approvedValue)}€</p>
                 <p className="text-xs opacity-75 mt-2">{stats.approvedQuotes} proyectos</p>
               </CardContent>
             </Card>
             <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
               <CardContent className="p-6">
                 <p className="text-sm opacity-90 mb-1">Valor Inventario</p>
-                <p className="text-4xl font-bold">{(stats.totalInventoryValue / 1000).toFixed(1)}k€</p>
+                <p className="text-4xl font-bold">{fmtEurK(stats.totalInventoryValue)}€</p>
                 <p className="text-xs opacity-75 mt-2">{stats.totalStockItems} productos</p>
               </CardContent>
             </Card>
@@ -200,7 +201,7 @@ export default function AdminDashboard() {
                 <p className="text-sm opacity-90 mb-1">Eficiencia</p>
                 <p className="text-4xl font-bold">{efficiency}%</p>
                 <p className="text-xs opacity-75 mt-2">
-                  {stats.totalHoursWorked.toFixed(0)}h / {stats.totalHoursPlanned.toFixed(0)}h
+                  {fmtNum(stats.totalHoursWorked, 0)}h / {fmtNum(stats.totalHoursPlanned, 0)}h
                 </p>
               </CardContent>
             </Card>

@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { InteractivePiece, ModuleDimensions, Piece, PlacedPiece, ModuleType, CatalogMaterial } from '../types/furniture.types'
 import { DEFAULT_THICKNESS, BACK_THICKNESS, MATERIALS, MODULE_TYPES, PIECE_COLORS, DEFAULT_CATALOG_MATERIALS } from '../constants/furniture.constants'
 import { optimizeCutList, BoardDimsMap } from '../utils/geometry'
+import { fmtEur, fmtNum } from '@/shared/utils/formatters'
 import { FurnitureFrontView } from './FurnitureFrontView'
 import { FurnitureIsoView } from './FurnitureIsoView'
 import { FurnitureOptimizerView } from './FurnitureOptimizerView'
@@ -512,7 +513,7 @@ export function FurniturePieceEditor({
       const mat = getMaterial(p.materialId)
       cost += area * (mat ? mat.price_per_m2 : module.materialPrice)
     }
-    return { structural, frontal, totalArea: totalArea.toFixed(2), cost: cost.toFixed(2) }
+    return { structural, frontal, totalArea: fmtNum(totalArea), cost: fmtEur(cost) }
   }, [pieces, module.materialPrice, getMaterial])
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -8,6 +8,7 @@ import { ProductionService } from '@/features/calendar/services/productionServic
 import { ProductionProject } from '@/features/calendar/types/production.types'
 import { ProductionEmployee } from '@/features/config/types/config.types'
 import { ConfigService } from '@/features/config/services/configService'
+import { fmtHours } from '@/shared/utils/formatters'
 import ProjectCard from './ProjectCard'
 import TaskBoard from './TaskBoard'
 import { useConfirm } from '@/shared/hooks/useConfirm'
@@ -166,7 +167,7 @@ export default function ProductionDashboard() {
             <CardContent className="p-4">
               <p className="text-sm text-gray-600 mb-1">Horas Estimadas</p>
               <p className="text-3xl font-bold text-orange-600">
-                {projects.reduce((sum, p) => sum + p.total_hours, 0).toFixed(1)}h
+                {fmtHours(projects.reduce((sum, p) => sum + p.total_hours, 0))}h
               </p>
             </CardContent>
           </Card>

@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { fmtHours } from '@/shared/utils/formatters'
 
 export default function TaskStartModal({
   task,
@@ -115,7 +116,7 @@ export default function TaskStartModal({
       estanteria: parts[0], nivel: parts[1], hueco: parts[2]
     };
   };
-  const minutesToHours = (min) => `${(min / 60).toFixed(1)}h`;
+  const minutesToHours = (min) => `${fmtHours(min / 60)}h`;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

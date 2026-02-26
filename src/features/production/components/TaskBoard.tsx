@@ -12,6 +12,7 @@ import { DesignFilesService } from '../services/designFilesService'
 import TaskStartModal from './TaskStartModal'
 import TaskInstructionsModal from './TaskInstructionsModal'
 import { useConfirm } from '@/shared/hooks/useConfirm'
+import { fmtHours } from '@/shared/utils/formatters'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 
@@ -385,10 +386,10 @@ export default function TaskBoard({
         const diff = diffHours - task.estimated_hours
         const diffPercent = Math.round((diff / task.estimated_hours) * 100)
         const diffText = diff > 0 
-          ? `${diff.toFixed(1)}h más (+${diffPercent}%)` 
-          : `${Math.abs(diff).toFixed(1)}h menos (${diffPercent}%)`
+          ? `${fmtHours(diff)}h más (+${diffPercent}%)` 
+          : `${fmtHours(Math.abs(diff))}h menos (${diffPercent}%)`
         toast.success(
-          `✅ ${task.task_name} completada\n⏱️ ${diffHours.toFixed(1)}h (${diffText})`,
+          `✅ ${task.task_name} completada\n⏱️ ${fmtHours(diffHours)}h (${diffText})`,
           { duration: 5000 }
         )
         // Buscar siguiente tarea del bloque
@@ -460,7 +461,7 @@ export default function TaskBoard({
         {canAssignTasks ? (
           <KpiCard label="Sin asignar" value={unassignedBlocks.length} color="red" />
         ) : (
-          <KpiCard label="Horas hoy" value={`${hoursToday.toFixed(1)}h`} color="purple" />
+          <KpiCard label="Horas hoy" value={`${fmtHours(hoursToday)}h`} color="purple" />
         )}
       </div>
 

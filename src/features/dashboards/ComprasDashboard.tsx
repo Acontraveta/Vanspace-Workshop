@@ -9,6 +9,7 @@ import { PurchaseService } from '@/features/purchases/services/purchaseService'
 import { StockService } from '@/features/purchases/services/stockService'
 import { PurchaseItem, StockItem } from '@/features/purchases/types/purchase.types'
 import { useAuth } from '@/app/providers/AuthProvider'
+import { fmtEur } from '@/shared/utils/formatters'
 import MyHoursWidget from '@/features/timeclock/components/MyHoursWidget'
 
 export default function ComprasDashboard() {
@@ -92,7 +93,7 @@ export default function ComprasDashboard() {
           <Card>
             <CardContent className="p-6">
               <p className="text-sm text-gray-600 mb-1">Valor Inventario</p>
-              <p className="text-3xl font-bold text-green-600">{totalInventoryValue.toFixed(0)}€</p>
+              <p className="text-3xl font-bold text-green-600">{fmtEur(totalInventoryValue)}€</p>
             </CardContent>
           </Card>
         </div>

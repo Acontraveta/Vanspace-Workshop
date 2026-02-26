@@ -3,6 +3,7 @@ import { PurchaseItem } from '@/features/purchases/types/purchase.types'
 import { StockService } from '@/features/purchases/services/stockService'
 import { PurchaseService } from '@/features/purchases/services/purchaseService'
 import { supabase } from '@/lib/supabase'
+import { fmtEur } from '@/shared/utils/formatters'
 
 interface AutomationResult {
   success: boolean
@@ -89,7 +90,7 @@ export class QuoteAutomation {
           design_ready: false,
           notes: `Presupuesto ID: ${quote.id}\n` +
                  (quote.lead_id ? `CRM Lead ID: ${quote.lead_id}\n` : '') +
-                 `Aprobado: ${quote.total.toFixed(2)}€\n` +
+                 `Aprobado: ${fmtEur(quote.total)}€\n` +
                  `📦 Materiales: ${totalPurchaseItems} pedidos\n` +
                  `⚙️ Tareas: ${totalTasks}\n` +
                  `📐 Diseños: ${totalDesignInstructions}`

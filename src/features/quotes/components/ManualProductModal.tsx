@@ -6,6 +6,7 @@ import { Badge } from '@/shared/components/ui/badge'
 import { CatalogProduct } from '../types/quote.types'
 import { CatalogService } from '../services/catalogService'
 import { CONFIG } from '@/shared/utils/constants'
+import { fmtEur, fmtHours } from '@/shared/utils/formatters'
 import toast from 'react-hot-toast'
 
 interface ManualProductModalProps {
@@ -201,7 +202,7 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
                 />
                 {formData.precioCompra > 0 && (
                   <p className="text-xs text-emerald-600 mt-1 font-medium">
-                    Con IVA ({CONFIG.IVA}%): {(formData.precioCompra * (1 + CONFIG.IVA / 100)).toFixed(2)}€
+                    Con IVA ({CONFIG.IVA}%): {fmtEur(formData.precioCompra * (1 + CONFIG.IVA / 100))}€
                   </p>
                 )}
               </div>
@@ -225,7 +226,7 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
                   onChange={e => setFormData({ ...formData, tiempoTotalMin: parseInt(e.target.value) || 0 })}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  = {(formData.tiempoTotalMin / 60).toFixed(1)} horas
+                  = {fmtHours(formData.tiempoTotalMin / 60)} horas
                 </p>
               </div>
               <div>
