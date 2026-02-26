@@ -161,7 +161,7 @@ export class QuickDocService {
 
   // ── Save ──────────────────────────────────────────────────
 
-  static save(doc: Omit<QuickDocRecord, 'id' | 'createdAt'>): QuickDocRecord {
+  static async save(doc: Omit<QuickDocRecord, 'id' | 'createdAt'>): Promise<QuickDocRecord> {
     const all = cacheGetAll()
     // Avoid duplicate by docNumber
     if (all.some(d => d.docNumber === doc.docNumber)) {
@@ -174,18 +174,24 @@ export class QuickDocService {
       createdAt: new Date().toISOString(),
     }
 
-    // Update localStorage cache immediately (sync)
+    // Update localStorage cache immediately
     all.unshift(record)
     cacheSet(all)
 
-    // Persist to Supabase (async — notify user on failure)
-    supabase.from('quick_docs').upsert(recordToRow(record), { onConflict: 'doc_number' })
-      .then(({ error: upErr }) => {
-        if (upErr) {
-          console.error('❌ QuickDocService: failed to save to Supabase:', upErr.message)
-          toast.error('⚠️ Documento guardado local, pero no sincronizado con la nube', { duration: 5000 })
-        }
-      })
+    // Persist to Supabase (await result)
+    try {
+      const { error: upErr } = await supabase
+        .from('quick_docs')
+        .upsert(recordToRow(record), { onConflict: 'doc_number' })
+
+      if (upErr) {
+        console.error('❌ QuickDocService: failed to save to Supabase:', upErr.message, upErr.details, upErr.hint)
+        toast.error(`⚠️ Documento guardado local, pero no sincronizado: ${upErr.message}`, { duration: 6000 })
+      }
+    } catch (err: any) {
+      console.error('❌ QuickDocService: Supabase request failed:', err)
+      toast.error('⚠️ Documento guardado local, pero no sincronizado con la nube', { duration: 5000 })
+    }
 
     return record
   }

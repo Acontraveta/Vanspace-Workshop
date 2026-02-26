@@ -197,9 +197,9 @@ export default function QuickDocumentModal({ type, initialData, onClose }: Quick
 
   const [saved, setSaved] = useState(false)
 
-  const saveDoc = () => {
+  const saveDoc = async () => {
     const docDateStr = docDate.toISOString().substring(0, 10)
-    QuickDocService.save({
+    await QuickDocService.save({
       type,
       docNumber,
       docDate: docDateStr,
