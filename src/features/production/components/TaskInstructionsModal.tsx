@@ -26,6 +26,49 @@ const VIEW_LABELS: Record<string, string> = {
   rear: 'Trasera',
 }
 
+const COTA_COLOR = '#e11d48'
+const COTA_DIM_COLOR = '#64748b'
+
+/** SVG arrow marker definitions for dimension lines */
+function cotaMarkerDefs(): string {
+  return `<defs>
+    <marker id="cArrR" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0 0 L6 2.5 L0 5" fill="${COTA_COLOR}"/></marker>
+    <marker id="cArrL" markerWidth="6" markerHeight="5" refX="0" refY="2.5" orient="auto"><path d="M6 0 L0 2.5 L6 5" fill="${COTA_COLOR}"/></marker>
+    <marker id="cArrD" markerWidth="5" markerHeight="6" refX="2.5" refY="6" orient="auto"><path d="M0 0 L2.5 6 L5 0" fill="${COTA_COLOR}"/></marker>
+    <marker id="cArrU" markerWidth="5" markerHeight="6" refX="2.5" refY="0" orient="auto"><path d="M0 6 L2.5 0 L5 6" fill="${COTA_COLOR}"/></marker>
+  </defs>`
+}
+
+/** Draw a horizontal dimension line with value in mm */
+function hCota(x1: number, x2: number, y: number, valueMM: number, extUp: number = 6): string {
+  if (Math.abs(x2 - x1) < 4) return ''
+  const mid = (x1 + x2) / 2
+  let s = ''
+  // Extension lines
+  s += `<line x1="${x1}" y1="${y + extUp}" x2="${x1}" y2="${y - extUp}" stroke="${COTA_COLOR}" stroke-width="0.7"/>`
+  s += `<line x1="${x2}" y1="${y + extUp}" x2="${x2}" y2="${y - extUp}" stroke="${COTA_COLOR}" stroke-width="0.7"/>`
+  // Dimension line with arrows
+  s += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${COTA_COLOR}" stroke-width="0.8" marker-start="url(#cArrL)" marker-end="url(#cArrR)"/>`
+  // Value
+  s += `<text x="${mid}" y="${y - 3}" text-anchor="middle" font-size="8" fill="${COTA_COLOR}" font-weight="700">${valueMM}</text>`
+  return s
+}
+
+/** Draw a vertical dimension line with value in mm */
+function vCota(y1: number, y2: number, x: number, valueMM: number, extLeft: number = 6): string {
+  if (Math.abs(y2 - y1) < 4) return ''
+  const mid = (y1 + y2) / 2
+  let s = ''
+  // Extension lines
+  s += `<line x1="${x - extLeft}" y1="${y1}" x2="${x + extLeft}" y2="${y1}" stroke="${COTA_COLOR}" stroke-width="0.7"/>`
+  s += `<line x1="${x - extLeft}" y1="${y2}" x2="${x + extLeft}" y2="${y2}" stroke="${COTA_COLOR}" stroke-width="0.7"/>`
+  // Dimension line with arrows
+  s += `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" stroke="${COTA_COLOR}" stroke-width="0.8" marker-start="url(#cArrU)" marker-end="url(#cArrD)"/>`
+  // Value (rotated)
+  s += `<text x="${x - 4}" y="${mid}" text-anchor="middle" font-size="8" fill="${COTA_COLOR}" font-weight="700" transform="rotate(-90 ${x - 4} ${mid})">${valueMM}</text>`
+  return s
+}
+
 function generateExteriorSvg(elements: any[]): string {
   // Group elements by view
   const byView: Record<string, any[]> = {}
@@ -36,23 +79,29 @@ function generateExteriorSvg(elements: any[]): string {
   const views = Object.keys(byView)
   if (!views.length) return ''
 
-  const viewW = 500
-  const viewH = 200
-  const pad = 20
+  const viewW = 560
+  const viewH = 260
+  const pad = 30
+  const cotaMargin = 50 // extra space for cotas outside elements
   const headerH = 30
-  const sectionH = headerH + viewH + pad
+  const sectionH = headerH + viewH + cotaMargin + pad
   const totalH = views.length * sectionH + pad
-  const totalW = viewW + pad * 2
+  const totalW = viewW + pad * 2 + cotaMargin
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="${totalW}" height="${totalH}" style="font-family:system-ui,sans-serif">`
   svg += `<rect width="${totalW}" height="${totalH}" fill="#f8fafc" rx="8"/>`
+  svg += cotaMarkerDefs()
 
   views.forEach((view, vi) => {
     const yOff = pad + vi * sectionH
     // View label
     svg += `<text x="${pad}" y="${yOff + 18}" font-size="14" font-weight="bold" fill="#334155">${VIEW_LABELS[view] || view}</text>`
     // View background (van silhouette area)
-    svg += `<rect x="${pad}" y="${yOff + headerH}" width="${viewW}" height="${viewH}" fill="#e2e8f0" rx="6" stroke="#94a3b8" stroke-width="1"/>`
+    const areaX = pad
+    const areaY = yOff + headerH
+    const areaW = viewW
+    const areaH = viewH
+    svg += `<rect x="${areaX}" y="${areaY}" width="${areaW}" height="${areaH}" fill="#e2e8f0" rx="6" stroke="#94a3b8" stroke-width="1"/>`
 
     // Scale elements: find bounding box, then fit into viewW x viewH
     const elems = byView[view]
@@ -63,27 +112,56 @@ function generateExteriorSvg(elements: any[]): string {
       maxX = Math.max(maxX, ex + ew); maxY = Math.max(maxY, ey + eh)
     }
     const bw = maxX - minX || 1, bh = maxY - minY || 1
-    const scale = Math.min((viewW - 40) / bw, (viewH - 40) / bh, 1)
-    const offX = pad + 20 + ((viewW - 40) - bw * scale) / 2
-    const offY = yOff + headerH + 20 + ((viewH - 40) - bh * scale) / 2
+    const innerPad = 40
+    const scale = Math.min((areaW - innerPad * 2) / bw, (areaH - innerPad * 2) / bh, 1)
+    const offX = areaX + innerPad + ((areaW - innerPad * 2) - bw * scale) / 2
+    const offY = areaY + innerPad + ((areaH - innerPad * 2) - bh * scale) / 2
 
     for (const el of elems) {
       const vis = EXT_VISUALS[el.type] || EXT_VISUALS.custom
-      const rx = offX + (el.x - minX) * scale
-      const ry = offY + (el.y - minY) * scale
+      const rx = offX + ((el.x ?? 0) - minX) * scale
+      const ry = offY + ((el.y ?? 0) - minY) * scale
       const rw = (el.w ?? 50) * scale
       const rh = (el.h ?? 50) * scale
+
+      // Element rectangle
       svg += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="${vis.fill}" stroke="${vis.stroke}" stroke-width="2" rx="3"/>`
-      // Label
+
+      // Label centered
       const label = el.label || vis.short
-      const fontSize = Math.min(12, rw / label.length * 1.4, rh * 0.5)
+      const fontSize = Math.min(12, rw / label.length * 1.4, rh * 0.45)
       if (fontSize > 5) {
-        svg += `<text x="${rx + rw / 2}" y="${ry + rh / 2 + fontSize * 0.35}" text-anchor="middle" font-size="${fontSize.toFixed(1)}" fill="${vis.stroke}" font-weight="600">${label}</text>`
+        svg += `<text x="${rx + rw / 2}" y="${ry + rh / 2}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize.toFixed(1)}" fill="${vis.stroke}" font-weight="600">${label}</text>`
       }
-      // Dimensions
-      const dimMM = `${Math.round(el.w ?? 0)}×${Math.round(el.h ?? 0)}`
-      if (rh > 18) {
-        svg += `<text x="${rx + rw / 2}" y="${ry + rh - 4}" text-anchor="middle" font-size="8" fill="#64748b">${dimMM}mm</text>`
+
+      // ── Cotas ────────────────────────────────────────────────────
+      const wMM = Math.round(el.w ?? 0)
+      const hMM = Math.round(el.h ?? 0)
+      const xMM = Math.round(el.x ?? 0)
+      const yMM = Math.round(el.y ?? 0)
+
+      // Width cota (horizontal, below element)
+      svg += hCota(rx, rx + rw, ry + rh + 14, wMM)
+
+      // Height cota (vertical, right of element)
+      svg += vCota(ry, ry + rh, rx + rw + 16, hMM)
+
+      // Position cota: X from origin (horizontal, above element)
+      if (xMM > 0) {
+        const originX = offX + (0 - minX) * scale
+        if (Math.abs(rx - originX) > 8) {
+          svg += `<line x1="${originX}" y1="${ry - 18}" x2="${rx}" y2="${ry - 18}" stroke="${COTA_DIM_COLOR}" stroke-width="0.5" stroke-dasharray="3 2"/>`
+          svg += `<text x="${(originX + rx) / 2}" y="${ry - 22}" text-anchor="middle" font-size="7" fill="${COTA_DIM_COLOR}" font-weight="600">x=${xMM}</text>`
+        }
+      }
+
+      // Position cota: Y from origin (vertical, left of element)
+      if (yMM > 0) {
+        const originY = offY + (0 - minY) * scale
+        if (Math.abs(ry - originY) > 8) {
+          svg += `<line x1="${rx - 20}" y1="${originY}" x2="${rx - 20}" y2="${ry}" stroke="${COTA_DIM_COLOR}" stroke-width="0.5" stroke-dasharray="3 2"/>`
+          svg += `<text x="${rx - 24}" y="${(originY + ry) / 2}" text-anchor="middle" font-size="7" fill="${COTA_DIM_COLOR}" font-weight="600" transform="rotate(-90 ${rx - 24} ${(originY + ry) / 2})">y=${yMM}</text>`
+        }
       }
     }
   })
@@ -108,28 +186,48 @@ function generateInteriorSvg(items: any[]): string {
     maxX = Math.max(maxX, ix + iw); maxY = Math.max(maxY, iy + ih)
   }
   const bw = maxX - minX || 1, bh = maxY - minY || 1
-  const pad = 40
-  const maxW = 600
-  const scale = Math.min((maxW - pad * 2) / bw, 400 / bh, 1)
-  const svgW = bw * scale + pad * 2
-  const svgH = bh * scale + pad * 2 + 30
+  const pad = 60
+  const maxW = 650
+  const scale = Math.min((maxW - pad * 2) / bw, 450 / bh, 1)
+  const svgW = bw * scale + pad * 2 + 40
+  const svgH = bh * scale + pad * 2 + 50
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}" style="font-family:system-ui,sans-serif">`
   svg += `<rect width="${svgW}" height="${svgH}" fill="#f8fafc" rx="8"/>`
+  svg += cotaMarkerDefs()
   svg += `<text x="${svgW / 2}" y="22" text-anchor="middle" font-size="14" font-weight="bold" fill="#334155">Planta interior</text>`
 
   for (const it of items) {
     const lc = INT_LAYER_COLORS[it.layer] || INT_LAYER_COLORS.furniture
-    const rx = pad + (it.x - minX) * scale
-    const ry = 30 + pad + (it.y - minY) * scale
+    const rx = pad + ((it.x ?? 0) - minX) * scale
+    const ry = 30 + pad + ((it.y ?? 0) - minY) * scale
     const rw = (it.w ?? 50) * scale
     const rh = (it.h ?? 50) * scale
+
+    // Element rectangle
     svg += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="${lc.fill}" stroke="${lc.stroke}" stroke-width="2" rx="3"/>`
+
+    // Label
     const label = it.label || it.type || ''
-    const fontSize = Math.min(11, rw / Math.max(label.length, 1) * 1.4, rh * 0.4)
+    const fontSize = Math.min(11, rw / Math.max(label.length, 1) * 1.4, rh * 0.35)
     if (fontSize > 5 && label) {
-      svg += `<text x="${rx + rw / 2}" y="${ry + rh / 2 + fontSize * 0.35}" text-anchor="middle" font-size="${fontSize.toFixed(1)}" fill="${lc.stroke}" font-weight="600">${label}</text>`
+      svg += `<text x="${rx + rw / 2}" y="${ry + rh / 2 - 2}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize.toFixed(1)}" fill="${lc.stroke}" font-weight="600">${label}</text>`
     }
+
+    // ── Cotas ────────────────────────────────────────────────────
+    const wMM = Math.round(it.w ?? 0)
+    const hMM = Math.round(it.h ?? 0)
+
+    // Width cota (horizontal, below element)
+    svg += hCota(rx, rx + rw, ry + rh + 14, wMM)
+
+    // Height cota (vertical, right of element)
+    svg += vCota(ry, ry + rh, rx + rw + 16, hMM)
+
+    // Position X,Y text (small, above element)
+    const xMM = Math.round(it.x ?? 0)
+    const yMM = Math.round(it.y ?? 0)
+    svg += `<text x="${rx}" y="${ry - 5}" font-size="7" fill="${COTA_DIM_COLOR}" font-weight="600">pos: ${xMM}, ${yMM}</text>`
   }
 
   // Legend
