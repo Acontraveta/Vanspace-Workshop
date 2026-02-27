@@ -11,6 +11,7 @@ import { StockService } from '@/features/purchases/services/stockService'
 import { QuoteService } from '@/features/quotes/services/quoteService'
 import { QuickDocService } from '@/features/quotes/services/quickDocService'
 import { ConfigService } from '@/features/config/services/configService'
+import { TimeclockService } from '@/features/timeclock/services/timeclockService'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { fmtEurK, fmtNum } from '@/shared/utils/formatters'
 import { differenceInDays, parseISO } from 'date-fns'
@@ -47,6 +48,7 @@ export default function AdminDashboard() {
     // Personal
     totalEmployees: 0,
     activeEmployees: 0,
+    clockedInEmployees: 0,
     
     // Alertas
     delayedProjects: 0,
@@ -65,7 +67,7 @@ export default function AdminDashboard() {
   const loadAllStats = async () => {
     try {
       // Cargar todo en paralelo para máxima velocidad
-      const [quotesResult, quickDocsResult, projectsResult, purchasesResult, stockResult, employeesResult] = await Promise.allSettled([
+      const [quotesResult, quickDocsResult, projectsResult, purchasesResult, stockResult, employeesResult, sessionsResult] = await Promise.allSettled([
         // 1. Presupuestos y Facturas
         (async () => {
           await QuoteService.syncFromSupabase()
@@ -87,6 +89,8 @@ export default function AdminDashboard() {
         StockService.loadFromSupabase(),
         // 6. Personal
         ConfigService.getEmployees(),
+        // 7. Fichajes de hoy
+        TimeclockService.getTodaySessions(),
       ])
 
       // Extraer resultados (con fallback a vacío si falló)
@@ -105,6 +109,7 @@ export default function AdminDashboard() {
       const purchases = purchasesResult.status === 'fulfilled' ? purchasesResult.value : []
       const stockItems = stockResult.status === 'fulfilled' ? stockResult.value : StockService.getStock()
       const employees = employeesResult.status === 'fulfilled' ? employeesResult.value : []
+      const todaySessions = sessionsResult.status === 'fulfilled' ? sessionsResult.value : []
 
       setStock(stockItems as any)
       setStockLoaded(stockItems.length > 0)
@@ -154,8 +159,9 @@ export default function AdminDashboard() {
         totalStockItems: stockItems.length,
         lowStockItems: lowStock.length,
         totalInventoryValue: totalValue,
-        totalEmployees: employees.length,
+        totalEmployees: employees.filter(e => e.activo).length,
         activeEmployees: employees.filter(e => e.activo).length,
+        clockedInEmployees: todaySessions.filter(s => s.status === 'active' || s.status === 'paused').length,
         delayedProjects: delayed,
         blockedTasks: blocked
       })
@@ -387,9 +393,9 @@ export default function AdminDashboard() {
                 <Badge className="bg-yellow-600">{stats.lowStockItems}</Badge>
               </div>
               <div className="flex justify-between items-center pt-3 border-t">
-                <span className="text-sm font-bold">Personal activo</span>
+                <span className="text-sm font-bold">Fichados hoy</span>
                 <span className="font-bold text-purple-600">
-                  {stats.activeEmployees}/{stats.totalEmployees}
+                  {stats.clockedInEmployees}/{stats.totalEmployees}
                 </span>
               </div>
             </CardContent>
