@@ -892,11 +892,77 @@ function clampFloor(x: number, y: number, w: number, h: number, floor: ReturnTyp
 }
 
 // ── SVG Floor Plan ────────────────────────────────────────────────
-function VanFloorPlanSVG({ floor }: { floor: ReturnType<typeof getFloor> }) {
+function VanFloorPlanSVG({ floor, van }: { floor: ReturnType<typeof getFloor>; van: VanConfig }) {
   const { length: l, width: w, wallThickness: wt, cabinDepth: cd } = floor
   const totalL = l + cd
+
+  // ── Van body silhouette (top-down exterior profile) ──
+  // Show the exterior body section around the cargo area so the user
+  // can see van width / shape behind the interior floor plan.
+  const vanW   = van.width           // full exterior width
+  const floorMidY = wt + w / 2      // vertical centre of the interior
+  const extHalfW  = vanW / 2
+  const extTop = floorMidY - extHalfW
+  const extBot = floorMidY + extHalfW
+  // Body section X range (cargo): aligned with cd..cd+bodyLength in floor coords
+  const bodyX0 = cd
+  const bodyX1 = cd + van.bodyLength
+
+  // Cab hint: small nose to the left of body start
+  const cabLen = Math.min(van.bodyStart, cd)   // limited so it stays inside viewBox
+  const cabX0  = bodyX0 - cabLen
+  const cabNarrow = 100                        // cab tapers ~100mm each side
+
   return (
     <g className="van-floor" stroke="#94a3b8" strokeWidth="6" fill="none">
+      {/* ── Exterior van profile (background) ── */}
+      <g className="van-exterior-profile" opacity={0.30}>
+        {/* Cargo body section — rounded rect */}
+        <path d={`
+          M ${bodyX0} ${extTop + 40}
+          L ${bodyX1 - 80} ${extTop + 40}
+          Q ${bodyX1 + 20} ${extTop + 40} ${bodyX1 + 20} ${extTop + 120}
+          L ${bodyX1 + 20} ${extBot - 120}
+          Q ${bodyX1 + 20} ${extBot - 40} ${bodyX1 - 80} ${extBot - 40}
+          L ${bodyX0} ${extBot - 40}
+          Z
+        `} fill="#f1f5f9" stroke="#94a3b8" strokeWidth="4" />
+
+        {/* Cab nose — tapered shape */}
+        <path d={`
+          M ${bodyX0} ${extTop + 40}
+          L ${cabX0 + 60} ${extTop + 40 + cabNarrow}
+          Q ${cabX0} ${extTop + 40 + cabNarrow} ${cabX0} ${extTop + 40 + cabNarrow + 60}
+          L ${cabX0} ${extBot - 40 - cabNarrow - 60}
+          Q ${cabX0} ${extBot - 40 - cabNarrow} ${cabX0 + 60} ${extBot - 40 - cabNarrow}
+          L ${bodyX0} ${extBot - 40}
+          Z
+        `} fill="#e8ecf0" stroke="#94a3b8" strokeWidth="3" />
+
+        {/* Wheel arcs (only rear wheels typically visible in body area) */}
+        {[van.frontWheelX, van.rearWheelX].map((wx, i) => {
+          const wDia = van.wheelDia ?? 680
+          // Map wheel position to floor coords: wx=van coord, cd=bodyStart in floor
+          const cx = cd + (wx - van.bodyStart)
+          // Only render if within visible body section
+          if (cx < cabX0 - wDia || cx > bodyX1 + wDia) return null
+          return (
+            <g key={`wheel-${i}`}>
+              <rect x={cx - wDia / 2} y={extTop + 10} width={wDia} height={35} rx={8}
+                fill="#cbd5e1" stroke="none" />
+              <rect x={cx - wDia / 2} y={extBot - 45} width={wDia} height={35} rx={8}
+                fill="#cbd5e1" stroke="none" />
+            </g>
+          )
+        })}
+
+        {/* Exterior width text label */}
+        <text x={bodyX0 + van.bodyLength / 2} y={extBot + 30}
+          textAnchor="middle" fontSize="50" fill="#94a3b8" fontFamily="Arial" opacity={0.7}>
+          ancho ext. {vanW} mm
+        </text>
+      </g>
+
       {/* Floor outline with rounded rear */}
       <path d={`
         M ${cd} ${wt}
@@ -1344,7 +1410,7 @@ export default function VanInteriorDesign() {
   // SVG viewBox
   const totalL = floor.length + floor.cabinDepth
   const totalW = floor.width + floor.wallThickness * 2
-  const pad = 180
+  const pad = 220
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4">
@@ -1500,7 +1566,7 @@ export default function VanInteriorDesign() {
             onClick={() => setSelected(null)}
           >
             <CotaMarkersInt />
-            <VanFloorPlanSVG floor={floor} />
+            <VanFloorPlanSVG floor={floor} van={vanConfig} />
 
             {/* Placed items with SVG symbols */}
             {visibleItems.map(item => {

@@ -259,7 +259,7 @@ export class CatalogService {
    * Eliminar un producto del catálogo por SKU.
    * 1. Borra de Supabase catalog_products
    * 2. Elimina de memoria local y localStorage
-   * 3. Re-exporta el Excel sin ese producto
+   * 3. Re-exporta el Excel sin ese producto (await para evitar race conditions)
    */
   static async deleteProduct(sku: string): Promise<void> {
     // Borrar de Supabase
@@ -274,40 +274,22 @@ export class CatalogService {
     localStorage.setItem('catalog_products', JSON.stringify(this.products))
     localStorage.setItem('catalog_last_sync', new Date().toISOString())
 
-    // Re-exportar el Excel sin ese producto
-    this.reExportExcel().catch(err => console.warn('Re-export Excel failed:', err))
+    // Re-exportar el Excel sin ese producto — AWAIT para que loadCatalog() lea el Excel actualizado
+    try {
+      await this.reExportExcel()
+    } catch (err) {
+      console.warn('Re-export Excel failed:', err)
+    }
   }
 
-  /** Re-genera el Excel de catálogo fusionando el Excel existente con los productos de la BD */
+  /**
+   * Re-genera el Excel de catálogo usando this.products (fuente de verdad in-memory).
+   * NO re-descarga el Excel existente para evitar que productos eliminados reaparezcan.
+   */
   private static async reExportExcel(): Promise<void> {
-    // 1. Load existing products from the current Excel in Storage
-    let existingProducts: CatalogProduct[] = []
-    try {
-      const blob = await downloadExcel(this.EXCEL_PATH)
-      const arrayBuffer = await blob.arrayBuffer()
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
-      const worksheet = workbook.Sheets[sheetName]
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: null })
-      existingProducts = jsonData.map((row: any) => this.parseProduct(row)).filter(p => p.SKU && p.NOMBRE)
-    } catch {
-      // If Excel doesn't exist yet, start from empty
-    }
-
-    // 2. Load products from the DB table (only ones added via addProduct)
-    const { data: dbRows } = await supabase
-      .from('catalog_products')
-      .select('*')
-      .order('sku')
-
-    const dbProducts: CatalogProduct[] = (dbRows || []).map((p: any) => this.dbRowToProduct(p))
-
-    // 3. Merge: DB products override Excel products (by SKU)
-    const dbSKUs = new Set(dbProducts.map(p => p.SKU))
-    const merged = [
-      ...existingProducts.filter(p => !dbSKUs.has(p.SKU)),  // Excel-only products
-      ...dbProducts,                                         // DB products (new/updated)
-    ]
+    // Use in-memory products as the single source of truth.
+    // This ensures deleted products don't creep back from an old Excel file.
+    const merged = [...this.products]
 
     if (merged.length === 0) return
 
@@ -354,10 +336,6 @@ export class CatalogService {
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const file = new File([blob], 'catalogoproductos.xlsx')
     await uploadExcel(file, 'catalogoproductos.xlsx')
-
-    // Update in-memory and localStorage with merged catalog
-    this.products = merged
-    localStorage.setItem('catalog_products', JSON.stringify(merged))
 
     console.log('✅ Excel de catálogo re-exportado:', merged.length, 'productos')
   }
