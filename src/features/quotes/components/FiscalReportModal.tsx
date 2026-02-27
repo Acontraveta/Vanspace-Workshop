@@ -24,7 +24,9 @@ import { RentalBooking } from '@/features/rental/types/rental.types'
 
 // ─── Types ───────────────────────────────────────────────────
 
-type ReportType = 'libro-facturas' | 'facturas-recibidas' | 'iva-trimestral' | 'resumen-anual' | 'por-cliente'
+type ReportType = 'libro-facturas' | 'facturas-recibidas' | 'iva-trimestral' | 'resumen-anual' | 'desglose'
+
+type DesgloseMode = 'cliente' | 'tipo-doc' | 'linea-negocio' | 'iva' | 'mes' | 'trimestre'
 
 interface FiscalReportModalProps {
   facturas: Quote[]
@@ -73,6 +75,8 @@ interface InvoiceRow {
   vatPct: number
   vatAmount: number
   total: number
+  /** Línea de negocio / origen del documento */
+  businessLine: string
   type: 'factura' | 'simplificada' | 'proforma' | 'alquiler'
   invoiceImageUrl?: string
 }
@@ -90,6 +94,7 @@ function quoteToRow(q: Quote): InvoiceRow {
     vatPct,
     vatAmount: vatAmt,
     total: q.total,
+    businessLine: 'Camperización',
     type: 'factura',
   }
 }
@@ -104,6 +109,7 @@ function docToRow(d: QuickDocRecord): InvoiceRow {
     vatPct: d.vatPct,
     vatAmount: d.vatAmount,
     total: d.total,
+    businessLine: 'Servicios',
     type: d.type === 'PROFORMA' ? 'proforma' : 'simplificada',
   }
 }
@@ -128,6 +134,7 @@ function rentalToRow(b: RentalBooking): InvoiceRow {
     vatPct,
     vatAmount: Math.round(vatWithExtra * 100) / 100,
     total: Math.round(totalWithExtra * 100) / 100,
+    businessLine: 'Alquiler',
     type: 'alquiler',
   }
 }
@@ -141,6 +148,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
   const [includeSimp, setIncludeSimp] = useState(true)
   const [includeRentals, setIncludeRentals] = useState(true)
   const [includeProformas, setIncludeProformas] = useState(false)
+  const [desgloseMode, setDesgloseMode] = useState<DesgloseMode>('cliente')
 
   // Build unified rows (emitidas)
   const allRows = useMemo(() => {
@@ -191,6 +199,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
         vatPct,
         vatAmount: Math.round(vatAmt * 100) / 100,
         total,
+        businessLine: 'Compras',
         type: 'factura',
         invoiceImageUrl: first.invoiceImageUrl,
       })
@@ -211,6 +220,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
         vatPct,
         vatAmount: Math.round(vatAmt * 100) / 100,
         total,
+        businessLine: 'Compras',
         type: 'factura',
         invoiceImageUrl: p.invoiceImageUrl,
       })
@@ -245,7 +255,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
 
   // ── Export CSV ─────────────────────────────────────────────
   const downloadCSV = (rows: InvoiceRow[], filename: string) => {
-    const header = 'Nº Factura;Fecha;Cliente;NIF/CIF;Base Imponible;% IVA;Cuota IVA;Total;Tipo'
+    const header = 'Nº Factura;Fecha;Cliente;NIF/CIF;Base Imponible;% IVA;Cuota IVA;Total;Tipo;Línea Negocio'
     const lines = rows.map(r =>
       [
         r.number,
@@ -257,6 +267,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
         fmt(r.vatAmount),
         fmt(r.total),
         r.type === 'factura' ? 'Factura' : r.type === 'simplificada' ? 'Simplificada' : r.type === 'alquiler' ? 'Alquiler' : 'Proforma',
+        r.businessLine,
       ].join(';')
     )
     const csv = '\uFEFF' + [header, ...lines].join('\n') // BOM for Excel
@@ -515,51 +526,143 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
     )
   }
 
-  const renderPorCliente = () => {
+  const renderDesglose = () => {
     const rows = yearRows
-    const byClient = new Map<string, { client: string; nif: string; count: number; base: number; vat: number; total: number }>()
 
-    for (const r of rows) {
-      const key = r.client
-      const existing = byClient.get(key) || { client: r.client, nif: r.nif, count: 0, base: 0, vat: 0, total: 0 }
-      existing.count++
-      existing.base += r.base
-      existing.vat += r.vatAmount
-      existing.total += r.total
-      if (!existing.nif && r.nif) existing.nif = r.nif
-      byClient.set(key, existing)
+    const desgloseModes: { key: DesgloseMode; label: string; icon: string }[] = [
+      { key: 'cliente',       label: 'Cliente',          icon: '👥' },
+      { key: 'tipo-doc',      label: 'Tipo Documento',   icon: '📄' },
+      { key: 'linea-negocio', label: 'Línea de Negocio', icon: '🏢' },
+      { key: 'iva',           label: '% IVA',            icon: '💶' },
+      { key: 'mes',           label: 'Mes',              icon: '📅' },
+      { key: 'trimestre',     label: 'Trimestre',        icon: '📊' },
+    ]
+
+    // Generic grouping function
+    type GroupRow = { label: string; sublabel: string; count: number; base: number; vat: number; total: number }
+
+    const groupBy = (keyFn: (r: InvoiceRow) => string, sublabelFn?: (r: InvoiceRow) => string): GroupRow[] => {
+      const map = new Map<string, GroupRow>()
+      for (const r of rows) {
+        const key = keyFn(r)
+        const existing = map.get(key) || { label: key, sublabel: sublabelFn?.(r) ?? '', count: 0, base: 0, vat: 0, total: 0 }
+        existing.count++
+        existing.base += r.base
+        existing.vat += r.vatAmount
+        existing.total += r.total
+        map.set(key, existing)
+      }
+      return Array.from(map.values())
     }
 
-    const clients = Array.from(byClient.values()).sort((a, b) => b.total - a.total)
-    const totals = clients.reduce(
-      (acc, c) => ({ base: acc.base + c.base, vat: acc.vat + c.vat, total: acc.total + c.total }),
-      { base: 0, vat: 0, total: 0 }
+    const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+    let grouped: GroupRow[]
+    let sortKey: 'total' | 'label' = 'total'
+    let titleLabel = ''
+    let countLabel = 'Elementos'
+
+    switch (desgloseMode) {
+      case 'cliente':
+        grouped = groupBy(r => r.client, r => r.nif)
+        titleLabel = 'Cliente'
+        countLabel = 'Clientes'
+        break
+      case 'tipo-doc':
+        grouped = groupBy(r => {
+          switch (r.type) {
+            case 'factura': return 'Factura'
+            case 'simplificada': return 'F. Simplificada'
+            case 'proforma': return 'Proforma'
+            case 'alquiler': return 'Alquiler'
+            default: return r.type
+          }
+        })
+        titleLabel = 'Tipo'
+        countLabel = 'Tipos'
+        break
+      case 'linea-negocio':
+        grouped = groupBy(r => r.businessLine)
+        titleLabel = 'Línea de Negocio'
+        countLabel = 'Líneas'
+        break
+      case 'iva':
+        grouped = groupBy(r => `${r.vatPct}%`)
+        titleLabel = '% IVA'
+        countLabel = 'Tipos IVA'
+        break
+      case 'mes':
+        grouped = groupBy(r => monthNames[r.date.getMonth()])
+        // Sort by month order
+        sortKey = 'label'
+        grouped.sort((a, b) => monthNames.indexOf(a.label) - monthNames.indexOf(b.label))
+        titleLabel = 'Mes'
+        countLabel = 'Meses'
+        break
+      case 'trimestre':
+        grouped = groupBy(r => `${getQuarterLabel(getQuarter(r.date))} (${['Ene-Mar', 'Abr-Jun', 'Jul-Sep', 'Oct-Dic'][getQuarter(r.date) - 1]})`)
+        sortKey = 'label'
+        titleLabel = 'Trimestre'
+        countLabel = 'Trimestres'
+        break
+      default:
+        grouped = []
+    }
+
+    if (sortKey === 'total') {
+      grouped.sort((a, b) => b.total - a.total)
+    }
+
+    const totals = grouped.reduce(
+      (acc, g) => ({ base: acc.base + g.base, vat: acc.vat + g.vat, total: acc.total + g.total, count: acc.count + g.count }),
+      { base: 0, vat: 0, total: 0, count: 0 }
     )
+
+    const exportDesgloseCSV = () => {
+      const header = `${titleLabel};Documentos;Base Imponible;IVA;Total`
+      const csvLines = grouped.map(g =>
+        [`"${g.label}"`, g.count, fmt(g.base), fmt(g.vat), fmt(g.total)].join(';')
+      )
+      const csv = '\uFEFF' + [header, ...csvLines].join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `desglose-${desgloseMode}-${year}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
 
     return (
       <div className="space-y-4">
+        {/* Desglose mode selector */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-gray-500">Agrupar por:</span>
+          {desgloseModes.map(m => (
+            <button
+              key={m.key}
+              onClick={() => setDesgloseMode(m.key)}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
+                desgloseMode === m.key
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <span>{m.icon}</span> {m.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">👥 Desglose por Cliente — {year}</h3>
-          <Button size="sm" variant="outline" onClick={() => {
-            const header = 'Cliente;NIF/CIF;Nº Facturas;Base Imponible;IVA;Total'
-            const lines = clients.map(c =>
-              [`"${c.client}"`, c.nif, c.count, fmt(c.base), fmt(c.vat), fmt(c.total)].join(';')
-            )
-            const csv = '\uFEFF' + [header, ...lines].join('\n')
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `desglose-clientes-${year}.csv`
-            a.click()
-            URL.revokeObjectURL(url)
-          }}>
+          <h3 className="font-bold text-gray-800">📊 Desglose por {titleLabel} — {year}</h3>
+          <Button size="sm" variant="outline" onClick={exportDesgloseCSV}>
             📥 Exportar CSV
           </Button>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <SummaryBlock label="Total clientes" value={String(clients.length)} />
+        <div className="grid grid-cols-4 gap-3">
+          <SummaryBlock label={`Total ${countLabel.toLowerCase()}`} value={String(grouped.length)} />
+          <SummaryBlock label="Documentos" value={String(totals.count)} />
           <SummaryBlock label="Base total" value={`${fmt(totals.base)} €`} />
           <SummaryBlock label="Facturado total" value={`${fmt(totals.total)} €`} color="text-green-700" />
         </div>
@@ -568,31 +671,48 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
           <table className="w-full text-sm">
             <thead className="bg-gray-100 sticky top-0">
               <tr>
-                <th className="px-4 py-2 text-left">Cliente</th>
-                <th className="px-4 py-2 text-left">NIF/CIF</th>
-                <th className="px-4 py-2 text-center">Facturas</th>
+                <th className="px-4 py-2 text-left">{titleLabel}</th>
+                {desgloseMode === 'cliente' && <th className="px-4 py-2 text-left">NIF/CIF</th>}
+                <th className="px-4 py-2 text-center">Docs</th>
                 <th className="px-4 py-2 text-right">Base</th>
                 <th className="px-4 py-2 text-right">IVA</th>
                 <th className="px-4 py-2 text-right">Total</th>
+                <th className="px-4 py-2 text-right">% del total</th>
               </tr>
             </thead>
             <tbody>
-              {clients.map((c, i) => (
+              {grouped.map((g, i) => (
                 <tr key={i} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium truncate max-w-[200px]">{c.client}</td>
-                  <td className="px-4 py-2 font-mono text-gray-500 text-xs">{c.nif || '—'}</td>
-                  <td className="px-4 py-2 text-center">{c.count}</td>
-                  <td className="px-4 py-2 text-right">{fmt(c.base)} €</td>
-                  <td className="px-4 py-2 text-right text-orange-600">{fmt(c.vat)} €</td>
-                  <td className="px-4 py-2 text-right font-bold">{fmt(c.total)} €</td>
+                  <td className="px-4 py-2 font-medium truncate max-w-[200px]">{g.label}</td>
+                  {desgloseMode === 'cliente' && <td className="px-4 py-2 font-mono text-gray-500 text-xs">{g.sublabel || '—'}</td>}
+                  <td className="px-4 py-2 text-center">{g.count}</td>
+                  <td className="px-4 py-2 text-right">{fmt(g.base)} €</td>
+                  <td className="px-4 py-2 text-right text-orange-600">{fmt(g.vat)} €</td>
+                  <td className="px-4 py-2 text-right font-bold">{fmt(g.total)} €</td>
+                  <td className="px-4 py-2 text-right text-gray-500">
+                    {totals.total > 0 ? `${((g.total / totals.total) * 100).toFixed(1)}%` : '—'}
+                  </td>
                 </tr>
               ))}
-              {clients.length === 0 && (
+              {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center text-gray-400 py-8">No hay datos para {year}</td>
+                  <td colSpan={desgloseMode === 'cliente' ? 7 : 6} className="text-center text-gray-400 py-8">No hay datos para {year}</td>
                 </tr>
               )}
             </tbody>
+            {grouped.length > 0 && (
+              <tfoot className="bg-gray-50 font-semibold border-t-2">
+                <tr>
+                  <td className="px-4 py-2">TOTALES</td>
+                  {desgloseMode === 'cliente' && <td />}
+                  <td className="px-4 py-2 text-center">{totals.count}</td>
+                  <td className="px-4 py-2 text-right">{fmt(totals.base)} €</td>
+                  <td className="px-4 py-2 text-right text-orange-600">{fmt(totals.vat)} €</td>
+                  <td className="px-4 py-2 text-right text-green-700">{fmt(totals.total)} €</td>
+                  <td className="px-4 py-2 text-right">100%</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
@@ -693,7 +813,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
     { key: 'facturas-recibidas', label: 'Facturas Recibidas', icon: '🧾', desc: 'Facturas de compra (proveedores)' },
     { key: 'iva-trimestral',     label: 'IVA Trimestral',    icon: '📊', desc: 'Resumen para Modelo 303' },
     { key: 'resumen-anual',      label: 'Resumen Anual',     icon: '📈', desc: 'Desglose mensual — Modelo 390' },
-    { key: 'por-cliente',        label: 'Por Cliente',        icon: '👥', desc: 'Desglose de facturación por cliente' },
+    { key: 'desglose',           label: 'Desglose',          icon: '📊', desc: 'Por cliente, tipo, línea de negocio…' },
   ]
 
   return createPortal(
@@ -793,7 +913,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
           {reportType === 'facturas-recibidas' && renderFacturasRecibidas()}
           {reportType === 'iva-trimestral' && renderIVATrimestral()}
           {reportType === 'resumen-anual' && renderResumenAnual()}
-          {reportType === 'por-cliente' && renderPorCliente()}
+          {reportType === 'desglose' && renderDesglose()}
         </div>
       </div>
     </div>,
