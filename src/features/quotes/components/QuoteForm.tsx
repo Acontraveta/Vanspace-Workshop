@@ -66,6 +66,9 @@ export default function QuoteForm({ quote: initialQuote, onApproved, onUpdated }
           `✅ Presupuesto aprobado!\n📦 ${result.details.totalPurchaseItems} compras · ⚙️ ${result.details.totalTasks} tareas · 📐 ${result.details.totalDesignInstructions} diseños`,
           { duration: 6000 }
         )
+        if (result.errors.length > 0) {
+          toast.error('⚠️ ' + result.errors.join('\n'), { duration: 8000 })
+        }
       }
     } catch (err: any) {
       toast.error('Error al aprobar: ' + err.message)

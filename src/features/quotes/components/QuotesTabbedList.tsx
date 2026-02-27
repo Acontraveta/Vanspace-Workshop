@@ -160,6 +160,9 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
         toast.error('Error en automatización: ' + (result.errors?.[0] ?? 'error desconocido'), { duration: 8000 })
       } else {
         toast.success(`✅ Aprobado · 📦 ${result.details.totalPurchaseItems} compras · ⚙️ ${result.details.totalTasks} tareas`)
+        if (result.errors.length > 0) {
+          toast.error('⚠️ ' + result.errors.join('\n'), { duration: 8000 })
+        }
       }
     } catch (error: any) {
       toast.error(error.message)

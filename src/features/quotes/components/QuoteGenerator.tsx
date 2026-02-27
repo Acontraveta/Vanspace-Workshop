@@ -484,6 +484,9 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
           `📐 ${result.details.totalDesignInstructions} diseños`,
           { duration: 6000 }
         )
+        if (result.errors.length > 0) {
+          toast.error('⚠️ ' + result.errors.join('\n'), { duration: 8000 })
+        }
       }
       setCurrentQuote(approvedQuote)
     } catch (error: any) {

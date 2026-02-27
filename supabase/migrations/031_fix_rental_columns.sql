@@ -19,4 +19,13 @@ ALTER TABLE rental_bookings
 GRANT ALL ON rental_vehicles TO anon, authenticated;
 GRANT ALL ON rental_bookings TO anon, authenticated;
 
-SELECT '✅ Migration 031: rental columns km_incluidos, precio_km_extra, coste_km_extra added' AS status;
+-- Fix purchase_items RLS policy: migration 012 created it WITHOUT "WITH CHECK(true)"
+-- causing INSERT/UPDATE (e.g. from quote automation) to be silently rejected.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'purchase_items') THEN
+    DROP POLICY IF EXISTS "purchase_items_all" ON purchase_items;
+    CREATE POLICY "purchase_items_all" ON purchase_items FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+SELECT '✅ Migration 031: rental columns + purchase_items RLS fix applied' AS status;

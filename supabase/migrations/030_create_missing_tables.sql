@@ -362,15 +362,14 @@ END $$;
 --     Some may already have policies — safe to re-run.
 -- ─────────────────────────────────────────────────────────────
 
--- purchase_items (012 already adds RLS, but just in case)
+-- purchase_items: migration 012 created the policy WITHOUT "WITH CHECK (true)"
+-- which causes INSERT/UPDATE to be silently rejected by RLS.
+-- We must DROP and recreate with both USING and WITH CHECK.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'purchase_items') THEN
     ALTER TABLE purchase_items ENABLE ROW LEVEL SECURITY;
-    IF NOT EXISTS (
-      SELECT 1 FROM pg_policies WHERE tablename = 'purchase_items' AND policyname = 'purchase_items_all'
-    ) THEN
-      CREATE POLICY "purchase_items_all" ON purchase_items FOR ALL USING (true) WITH CHECK (true);
-    END IF;
+    DROP POLICY IF EXISTS "purchase_items_all" ON purchase_items;
+    CREATE POLICY "purchase_items_all" ON purchase_items FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
 

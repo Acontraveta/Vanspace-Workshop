@@ -30,13 +30,14 @@ export class QuoteAutomation {
       const purchaseItems = await this.generatePurchaseList(quote)
       totalPurchaseItems = purchaseItems.length
       
-      // Guardar pedidos en Supabase (error no-bloquea la automatización)
+      // Guardar pedidos en Supabase
       if (purchaseItems.length > 0) {
         try {
           await PurchaseService.savePurchases(purchaseItems)
         } catch (saveErr: any) {
           console.error('⚠️ Error guardando pedidos en Supabase:', saveErr)
           errors.push('Pedidos no guardados en Supabase: ' + saveErr.message)
+          totalPurchaseItems = 0  // No reportar como guardados si fallaron
         }
       }
       

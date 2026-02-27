@@ -104,13 +104,18 @@ export class PurchaseService {
     if (error) throw error
   }
 
-  // Guardar mÃºltiples pedidos a la vez
+  // Guardar múltiples pedidos a la vez
   static async savePurchases(items: PurchaseItem[]): Promise<void> {
     if (items.length === 0) return
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('purchase_items')
       .upsert(items.map(toDb), { onConflict: 'id' })
+      .select('id')
     if (error) throw error
+    // Verify rows were actually inserted (RLS without WITH CHECK silently drops INSERTs)
+    if (!data || data.length === 0) {
+      throw new Error(`RLS bloqueó la inserción de ${items.length} pedidos. Ejecuta la migración 031 en Supabase SQL Editor.`)
+    }
   }
 
   // Marcar como pedido
