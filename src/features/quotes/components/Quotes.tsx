@@ -13,6 +13,15 @@ type LeadData = {
   clientPhone?: string
   clientEmail?: string
   vehicleModel?: string
+  billingData?: {
+    nif: string
+    fiscalName: string
+    address: string
+    postalCode: string
+    city: string
+    province: string
+    country: string
+  }
 }
 
 export default function Quotes() {

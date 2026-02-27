@@ -90,6 +90,15 @@ interface QuoteGeneratorProps {
     clientPhone?: string
     clientEmail?: string
     vehicleModel?: string
+    billingData?: {
+      nif: string
+      fiscalName: string
+      address: string
+      postalCode: string
+      city: string
+      province: string
+      country: string
+    }
   }
   onSaved?: () => void
 }
@@ -137,7 +146,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
   const [clientEmail, setClientEmail] = useState(initialLeadData?.clientEmail ?? '')
   const [clientPhone, setClientPhone] = useState(initialLeadData?.clientPhone ?? '')
   const [vehicleModel, setVehicleModel] = useState(initialLeadData?.vehicleModel ?? '')
-  const [billingData, setBillingData] = useState({
+  const [billingData, setBillingData] = useState(initialLeadData?.billingData ?? {
     nif: '',
     fiscalName: '',
     address: '',
@@ -150,7 +159,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
   const [currentQuote, setCurrentQuote] = useState<Quote | null>(null)
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [showBillingForm, setShowBillingForm] = useState(false)
+  const [showBillingForm, setShowBillingForm] = useState(!!initialLeadData?.billingData?.nif)
   const [showManualProductModal, setShowManualProductModal] = useState(false)
   const [showPreview, setShowPreview] = useState<'PRESUPUESTO' | 'FACTURA' | null>(null)
   const [quickDocType, setQuickDocType] = useState<QuickDocType | null>(null)
