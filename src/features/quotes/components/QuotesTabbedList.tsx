@@ -219,9 +219,9 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
     })
   }
 
-  const handleDuplicate = (quote: Quote) => {
+  const handleDuplicate = async (quote: Quote) => {
     try {
-      const dup = QuoteService.duplicateQuote(quote)
+      const dup = await QuoteService.duplicateQuote(quote)
       toast.success(`📋 Duplicado como ${dup.quoteNumber}`)
       refresh()
     } catch (error: any) {

@@ -86,7 +86,7 @@ function quoteToRow(q: Quote): InvoiceRow {
   const base = q.subtotal ?? q.total / 1.21
   const vatAmt = q.total - base
   return {
-    number: q.quoteNumber,
+    number: q.invoiceNumber ?? q.quoteNumber,
     date: toDate(q.approvedAt || q.createdAt),
     client: q.clientName,
     nif: q.billingData?.nif ?? '',

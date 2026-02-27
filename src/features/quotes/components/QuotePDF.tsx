@@ -102,9 +102,9 @@ export function QuotePDF({ data }: QuotePDFProps) {
   const docColor = type === 'FACTURA' ? '#1d4ed8' : type === 'ALBARAN' ? '#d97706' : '#15803d'
   const docLabel = type === 'ALBARAN' ? 'ALBARÁN' : type
   const docNumber = type === 'FACTURA'
-    ? (invoiceNumber ?? `FAC-${quote.quoteNumber}`)
+    ? (invoiceNumber ?? quote.invoiceNumber ?? `FAC-${quote.quoteNumber}`)
     : type === 'ALBARAN'
-      ? `ALB-${quote.quoteNumber}`
+      ? (quote.albaranNumber ?? `ALB-${quote.quoteNumber}`)
       : quote.quoteNumber
   const docDate = type === 'FACTURA' || type === 'ALBARAN'
     ? (quote.approvedAt ? new Date(quote.approvedAt) : new Date())

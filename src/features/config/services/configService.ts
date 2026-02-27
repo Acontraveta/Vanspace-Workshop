@@ -171,6 +171,44 @@ export class ConfigService {
     if (error) throw error
   }
 
+  /**
+   * Genera el siguiente número de documento (presupuesto / albarán / factura).
+   * Lee el prefijo y el contador de config_settings, incrementa atómicamente
+   * y devuelve el número formateado: PREFIJO-YYYY-NNN
+   */
+  static async getNextDocNumber(docType: 'presupuesto' | 'albaran' | 'factura'): Promise<string> {
+    const prefixKey = `numeracion.${docType}_prefijo`
+    const seqKey    = `numeracion.${docType}_siguiente`
+    const year      = new Date().getFullYear()
+
+    try {
+      // Leer prefijo y siguiente número
+      const { data } = await supabase
+        .from('config_settings')
+        .select('key, value')
+        .in('key', [prefixKey, seqKey])
+
+      const prefixRow = data?.find(r => r.key === prefixKey)
+      const seqRow    = data?.find(r => r.key === seqKey)
+
+      const prefix = prefixRow?.value || docType.substring(0, 3).toUpperCase()
+      const seq    = parseInt(seqRow?.value || '1', 10)
+      const docNum = `${prefix}-${year}-${String(seq).padStart(3, '0')}`
+
+      // Incrementar el contador para la próxima vez
+      await supabase
+        .from('config_settings')
+        .update({ value: String(seq + 1), updated_at: new Date().toISOString() })
+        .eq('key', seqKey)
+
+      return docNum
+    } catch {
+      // Fallback si Supabase falla: usar timestamp
+      const fallback = `${docType.substring(0, 3).toUpperCase()}-${year}-${Date.now().toString().slice(-5)}`
+      return fallback
+    }
+  }
+
   // ============================================
   // ALERTAS
   // ============================================

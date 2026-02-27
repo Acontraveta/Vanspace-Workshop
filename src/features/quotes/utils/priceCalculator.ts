@@ -1,4 +1,5 @@
 import { Tarifa, CatalogProduct, QuoteItem } from '../types/quote.types'
+import { ConfigService } from '@/features/config/services/configService'
 
 export class PriceCalculator {
   // Calcular item del presupuesto
@@ -71,12 +72,9 @@ export class PriceCalculator {
     }
   }
 
-  // Generar número de presupuesto
-  static generateQuoteNumber(): string {
-    const year = new Date().getFullYear()
-    const month = String(new Date().getMonth() + 1).padStart(2, '0')
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
-    return `QUO-${year}${month}-${random}`
+  // Generar número de presupuesto (secuencial desde config)
+  static async generateQuoteNumber(): Promise<string> {
+    return ConfigService.getNextDocNumber('presupuesto')
   }
 
   // Calcular fecha de validez (30 días por defecto)

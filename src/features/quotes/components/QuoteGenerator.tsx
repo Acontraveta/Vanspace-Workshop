@@ -406,7 +406,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
   const totals = PriceCalculator.calculateQuoteTotals(items, selectedTarifa)
   const totalHours = items.reduce((sum, item) => sum + item.laborHours, 0)
 
-  const handleSaveQuote = () => {
+  const handleSaveQuote = async () => {
     if (!isBasicDataComplete) {
       toast.error('Completa los datos básicos del cliente (nombre, email, teléfono)')
       return
@@ -419,10 +419,13 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
 
     setSaving(true)
 
+    // Generar número secuencial si es presupuesto nuevo
+    const quoteNumber = currentQuote?.quoteNumber || await PriceCalculator.generateQuoteNumber()
+
     // Usar UUID real para el id
     const quote: Quote = {
       id: currentQuote?.id || generateUUIDv4(),
-      quoteNumber: currentQuote?.quoteNumber || PriceCalculator.generateQuoteNumber(),
+      quoteNumber,
       lead_id: leadId,
       clientName,
       clientEmail,

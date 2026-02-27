@@ -175,6 +175,11 @@ export interface Quote {
   status: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'ALBARAN'
   notes?: string
 
+  /** Número de albarán generado al aprobar (secuencial desde config) */
+  albaranNumber?: string
+  /** Número de factura generado al emitir (secuencial desde config) */
+  invoiceNumber?: string
+
   /**
    * Datos editados del documento (líneas personalizadas, notas al pie, etc.).
    * Se persisten al guardar desde QuotePreview para que la factura conserve los cambios.

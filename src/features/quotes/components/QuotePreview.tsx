@@ -82,7 +82,7 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
   )
   const [company, setCompany] = useState(savedDoc?.company ?? DEFAULT_COMPANY)
   const [editingLine, setEditingLine] = useState<string | null>(null)
-  const [invoiceNum, setInvoiceNum] = useState(invoiceNumber ?? `FAC-${quote.quoteNumber}`)
+  const [invoiceNum, setInvoiceNum] = useState(invoiceNumber ?? quote.invoiceNumber ?? `FAC-${quote.quoteNumber}`)
   const [showBreakdown, setShowBreakdown] = useState(savedDoc?.showBreakdown ?? false)
   const [installments, setInstallments] = useState<PaymentInstallment[]>(savedDoc?.paymentInstallments ?? [])
   const [savingPdf, setSavingPdf] = useState(false)

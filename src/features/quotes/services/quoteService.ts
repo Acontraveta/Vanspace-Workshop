@@ -1,5 +1,6 @@
 import { Quote } from '../types/quote.types'
 import { PriceCalculator } from '../utils/priceCalculator'
+import { ConfigService } from '@/features/config/services/configService'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 
@@ -30,6 +31,8 @@ function toDb(q: Quote) {
     cancelled_at: q.cancelledAt instanceof Date ? q.cancelledAt.toISOString() : (q.cancelledAt ?? null),
     status: q.status,
     notes: (q as any).notes ?? null,
+    albaran_number: q.albaranNumber ?? null,
+    invoice_number: q.invoiceNumber ?? null,
     document_data: q.documentData ?? null,
     created_at: q.createdAt instanceof Date ? q.createdAt.toISOString() : q.createdAt,
   }
@@ -59,6 +62,8 @@ function fromDb(row: any): Quote {
     approvedAt: row.approved_at ? new Date(row.approved_at) : undefined,
     cancelledAt: row.cancelled_at ? new Date(row.cancelled_at) : undefined,
     status: row.status ?? 'DRAFT',
+    albaranNumber: row.albaran_number ?? undefined,
+    invoiceNumber: row.invoice_number ?? undefined,
     documentData: row.document_data ?? undefined,
     createdAt: new Date(row.created_at),
   } as Quote
@@ -326,6 +331,7 @@ export class QuoteService {
     
     quote.status = 'ALBARAN'
     quote.approvedAt = new Date()
+    quote.albaranNumber = await ConfigService.getNextDocNumber('albaran')
     
     const synced = await this.saveQuoteAsync(quote)
     if (!synced) {
@@ -362,6 +368,7 @@ export class QuoteService {
 
     quote.status = 'APPROVED'
     ;(quote as any).invoiceEmittedAt = new Date()
+    quote.invoiceNumber = await ConfigService.getNextDocNumber('factura')
 
     const synced = await this.saveQuoteAsync(quote)
     if (!synced) {
@@ -453,9 +460,9 @@ export class QuoteService {
   }
 
   // Duplicar un presupuesto/factura como un nuevo borrador
-  static duplicateQuote(source: Quote): Quote {
+  static async duplicateQuote(source: Quote): Promise<Quote> {
     const newId = crypto.randomUUID()
-    const newNumber = PriceCalculator.generateQuoteNumber()
+    const newNumber = await PriceCalculator.generateQuoteNumber()
     const duplicate: Quote = {
       ...structuredClone(source),
       id: newId,
