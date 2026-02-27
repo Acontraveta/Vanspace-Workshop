@@ -118,6 +118,9 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   const [qrPreview, setQrPreview] = useState<string | null>(null)
   const [qrPreviewItem, setQrPreviewItem] = useState<StockItem | null>(null)
   const [ConfirmDialog, confirm] = useConfirm()
+  // Grid picker state for batch label printing
+  const [gridPickerItems, setGridPickerItems] = useState<StockItem[] | null>(null)
+  const [gridStartCell, setGridStartCell] = useState(0)
 
   const processCode = useCallback((code: string) => {
     let referencia = ''
@@ -242,11 +245,15 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
     }, 300)
   }
 
-  const printMultipleLabels = async (items: StockItem[]) => {
-    const printWindow = window.open('', '', 'width=600,height=800')
+  const printMultipleLabels = async (items: StockItem[], startCell: number = 0) => {
+    const printWindow = window.open('', '', 'width=700,height=900')
     if (!printWindow) return
 
     toast.loading('Generando etiquetas...', { id: 'batch-qr' })
+
+    const COLS = 3
+    const ROWS = 7
+    const PER_PAGE = COLS * ROWS // 21
 
     // Generate QR for each item
     const qrPromises = items.map(async (item) => {
@@ -261,16 +268,34 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
 
     const results = await Promise.all(qrPromises)
 
-    const labelsHtml = results.map(({ item, dataUrl }) => `
-      <div class="label">
-        <div class="qr"><img src="${dataUrl}" /></div>
-        <div class="info">
-          <div class="ref">${item.REFERENCIA}</div>
-          <div class="name">${item.ARTICULO}</div>
-          ${item.UBICACION ? `<div class="loc">📍 ${item.UBICACION}</div>` : ''}
+    // Build pages: first page starts at startCell, rest at 0
+    const pages: string[][] = []
+    let currentPage: string[] = []
+
+    // Fill empty cells before the starting position on the first page
+    for (let i = 0; i < startCell; i++) {
+      currentPage.push('<div class="label empty"></div>')
+    }
+
+    for (const { item, dataUrl } of results) {
+      if (currentPage.length >= PER_PAGE) {
+        pages.push(currentPage)
+        currentPage = []
+      }
+      currentPage.push(`
+        <div class="label">
+          <div class="qr"><img src="${dataUrl}" /></div>
+          <div class="info">
+            <div class="ref">${item.REFERENCIA}</div>
+            <div class="name">${item.ARTICULO}</div>
+            ${item.UBICACION ? `<div class="loc">📍 ${item.UBICACION}</div>` : ''}
+          </div>
         </div>
-      </div>
-    `).join('')
+      `)
+    }
+    if (currentPage.length > 0) pages.push(currentPage)
+
+    const pagesHtml = pages.map(cells => `<div class="sticker-page">${cells.join('')}</div>`).join('')
 
     printWindow.document.write(`
       <html>
@@ -278,29 +303,70 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
           <title>Etiquetas QR</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 5mm; }
-            .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; }
+            body { font-family: Arial, sans-serif; background: white; }
+
+            .sticker-page {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 0;
+              margin-bottom: 16px;
+            }
             .label {
-              border: 0.5px dashed #ccc;
+              width: 70mm; height: 42.4mm;
+              border: 1px solid #ccc;
               padding: 2mm;
               display: flex; gap: 2mm; align-items: center;
-              page-break-inside: avoid;
+              overflow: hidden;
+              box-sizing: border-box;
             }
-            .qr { width: 22mm; height: 22mm; flex-shrink: 0; }
+            .label.empty { border: 1px dashed #eee; }
+            .qr { width: 28mm; height: 28mm; flex-shrink: 0; }
             .qr img { width: 100%; height: 100%; }
             .info { flex: 1; overflow: hidden; }
-            .ref { font-size: 8pt; font-weight: bold; margin-bottom: 0.5mm; }
-            .name { font-size: 6pt; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-            .loc { font-size: 6pt; color: #555; }
+            .ref { font-size: 9pt; font-weight: 900; margin-bottom: 1mm; line-height: 1.1; }
+            .name { font-size: 7pt; line-height: 1.2; margin-bottom: 1mm; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+            .loc { font-size: 7pt; color: #555; }
+
             @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .label { border-color: #ddd; }
+              @page {
+                size: 210mm 297mm;
+                margin: 0;
+              }
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .sticker-page {
+                display: grid;
+                grid-template-columns: repeat(3, 70mm);
+                grid-auto-rows: 42.4mm;
+                gap: 0;
+                width: 210mm;
+                height: 296.8mm;
+                margin: 0;
+                padding: 0;
+                page-break-after: always;
+                break-after: page;
+              }
+              .sticker-page:last-child {
+                page-break-after: auto;
+                break-after: auto;
+              }
+              .label {
+                width: 70mm; height: 42.4mm;
+                border: 0.3mm solid #999;
+                padding: 2mm 2.5mm;
+                margin: 0;
+                page-break-inside: avoid;
+                break-inside: avoid;
+              }
+              .label.empty { border: 0.3mm dashed #ddd; }
             }
           </style>
         </head>
-        <body>
-          <div class="grid">${labelsHtml}</div>
-        </body>
+        <body>${pagesHtml}</body>
       </html>
     `)
     printWindow.document.close()
@@ -519,7 +585,9 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-xs text-gray-500">Genera e imprime etiquetas QR para los productos del stock.</p>
+          <p className="text-xs text-gray-500">
+            Formato A4 · 3×7 celdas de 70×42,4 mm · Elige en qué celda empezar a imprimir.
+          </p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => {
               const noLocation = stock.filter(s => !s.UBICACION || s.UBICACION.trim() === '')
@@ -527,7 +595,8 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
                 toast('Todos los productos tienen ubicación asignada')
                 return
               }
-              printMultipleLabels(noLocation)
+              setGridStartCell(0)
+              setGridPickerItems(noLocation)
             }}>
               📍 Sin ubicar ({stock.filter(s => !s.UBICACION || s.UBICACION.trim() === '').length})
             </Button>
@@ -536,19 +605,74 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
                 toast('No hay productos en stock')
                 return
               }
-              if (stock.length > 100) {
-                confirm(`¿Generar ${stock.length} etiquetas? Puede tardar unos segundos.`, () => {
-                  printMultipleLabels(stock)
-                })
-                return
-              }
-              printMultipleLabels(stock)
+              setGridStartCell(0)
+              setGridPickerItems(stock)
             }}>
               📦 Todo el stock ({stock.length})
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* ─── Grid Position Picker Modal ─── */}
+      {gridPickerItems && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm">📄 Posición en el folio A4</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {gridPickerItems.length} etiqueta{gridPickerItems.length !== 1 ? 's' : ''} · Haz clic en la celda donde empezar
+                  </p>
+                </div>
+                <button onClick={() => setGridPickerItems(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+              </div>
+            </div>
+            <div className="p-4">
+              {/* A4 Grid Preview: 3 cols × 7 rows */}
+              <div className="grid grid-cols-3 gap-0.5 border border-gray-300 rounded-lg overflow-hidden bg-gray-300">
+                {Array.from({ length: 21 }).map((_, idx) => {
+                  const isStart = idx === gridStartCell
+                  const isFilled = idx >= gridStartCell && idx < gridStartCell + gridPickerItems.length
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setGridStartCell(idx)}
+                      className={`aspect-[70/42.4] text-[10px] font-bold transition-all ${
+                        isStart
+                          ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                          : isFilled
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-white text-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {isStart ? '▶' : isFilled ? (idx - gridStartCell + 1) : idx + 1}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                <span>Empieza en celda {gridStartCell + 1}</span>
+                <span>{Math.ceil((gridPickerItems.length + gridStartCell) / 21)} página{Math.ceil((gridPickerItems.length + gridStartCell) / 21) !== 1 ? 's' : ''}</span>
+              </div>
+            </div>
+            <div className="p-4 border-t bg-gray-50 flex gap-2">
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => setGridPickerItems(null)}>
+                Cancelar
+              </Button>
+              <Button size="sm" className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => {
+                const items = gridPickerItems
+                const start = gridStartCell
+                setGridPickerItems(null)
+                printMultipleLabels(items, start)
+              }}>
+                🖨️ Imprimir {gridPickerItems.length} etiquetas
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scan History */}
       {scanHistory.length > 0 && (
