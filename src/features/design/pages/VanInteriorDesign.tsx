@@ -1566,7 +1566,7 @@ export default function VanInteriorDesign() {
             onClick={() => setSelected(null)}
           >
             <CotaMarkersInt />
-            <VanFloorPlanSVG floor={floor} van={vanConfig} />
+            <VanFloorPlanSVG floor={floor} van={van} />
 
             {/* Placed items with SVG symbols */}
             {visibleItems.map(item => {
