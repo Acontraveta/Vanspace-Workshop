@@ -75,6 +75,33 @@ DO $$ BEGIN
   CREATE POLICY "quotes_open" ON quotes FOR ALL USING (true) WITH CHECK (true);
 END $$;
 
+-- ── Fix status CHECK constraint ─────────────────────────────
+-- The original constraint may only allow DRAFT/SENT/APPROVED/REJECTED/EXPIRED
+-- but the app now uses ALBARAN as an intermediate state.
+-- Drop any existing check on status and recreate with all valid values.
+DO $$ BEGIN
+  -- Drop constraint by name if it exists
+  IF EXISTS (
+    SELECT 1 FROM information_schema.constraint_column_usage
+    WHERE table_name = 'quotes' AND column_name = 'status'
+      AND constraint_name NOT LIKE '%_pkey'
+      AND constraint_name NOT LIKE '%_fkey'
+  ) THEN
+    EXECUTE (
+      SELECT 'ALTER TABLE quotes DROP CONSTRAINT ' || constraint_name
+      FROM information_schema.constraint_column_usage
+      WHERE table_name = 'quotes' AND column_name = 'status'
+        AND constraint_name NOT LIKE '%_pkey'
+        AND constraint_name NOT LIKE '%_fkey'
+      LIMIT 1
+    );
+  END IF;
+END $$;
+
+-- Recreate with all valid statuses including ALBARAN
+ALTER TABLE quotes ADD CONSTRAINT quotes_status_check
+  CHECK (status IN ('DRAFT', 'SENT', 'APPROVED', 'REJECTED', 'EXPIRED', 'ALBARAN'));
+
 -- Grants
 GRANT ALL ON quotes TO anon, authenticated;
 
