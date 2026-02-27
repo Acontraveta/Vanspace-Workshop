@@ -46,16 +46,58 @@ export class StockService {
         }
       }
       
-      console.log('✅ Stock cargado:', items.length, 'items')
+      if (items.length > 0) {
+        console.log('✅ Stock cargado desde Excel:', items.length, 'items')
+        this.stock = items
+        localStorage.setItem('stock_items', JSON.stringify(items))
+        localStorage.setItem('stock_last_sync', new Date().toISOString())
+        return items
+      }
+
+      // Excel vacío → intentar desde tabla Supabase
+      console.warn('⚠️ Excel vacío, intentando tabla stock_items...')
+      return await this.loadFromDatabase()
       
+    } catch (error) {
+      console.warn('⚠️ Error cargando Excel, intentando tabla stock_items...', error)
+      return await this.loadFromDatabase()
+    }
+  }
+
+  /**
+   * Carga stock desde la tabla stock_items de Supabase (fallback).
+   * PurchaseList ya usa esta tabla directamente — 253 items según el usuario.
+   */
+  private static async loadFromDatabase(): Promise<StockItem[]> {
+    try {
+      const { data, error } = await supabase
+        .from('stock_items')
+        .select('*')
+        .order('articulo')
+
+      if (error) throw error
+
+      const items: StockItem[] = (data || []).map(row => ({
+        REFERENCIA: row.referencia ?? '',
+        FAMILIA: row.familia ?? '',
+        CATEGORIA: row.categoria ?? '',
+        ARTICULO: row.articulo ?? '',
+        DESCRIPCION: row.descripcion ?? undefined,
+        CANTIDAD: Number(row.cantidad ?? 0),
+        STOCK_MINIMO: row.stock_minimo != null ? Number(row.stock_minimo) : undefined,
+        UNIDAD: row.unidad ?? 'ud',
+        COSTE_IVA_INCLUIDO: Number(row.coste_iva_incluido ?? 0),
+        UBICACION: row.ubicacion ?? undefined,
+        PROVEEDOR: row.proveedor ?? undefined,
+      }))
+
+      console.log('✅ Stock cargado desde tabla Supabase:', items.length, 'items')
       this.stock = items
       localStorage.setItem('stock_items', JSON.stringify(items))
       localStorage.setItem('stock_last_sync', new Date().toISOString())
-      
       return items
-      
-    } catch (error) {
-      console.error('❌ Error cargando stock:', error)
+    } catch (dbError) {
+      console.error('❌ Error cargando stock desde tabla:', dbError)
       return this.loadFromLocalStorage()
     }
   }

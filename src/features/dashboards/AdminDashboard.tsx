@@ -9,6 +9,7 @@ import { ProductionService } from '@/features/calendar/services/productionServic
 import { PurchaseService } from '@/features/purchases/services/purchaseService'
 import { StockService } from '@/features/purchases/services/stockService'
 import { QuoteService } from '@/features/quotes/services/quoteService'
+import { QuickDocService } from '@/features/quotes/services/quickDocService'
 import { ConfigService } from '@/features/config/services/configService'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { fmtEurK, fmtNum } from '@/shared/utils/formatters'
@@ -18,12 +19,16 @@ export default function AdminDashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [stats, setStats] = useState({
-    // Presupuestos
+    // Documentos
+    totalDocs: 0,
     totalQuotes: 0,
     activeQuotes: 0,
     approvedQuotes: 0,
     totalQuotesValue: 0,
     approvedValue: 0,
+    totalSimplificadas: 0,
+    totalProformas: 0,
+    simplificadasValue: 0,
     
     // Producción
     totalProjects: 0,
@@ -60,13 +65,15 @@ export default function AdminDashboard() {
   const loadAllStats = async () => {
     try {
       // Cargar todo en paralelo para máxima velocidad
-      const [quotesResult, projectsResult, purchasesResult, stockResult, employeesResult] = await Promise.allSettled([
-        // 1. Presupuestos
+      const [quotesResult, quickDocsResult, projectsResult, purchasesResult, stockResult, employeesResult] = await Promise.allSettled([
+        // 1. Presupuestos y Facturas
         (async () => {
           await QuoteService.syncFromSupabase()
           return QuoteService.getQuotesByCategory()
         })(),
-        // 2. Producción (proyectos + tareas)
+        // 2. Simplificadas y Proformas
+        QuickDocService.fetchAll(),
+        // 3. Producción (proyectos + tareas)
         (async () => {
           const allProjects = await ProductionService.getProjects()
           const tasksArrays = await Promise.all(
@@ -74,17 +81,18 @@ export default function AdminDashboard() {
           )
           return { projects: allProjects, tasks: tasksArrays.flat() }
         })(),
-        // 3. Compras
+        // 4. Compras
         PurchaseService.getAllPurchases(),
-        // 4. Stock — cargar desde Supabase Storage (Excel)
+        // 5. Stock — Excel → tabla stock_items → localStorage
         StockService.loadFromSupabase(),
-        // 5. Personal
+        // 6. Personal
         ConfigService.getEmployees(),
       ])
 
       // Extraer resultados (con fallback a vacío si falló)
       const errors: string[] = []
       if (quotesResult.status === 'rejected') { console.warn('⚠️ Dashboard: quotes failed:', quotesResult.reason); errors.push('Presupuestos') }
+      if (quickDocsResult.status === 'rejected') { console.warn('⚠️ Dashboard: quickDocs failed:', quickDocsResult.reason); errors.push('Simplificadas') }
       if (projectsResult.status === 'rejected') { console.warn('⚠️ Dashboard: projects failed:', projectsResult.reason); errors.push('Producción') }
       if (purchasesResult.status === 'rejected') { console.warn('⚠️ Dashboard: purchases failed:', purchasesResult.reason); errors.push('Compras') }
       if (stockResult.status === 'rejected') { console.warn('⚠️ Dashboard: stock failed:', stockResult.reason); errors.push('Stock') }
@@ -92,6 +100,7 @@ export default function AdminDashboard() {
       setDataErrors(errors)
 
       const quotes = quotesResult.status === 'fulfilled' ? quotesResult.value : { active: [], approved: [], cancelled: [], expired: [] }
+      const quickDocs = quickDocsResult.status === 'fulfilled' ? quickDocsResult.value : []
       const { projects: allProjects, tasks: allTasks } = projectsResult.status === 'fulfilled' ? projectsResult.value : { projects: [], tasks: [] }
       const purchases = purchasesResult.status === 'fulfilled' ? purchasesResult.value : []
       const stockItems = stockResult.status === 'fulfilled' ? stockResult.value : StockService.getStock()
@@ -104,6 +113,13 @@ export default function AdminDashboard() {
       const allQuotes = [...quotes.active, ...quotes.approved, ...quotes.cancelled, ...quotes.expired]
       const totalQuotesValue = allQuotes.reduce((sum, q) => sum + q.total, 0)
       const approvedValue = quotes.approved.reduce((sum, q) => sum + q.total, 0)
+      
+      // Simplificadas y Proformas
+      const simplificadas = quickDocs.filter(d => d.type === 'FACTURA_SIMPLIFICADA')
+      const proformas = quickDocs.filter(d => d.type === 'PROFORMA')
+      const simplificadasValue = simplificadas.reduce((sum, d) => sum + d.total, 0)
+      const totalDocsValue = totalQuotesValue + simplificadasValue + proformas.reduce((sum, d) => sum + d.total, 0)
+      
       const totalHoursPlanned = allProjects.reduce((sum, p) => sum + p.total_hours, 0)
       const totalHoursWorked = allTasks.reduce((sum, t) => sum + (t.actual_hours || 0), 0)
       const delayed = allProjects.filter(p => {
@@ -119,11 +135,15 @@ export default function AdminDashboard() {
       }, 0)
 
       setStats({
+        totalDocs: allQuotes.length + quickDocs.length,
         totalQuotes: allQuotes.length,
         activeQuotes: quotes.active.length,
         approvedQuotes: quotes.approved.length,
         totalQuotesValue,
         approvedValue,
+        totalSimplificadas: simplificadas.length,
+        totalProformas: proformas.length,
+        simplificadasValue,
         totalProjects: allProjects.length,
         inProgressProjects: allProjects.filter(p => p.status === 'IN_PROGRESS').length,
         completedProjects: allProjects.filter(p => p.status === 'COMPLETED').length,
@@ -183,16 +203,16 @@ export default function AdminDashboard() {
           <>
             <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
               <CardContent className="p-6">
-                <p className="text-sm opacity-90 mb-1">Valor Total Presupuestos</p>
-                <p className="text-4xl font-bold">{fmtEurK(stats.totalQuotesValue)}€</p>
-                <p className="text-xs opacity-75 mt-2">{stats.totalQuotes} presupuestos</p>
+                <p className="text-sm opacity-90 mb-1">Total Documentos</p>
+                <p className="text-4xl font-bold">{fmtEurK(stats.totalQuotesValue + stats.simplificadasValue)}€</p>
+                <p className="text-xs opacity-75 mt-2">{stats.totalDocs} documentos</p>
               </CardContent>
             </Card>
             <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
               <CardContent className="p-6">
-                <p className="text-sm opacity-90 mb-1">Presupuestos Aprobados</p>
-                <p className="text-4xl font-bold">{fmtEurK(stats.approvedValue)}€</p>
-                <p className="text-xs opacity-75 mt-2">{stats.approvedQuotes} proyectos</p>
+                <p className="text-sm opacity-90 mb-1">Facturas Emitidas</p>
+                <p className="text-4xl font-bold">{fmtEurK(stats.approvedValue + stats.simplificadasValue)}€</p>
+                <p className="text-xs opacity-75 mt-2">{stats.approvedQuotes} facturas + {stats.totalSimplificadas} simplificadas</p>
               </CardContent>
             </Card>
             <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
@@ -277,7 +297,7 @@ export default function AdminDashboard() {
           <Card>
             <CardHeader className="bg-blue-50 border-b">
               <CardTitle className="flex items-center justify-between">
-                <span>💰 Ventas</span>
+                <span>💰 Documentos</span>
                 <Button size="sm" onClick={() => navigate('/quotes')}>
                   Ver →
                 </Button>
@@ -285,24 +305,27 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="p-6 space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Total presupuestos</span>
-                <Badge>{stats.totalQuotes}</Badge>
+                <span className="text-sm text-gray-600">Presupuestos</span>
+                <Badge>{stats.activeQuotes}</Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Activos</span>
-                <Badge className="bg-blue-600">{stats.activeQuotes}</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Aprobados</span>
+                <span className="text-sm text-gray-600">Facturas</span>
                 <Badge className="bg-green-600">{stats.approvedQuotes}</Badge>
               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Simplificadas</span>
+                <Badge className="bg-purple-600">{stats.totalSimplificadas}</Badge>
+              </div>
+              {stats.totalProformas > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Proformas</span>
+                  <Badge className="bg-orange-600">{stats.totalProformas}</Badge>
+                </div>
+              )}
               <div className="flex justify-between items-center pt-3 border-t">
-                <span className="text-sm font-bold">Conversión</span>
-                <span className="font-bold text-green-600">
-                  {stats.totalQuotes > 0 
-                    ? Math.round((stats.approvedQuotes / stats.totalQuotes) * 100)
-                    : 0
-                  }%
+                <span className="text-sm font-bold">Total documentos</span>
+                <span className="font-bold text-blue-600">
+                  {stats.totalDocs}
                 </span>
               </div>
             </CardContent>
