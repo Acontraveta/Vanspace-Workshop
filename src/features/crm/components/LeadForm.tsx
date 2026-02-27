@@ -693,25 +693,29 @@ export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
             {lead && (
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
+                  // Auto-save latest form data (including billing) before navigating
+                  try { await updateLead(lead.id, form) } catch { /* navigate anyway */ }
                   onClose()
+                  // Use `form` (current state) rather than `lead` (stored snapshot)
+                  // so billing data the user just typed is included even before saving
                   navigate('/quotes', {
                     state: {
                       createFromLead: {
                         lead_id: lead.id,
-                        clientName: lead.cliente,
-                        clientPhone: lead.telefono,
-                        clientEmail: lead.email,
-                        vehicleModel: lead.vehiculo,
-                        ...(lead.billing_nif ? {
+                        clientName: form.cliente || lead.cliente,
+                        clientPhone: form.telefono || lead.telefono,
+                        clientEmail: form.email || lead.email,
+                        vehicleModel: form.vehiculo || lead.vehiculo,
+                        ...(form.billing_nif ? {
                           billingData: {
-                            nif: lead.billing_nif || '',
-                            fiscalName: lead.billing_fiscal_name || lead.cliente,
-                            address: lead.billing_address || '',
-                            postalCode: lead.billing_postal_code || '',
-                            city: lead.billing_city || lead.localidad || '',
-                            province: lead.billing_province || lead.provincia || '',
-                            country: lead.billing_country || 'España',
+                            nif: form.billing_nif || '',
+                            fiscalName: form.billing_fiscal_name || form.cliente || lead.cliente,
+                            address: form.billing_address || '',
+                            postalCode: form.billing_postal_code || '',
+                            city: form.billing_city || form.localidad || '',
+                            province: form.billing_province || form.provincia || '',
+                            country: form.billing_country || 'España',
                           }
                         } : {}),
                       },

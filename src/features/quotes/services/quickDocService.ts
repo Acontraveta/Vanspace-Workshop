@@ -39,6 +39,31 @@ export interface QuickDocRecord {
 }
 
 const STORAGE_KEY = 'quick_docs_v1'
+const PENDING_KEY  = 'quick_docs_pending'   // Set of IDs created locally but not yet confirmed in Supabase
+
+// ─── Pending-sync tracking ───────────────────────────────────
+// Docs created locally are marked "pending" until confirmed in Supabase.
+// During merge, only pending docs are pushed back; non-pending docs that
+// are missing from Supabase were deleted remotely → remove from cache.
+
+function pendingIds(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(PENDING_KEY) ?? '[]'))
+  } catch { return new Set() }
+}
+function pendingAdd(id: string) {
+  const s = pendingIds(); s.add(id)
+  localStorage.setItem(PENDING_KEY, JSON.stringify([...s]))
+}
+function pendingRemove(id: string) {
+  const s = pendingIds(); s.delete(id)
+  localStorage.setItem(PENDING_KEY, JSON.stringify([...s]))
+}
+function pendingRemoveMany(ids: Iterable<string>) {
+  const s = pendingIds()
+  for (const id of ids) s.delete(id)
+  localStorage.setItem(PENDING_KEY, JSON.stringify([...s]))
+}
 
 // ─── Supabase row ↔ QuickDocRecord mapping ───────────────────
 
@@ -129,14 +154,28 @@ export class QuickDocService {
 
     const sbRecords = (data || []).map(rowToRecord)
 
-    // Merge: Supabase is source of truth, but keep localStorage-only records
+    // ── Smart merge ──────────────────────────────────────────
+    // Supabase is source of truth.
+    // Only push back localStorage-only records that are PENDING (created locally, never confirmed).
+    // Records missing from Supabase that are NOT pending → deleted remotely → purge from cache.
+    const sbIds = new Set(sbRecords.map(r => r.id))
     const sbDocNumbers = new Set(sbRecords.map(r => r.docNumber))
-    const localOnly = cacheGetAll().filter(r => !sbDocNumbers.has(r.docNumber))
+    const pending = pendingIds()
+    const localAll = cacheGetAll()
+    const localOnly = localAll.filter(r => !sbIds.has(r.id) && !sbDocNumbers.has(r.docNumber))
 
-    // Push any localStorage-only records to Supabase (recovery)
+    // Separate: truly new (pending) vs remotely deleted
+    const toSync = localOnly.filter(r => pending.has(r.id))
+    const deletedRemotely = localOnly.filter(r => !pending.has(r.id))
+
+    if (deletedRemotely.length > 0) {
+      console.info(`🗑️ QuickDocService: ${deletedRemotely.length} doc(s) deleted remotely, purging from local cache`)
+    }
+
+    // Push pending-only records to Supabase (recovery)
     let syncedCount = 0
     let failedCount = 0
-    for (const local of localOnly) {
+    for (const local of toSync) {
       const { error: upErr } = await supabase
         .from('quick_docs')
         .upsert(recordToRow(local), { onConflict: 'doc_number' })
@@ -145,6 +184,7 @@ export class QuickDocService {
         console.error('❌ Failed to sync local doc to Supabase:', local.docNumber, upErr.message, upErr.details, upErr.hint)
       } else {
         syncedCount++
+        pendingRemove(local.id)   // Confirmed in Supabase
       }
     }
     if (syncedCount > 0) {
@@ -154,7 +194,11 @@ export class QuickDocService {
       toast.error(`⚠️ ${failedCount} documento(s) no se pudieron sincronizar`, { duration: 6000 })
     }
 
-    const merged = [...sbRecords, ...localOnly]
+    // Clear pending flags for all records now confirmed in Supabase
+    pendingRemoveMany(sbRecords.map(r => r.id))
+
+    // Final merged list: Supabase records + pending local-only (no resurrected deletes)
+    const merged = [...sbRecords, ...toSync]
     cacheSet(merged)
     return merged
   }
@@ -179,6 +223,9 @@ export class QuickDocService {
       createdAt: new Date().toISOString(),
     }
 
+    // Mark as pending-sync (so fetchAll won't discard it if Supabase hasn't confirmed yet)
+    pendingAdd(record.id)
+
     // Update localStorage cache immediately
     all.unshift(record)
     cacheSet(all)
@@ -192,6 +239,9 @@ export class QuickDocService {
       if (upErr) {
         console.error('❌ QuickDocService: failed to save to Supabase:', upErr.message, upErr.details, upErr.hint)
         toast.error(`⚠️ Documento guardado local, pero no sincronizado: ${upErr.message}`, { duration: 6000 })
+      } else {
+        // Confirmed in Supabase — no longer pending
+        pendingRemove(record.id)
       }
     } catch (err: any) {
       console.error('❌ QuickDocService: Supabase request failed:', err)
@@ -206,6 +256,9 @@ export class QuickDocService {
   static async delete(id: string): Promise<void> {
     const all = cacheGetAll().filter(d => d.id !== id)
     cacheSet(all)
+
+    // Remove from pending set so fetchAll won't try to re-push it
+    pendingRemove(id)
 
     // Also delete from Supabase (awaited so callers can refresh safely)
     const { error: delErr } = await supabase.from('quick_docs').delete().eq('id', id)
