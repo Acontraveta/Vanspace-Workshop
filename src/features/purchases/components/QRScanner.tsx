@@ -68,12 +68,36 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
 
   const startCamera = useCallback(async () => {
     setCameraError(null)
+
+    // Check if camera API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError('La API de cámara no está disponible. Asegúrate de usar HTTPS y un navegador compatible.')
+      return
+    }
+
+    // Request permission early to get a clear error
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      // Release the test stream immediately
+      stream.getTracks().forEach(t => t.stop())
+    } catch (permErr: any) {
+      const msg = permErr?.name || permErr?.message || String(permErr)
+      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+        setCameraError('Permiso de cámara denegado. Permite el acceso en la configuración del navegador.')
+      } else if (msg.includes('NotFoundError') || msg.includes('NotReadableError')) {
+        setCameraError('No se encontró ninguna cámara disponible en el dispositivo.')
+      } else {
+        setCameraError(`Error de cámara: ${msg}`)
+      }
+      return
+    }
+
     // IMPORTANT: set active FIRST so the container is visible in the DOM
     // html5-qrcode cannot render into a hidden/zero-size element
     setCameraActive(true)
 
     // Wait for React to render the visible container
-    await new Promise(r => setTimeout(r, 150))
+    await new Promise(r => setTimeout(r, 300))
 
     try {
 
@@ -313,14 +337,15 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
             </div>
           )}
 
-          {/* Camera video container — NEVER hidden, just collapsed when inactive
-              html5-qrcode needs a visible DOM element to mount the <video> into */}
+          {/* Camera video container — ALWAYS rendered with fixed height when active
+              html5-qrcode needs a visible DOM element with real dimensions */}
           <div
             id={scannerContainerId}
             className={`rounded-lg overflow-hidden transition-all ${cameraActive ? 'border-2 border-emerald-400' : ''}`}
             style={{
-              minHeight: cameraActive ? 280 : 0,
-              height: cameraActive ? 'auto' : 0,
+              width: '100%',
+              minHeight: cameraActive ? 300 : 0,
+              height: cameraActive ? 300 : 0,
               overflow: 'hidden',
               opacity: cameraActive ? 1 : 0,
             }}
