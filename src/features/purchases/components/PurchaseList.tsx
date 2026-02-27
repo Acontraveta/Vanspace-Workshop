@@ -2496,7 +2496,7 @@ export default function PurchaseList() {
                         onChange={e => setNewProductForm(f => ({ ...f, tiempoTotalMin: Math.round((parseFloat(e.target.value) || 0) * 60) }))} />
                     </div>
                     <div className="flex items-end pb-1">
-                      <span className="text-sm text-gray-500">= {newProductForm.tiempoTotalMin} min</span>
+                      <span className="text-sm text-gray-500">{newProductForm.tiempoTotalMin > 0 ? `${fmtHours(newProductForm.tiempoTotalMin / 60)}h` : ''}</span>
                     </div>
                   </div>
                 </div>

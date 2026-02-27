@@ -116,7 +116,7 @@ export default function TaskStartModal({
       estanteria: parts[0], nivel: parts[1], hueco: parts[2]
     };
   };
-  const minutesToHours = (min) => `${fmtHours(min / 60)}h`;
+
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -131,7 +131,7 @@ export default function TaskStartModal({
               )}
             </div>
             <div className="flex-shrink-0 text-center px-3 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.15)' }}>
-              <p className="text-2xl font-bold font-mono leading-none">{minutesToHours(task.estimated_hours * 60)}</p>
+              <p className="text-2xl font-bold font-mono leading-none">{fmtHours(task.estimated_hours)}h</p>
               <p className="text-xs opacity-70 mt-0.5">duración</p>
             </div>
           </div>

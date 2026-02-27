@@ -286,10 +286,9 @@ export class TimeclockService {
     return summary
   }
 
-  // Formatear minutos a horas
+  // Formatear minutos a horas decimales
   static formatMinutes(minutes: number): string {
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return `${hours}h ${mins.toString().padStart(2, '0')}m`
+    const hours = minutes / 60
+    return `${hours.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h`
   }
 }

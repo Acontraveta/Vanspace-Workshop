@@ -84,9 +84,8 @@ export default function MyHoursWidget() {
   }
 
   const formatTime = (mins: number) => {
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    return `${h}:${m.toString().padStart(2, '0')}`
+    const h = mins / 60
+    return `${h.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h`
   }
 
   if (!user || user.id === 'admin' || loading) return null
@@ -94,7 +93,8 @@ export default function MyHoursWidget() {
   const totalWeek = weekMinutes + elapsed
   const weekProgress = Math.min(100, Math.round((totalWeek / expectedMinutes) * 100))
   const extraMinutes = totalWeek - expectedMinutes
-  const todayProgress = Math.min(100, Math.round((elapsed / 480) * 100))
+  const dailyExpected = expectedMinutes / 5 // horas_semanales / 5 días
+  const todayProgress = Math.min(100, Math.round((elapsed / dailyExpected) * 100))
 
   return (
     <>

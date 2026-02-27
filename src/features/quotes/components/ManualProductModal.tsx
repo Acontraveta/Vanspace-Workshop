@@ -21,7 +21,7 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
     familia: '',
     categoria: '',
     precioCompra: 0,
-    tiempoTotalMin: 0,
+    tiempoHoras: 0,
     requiereDiseno: false,
     tipoDiseno: '' as string,  // comma-separated department keys: furniture,exterior,interior
     instruccionesDiseno: '',
@@ -105,7 +105,7 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
     // Si debe generar tarea, crear TAREA_1
     if (formData.generarTarea) {
       catalogData.TAREA_1_NOMBRE = formData.nombre
-      catalogData.TAREA_1_DURACION = formData.tiempoTotalMin / 60 // Convertir a horas
+      catalogData.TAREA_1_DURACION = formData.tiempoHoras
       catalogData.TAREA_1_REQUIERE_MATERIAL = (formData.buscarEnStock || formData.crearOrdenCompra) && materiales.length > 0 ? 'SÍ' : 'NO'
       catalogData.TAREA_1_REQUIERE_DISEÑO = formData.requiereDiseno ? 'SÍ' : 'NO'
       
@@ -124,7 +124,7 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
       'PRECIO DE VENTA': formData.precioVenta || undefined,
       PROVEEDOR: formData.proveedor || undefined,
       DIAS_ENTREGA_PROVEEDOR: formData.diasEntrega || undefined,
-      TIEMPO_TOTAL_MIN: formData.tiempoTotalMin,
+      TIEMPO_TOTAL_MIN: Math.round(formData.tiempoHoras * 60),
       ...catalogData // Spread del catalogData construido arriba
     }
 
@@ -219,15 +219,13 @@ export default function ManualProductModal({ onAdd, onCancel }: ManualProductMod
 
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Tiempo Total (min)</label>
+                <label className="block text-sm font-medium mb-1">Tiempo Total (horas)</label>
                 <Input
                   type="number"
-                  value={formData.tiempoTotalMin}
-                  onChange={e => setFormData({ ...formData, tiempoTotalMin: parseInt(e.target.value) || 0 })}
+                  step="0.5"
+                  value={formData.tiempoHoras || ''}
+                  onChange={e => setFormData({ ...formData, tiempoHoras: parseFloat(e.target.value) || 0 })}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  = {fmtHours(formData.tiempoTotalMin / 60)} horas
-                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Proveedor</label>
