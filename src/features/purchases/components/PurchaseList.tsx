@@ -34,6 +34,8 @@ export default function PurchaseList() {
   const [expandedCatalogCategory, setExpandedCatalogCategory] = useState<string | null>(null)
   const [showQR, setShowQR] = useState<string | null>(null)
   const [showQRItem, setShowQRItem] = useState<PurchaseItem | null>(null)
+  const [showLabelGrid, setShowLabelGrid] = useState(false)
+  const [labelGridStart, setLabelGridStart] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedProvider, setSelectedProvider] = useState<string>('all')
   const [selectedEstanteria, setSelectedEstanteria] = useState<string>('all')
@@ -663,6 +665,55 @@ export default function PurchaseList() {
     }
 
     refreshData()
+  }
+
+  // ── Imprimir etiqueta QR individual en folio A4 (retícula 3×7) ──
+  const printSingleLabelA4 = (qrDataUrl: string, item: PurchaseItem | null, startCell: number) => {
+    const COLS = 3
+    const ROWS = 7
+    const TOTAL = COLS * ROWS
+    const ref = item?.referencia || item?.materialName || ''
+    const name = item?.materialName || ''
+    const qty = item ? `${item.quantity} ${item.unit}` : ''
+
+    let cellsHtml = ''
+    for (let i = 0; i < TOTAL; i++) {
+      if (i === startCell) {
+        cellsHtml += `
+          <div class="cell">
+            <div class="inner">
+              <img src="${qrDataUrl}" class="qr" />
+              <div class="info">
+                <div class="ref">${ref}</div>
+                <div class="name">${name}</div>
+                <div class="qty">${qty}</div>
+              </div>
+            </div>
+          </div>`
+      } else {
+        cellsHtml += '<div class="cell empty"></div>'
+      }
+    }
+
+    const printWindow = window.open('', '', 'width=800,height=1000')
+    if (!printWindow) return
+
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>Etiqueta QR</title><style>
+      @page { size: 210mm 297mm; margin: 0; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; }
+      .page { width: 210mm; height: 297mm; display: grid; grid-template-columns: repeat(3, 70mm); grid-template-rows: repeat(7, 42.4mm); }
+      .cell { width: 70mm; height: 42.4mm; border: 0.3mm solid #ccc; overflow: hidden; }
+      .cell.empty { }
+      .inner { display: flex; align-items: center; gap: 2mm; padding: 2mm; height: 100%; }
+      .qr { width: 30mm; height: 30mm; flex-shrink: 0; }
+      .info { flex: 1; overflow: hidden; }
+      .ref { font-size: 9pt; font-weight: bold; margin-bottom: 1mm; word-break: break-all; }
+      .name { font-size: 7pt; line-height: 1.2; margin-bottom: 1mm; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .qty { font-size: 8pt; color: #555; }
+    </style></head><body><div class="page">${cellsHtml}</div></body></html>`)
+    printWindow.document.close()
+    setTimeout(() => printWindow.print(), 300)
   }
 
   const providers = [...new Set(purchases.map(p => p.provider).filter(Boolean))]
@@ -1426,42 +1477,8 @@ export default function PurchaseList() {
                     size="sm"
                     className="flex-1"
                     onClick={() => {
-                      const printWindow = window.open('', '', 'width=400,height=500')
-                      if (!printWindow) return
-                      const ref = showQRItem?.referencia || showQRItem?.materialName || ''
-                      const name = showQRItem?.materialName || ''
-                      const qty = showQRItem ? `${showQRItem.quantity} ${showQRItem.unit}` : ''
-                      printWindow.document.write(`
-                        <html>
-                          <head>
-                            <title>Etiqueta QR</title>
-                            <style>
-                              @page { size: 62mm 40mm; margin: 0; }
-                              * { margin: 0; padding: 0; box-sizing: border-box; }
-                              body { font-family: Arial, sans-serif; width: 62mm; height: 40mm; display: flex; align-items: center; padding: 2mm; }
-                              .label { display: flex; gap: 2mm; width: 100%; align-items: center; }
-                              .qr { width: 30mm; height: 30mm; flex-shrink: 0; }
-                              .qr img { width: 100%; height: 100%; }
-                              .info { flex: 1; overflow: hidden; }
-                              .ref { font-size: 9pt; font-weight: bold; margin-bottom: 1mm; }
-                              .name { font-size: 7pt; line-height: 1.2; margin-bottom: 1mm; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-                              .qty { font-size: 8pt; color: #555; }
-                            </style>
-                          </head>
-                          <body>
-                            <div class="label">
-                              <div class="qr"><img src="${showQR}" /></div>
-                              <div class="info">
-                                <div class="ref">${ref}</div>
-                                <div class="name">${name}</div>
-                                <div class="qty">${qty}</div>
-                              </div>
-                            </div>
-                          </body>
-                        </html>
-                      `)
-                      printWindow.document.close()
-                      setTimeout(() => printWindow.print(), 300)
+                      setShowLabelGrid(true)
+                      setLabelGridStart(0)
                     }}
                   >
                     🖨️ Imprimir etiqueta
@@ -1491,6 +1508,55 @@ export default function PurchaseList() {
             </Card>
           </div>
         )}
+
+        {/* Grid position picker modal for single QR label */}
+        {showLabelGrid && showQR && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]" onClick={() => setShowLabelGrid(false)}>
+            <Card className="max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">📐 Posición en el folio A4</CardTitle>
+                <p className="text-xs text-gray-500 mt-1">Selecciona la celda donde imprimir la etiqueta (retícula 3×7)</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-3 gap-1">
+                  {Array.from({ length: 21 }, (_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setLabelGridStart(i)}
+                      className={`h-8 rounded text-xs font-medium border transition-all ${
+                        i === labelGridStart
+                          ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300'
+                          : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      printSingleLabelA4(showQR, showQRItem, labelGridStart)
+                      setShowLabelGrid(false)
+                    }}
+                  >
+                    🖨️ Imprimir en posición {labelGridStart + 1}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowLabelGrid(false)}
+                  >
+                    ✕
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Importar Stock */}
         {!stockLoaded && (
           <Card className="border-blue-200 bg-blue-50">
