@@ -492,7 +492,7 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
     setShowPreview(null)
     try {
       setSaving(true)
-      const approvedQuote = QuoteService.approveQuote(currentQuote.id)
+      const approvedQuote = await QuoteService.approveQuote(currentQuote.id)
       const result = await QuoteAutomation.executeAutomation(approvedQuote)
       if (!result.success) {
         toast.error('Error en automatización: ' + (result.errors?.[0] ?? 'error desconocido'), { duration: 8000 })

@@ -216,14 +216,39 @@ export class QuoteService {
     }
     
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(quotes))
-    // Persist to Supabase in background
-    supabase.from('quotes').upsert(toDb(quote)).then(({ error }) => {
-      if (error) {
-        console.error('❌ Supabase quote sync failed:', error.message)
-        toast.error('⚠️ Guardado local OK, pero no se sincronizó con la nube. Inténtalo de nuevo.', { duration: 5000 })
-      }
-    })
     toast.success('Presupuesto guardado')
+    // Persist to Supabase in background
+    this.syncQuoteToSupabase(quote)
+  }
+
+  /** Sync a single quote to Supabase — returns true on success */
+  private static async syncQuoteToSupabase(quote: Quote): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('quotes').upsert(toDb(quote))
+      if (error) {
+        console.error('❌ Supabase quote sync failed:', error.message, error.details, error.hint)
+        toast.error(`⚠️ Guardado local OK, pero no se sincronizó con la nube: ${error.message}`, { duration: 6000 })
+        return false
+      }
+      return true
+    } catch (err: any) {
+      console.error('❌ Supabase quote sync exception:', err)
+      toast.error('⚠️ Guardado local OK, pero no se sincronizó con la nube.', { duration: 5000 })
+      return false
+    }
+  }
+
+  /** saveQuote + await Supabase sync. Returns true if cloud sync succeeded */
+  static async saveQuoteAsync(quote: Quote): Promise<boolean> {
+    const quotes = this.getAllQuotes()
+    const existingIndex = quotes.findIndex(q => q.id === quote.id)
+    if (existingIndex >= 0) {
+      quotes[existingIndex] = quote
+    } else {
+      quotes.push(quote)
+    }
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(quotes))
+    return this.syncQuoteToSupabase(quote)
   }
 
   // Obtener todos los presupuestos (desde caché localStorage)
@@ -277,8 +302,8 @@ export class QuoteService {
     )
   }
 
-  // Aprobar presupuesto
-  static approveQuote(quoteId: string): Quote {
+  // Aprobar presupuesto → genera albarán
+  static async approveQuote(quoteId: string): Promise<Quote> {
     const quotes = this.getAllQuotes()
     const quote = quotes.find(q => q.id === quoteId)
     
@@ -302,7 +327,14 @@ export class QuoteService {
     quote.status = 'ALBARAN'
     quote.approvedAt = new Date()
     
-    this.saveQuote(quote)
+    const synced = await this.saveQuoteAsync(quote)
+    if (!synced) {
+      // Revert local change so it's consistent
+      quote.status = 'DRAFT'
+      quote.approvedAt = undefined
+      this.saveQuote(quote)
+      throw new Error('No se pudo sincronizar con la nube. Revisa tu conexión e inténtalo de nuevo.')
+    }
 
     // Actualizar el lead en CRM si el presupuesto está vinculado a uno
     if (quote.lead_id) {
@@ -319,7 +351,7 @@ export class QuoteService {
   }
 
   /** Emitir factura a partir de un albarán */
-  static emitInvoice(quoteId: string): Quote {
+  static async emitInvoice(quoteId: string): Promise<Quote> {
     const quotes = this.getAllQuotes()
     const quote = quotes.find(q => q.id === quoteId)
 
@@ -329,10 +361,16 @@ export class QuoteService {
     }
 
     quote.status = 'APPROVED'
-    // Keep approvedAt from the albarán stage; update invoiceEmittedAt
     ;(quote as any).invoiceEmittedAt = new Date()
 
-    this.saveQuote(quote)
+    const synced = await this.saveQuoteAsync(quote)
+    if (!synced) {
+      quote.status = 'ALBARAN'
+      delete (quote as any).invoiceEmittedAt
+      this.saveQuote(quote)
+      throw new Error('No se pudo sincronizar con la nube. Revisa tu conexión e inténtalo de nuevo.')
+    }
+
     toast.success('¡Factura emitida correctamente!')
     return quote
   }

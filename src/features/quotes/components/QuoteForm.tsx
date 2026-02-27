@@ -55,7 +55,7 @@ export default function QuoteForm({ quote: initialQuote, onApproved, onUpdated }
     setApproving(true)
     setShowPreview(false)
     try {
-      const approved = QuoteService.approveQuote(quote.id)
+      const approved = await QuoteService.approveQuote(quote.id)
       const result = await QuoteAutomation.executeAutomation(approved)
       setQuote(approved)
       onApproved?.(approved)

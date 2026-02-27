@@ -159,7 +159,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
 
   const handleApprove = async (quote: Quote) => {
     try {
-      const approvedQuote = QuoteService.approveQuote(quote.id)
+      const approvedQuote = await QuoteService.approveQuote(quote.id)
       const result = await QuoteAutomation.executeAutomation(approvedQuote)
       refresh()
       if (!result.success) {
@@ -232,9 +232,9 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   const handleEmitInvoice = (quote: Quote) => {
     setConfirmAction({
       message: `¿Emitir factura para el albarán ${quote.quoteNumber}?`,
-      action: () => {
+      action: async () => {
         try {
-          QuoteService.emitInvoice(quote.id)
+          await QuoteService.emitInvoice(quote.id)
           refresh()
         } catch (error: any) {
           toast.error(error.message)
