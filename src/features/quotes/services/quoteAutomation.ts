@@ -275,6 +275,7 @@ export class QuoteAutomation {
               items:           designItems.map((i: QuoteItem) => ({
                 quoteItemName:  i.productName,
                 quoteItemSku:   i.catalogSKU ?? undefined,
+                familia:        i.catalogData?.FAMILIA ?? undefined,
                 designStatus:   'pending' as const,
               })),
               status: 'pending',

@@ -96,6 +96,7 @@ export type DesignType = 'furniture' | 'exterior' | 'interior'
 export interface FurnitureWorkOrderItem {
   quoteItemName: string
   quoteItemSku?: string
+  familia?: string           // product family (electricidad, fontaneria, muebles, ventanas)
   designId?: string          // set once the piece is designed
   designStatus: 'pending' | 'designed' | 'approved'
 }

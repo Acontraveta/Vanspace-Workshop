@@ -152,12 +152,33 @@ const INTERIOR_TYPE_MAP: { keywords: string[]; type: string; layer: DiagramLayer
   { keywords: ['desagüe', 'desague'], type: 'desague', layer: 'water', color: '#78716c', icon: '⬇️', defaultW: 80, defaultH: 80 },
 ]
 
+// Determine layer from FAMILIA string
+function familiaToLayer(familia?: string): DiagramLayer | null {
+  if (!familia) return null
+  const f = familia.toLowerCase()
+  if (f.includes('electric') || f.includes('electri')) return 'electrical'
+  if (f.includes('fontaner') || f.includes('agua') || f.includes('water')) return 'water'
+  if (f.includes('mueble') || f.includes('mobiliario') || f.includes('furniture')) return 'furniture'
+  // ventanas, accesorios, etc. → furniture by default
+  return 'furniture'
+}
+
+const LAYER_DEFAULTS: Record<DiagramLayer, { color: string; icon: string }> = {
+  furniture:  { color: '#64748b', icon: '📦' },
+  electrical: { color: '#f59e0b', icon: '⚡' },
+  water:      { color: '#3b82f6', icon: '💧' },
+}
+
 function quoteItemToInteriorPalette(item: FurnitureWorkOrderItem, idx: number): PaletteItem & { fromQuote: true } {
   const nameLower = item.quoteItemName.toLowerCase()
   const dimMatch = nameLower.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})/)
   const parsedW = dimMatch ? parseInt(dimMatch[1]) : undefined
   const parsedH = dimMatch ? parseInt(dimMatch[2]) : undefined
 
+  // 1. Determine layer from FAMILIA (primary) or keyword match (fallback)
+  const familiaLayer = familiaToLayer(item.familia)
+
+  // 2. Try keyword match for visual type (icon, dimensions, color)
   for (const mapping of INTERIOR_TYPE_MAP) {
     if (mapping.keywords.some(k => nameLower.includes(k))) {
       return {
@@ -167,19 +188,23 @@ function quoteItemToInteriorPalette(item: FurnitureWorkOrderItem, idx: number): 
         h: parsedH ?? mapping.defaultH,
         color: mapping.color,
         icon: mapping.icon,
-        layer: mapping.layer,
+        layer: familiaLayer ?? mapping.layer,  // FAMILIA wins over keyword
         fromQuote: true,
       }
     }
   }
+
+  // 3. No keyword match — use FAMILIA for layer, generic appearance
+  const layer = familiaLayer ?? 'furniture'
+  const defaults = LAYER_DEFAULTS[layer]
   return {
     type: 'custom',
     label: item.quoteItemName,
     w: parsedW ?? 400,
     h: parsedH ?? 300,
-    color: '#64748b',
-    icon: '📦',
-    layer: 'furniture',
+    color: defaults.color,
+    icon: defaults.icon,
+    layer,
     fromQuote: true,
   }
 }
@@ -196,6 +221,10 @@ function catalogToInteriorPalette(p: CatalogProduct): PaletteItem | null {
   const parsedW = dimMatch ? parseInt(dimMatch[1]) : undefined
   const parsedH = dimMatch ? parseInt(dimMatch[2]) : undefined
 
+  // 1. Determine layer from FAMILIA (primary source of truth)
+  const familiaLayer = familiaToLayer(p.FAMILIA)
+
+  // 2. Try keyword match for visual type (icon, size, color)
   for (const mapping of INTERIOR_TYPE_MAP) {
     if (mapping.keywords.some(k => all.includes(k))) {
       return {
@@ -205,11 +234,26 @@ function catalogToInteriorPalette(p: CatalogProduct): PaletteItem | null {
         h: parsedH ?? mapping.defaultH,
         color: mapping.color,
         icon: mapping.icon,
-        layer: mapping.layer,
+        layer: familiaLayer ?? mapping.layer,  // FAMILIA wins over keyword
       }
     }
   }
-  return null // product doesn't match any interior type → skip
+
+  // 3. No keyword match but has a valid FAMILIA → show with generic appearance
+  if (familiaLayer) {
+    const defaults = LAYER_DEFAULTS[familiaLayer]
+    return {
+      type: 'custom',
+      label: p.NOMBRE,
+      w: parsedW ?? 300,
+      h: parsedH ?? 200,
+      color: defaults.color,
+      icon: defaults.icon,
+      layer: familiaLayer,
+    }
+  }
+
+  return null // no FAMILIA and no keyword match → skip
 }
 
 // ── SVG Symbol visuals per type ───────────────────────────────────
