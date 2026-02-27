@@ -140,9 +140,12 @@ export class UnifiedCalendarService {
 
   static async getCustomEvents(): Promise<CalendarEvent[]> {
     try {
+      // Exclude PROYECTO_SPAN — those are generated on-the-fly by getProductionEvents()
+      // from production_projects. Including them here would cause duplicates and orphans.
       const { data, error } = await supabase
         .from('calendar_events')
         .select('*')
+        .neq('event_type', 'PROYECTO_SPAN')
         .order('event_date', { ascending: true })
 
       if (error) throw error

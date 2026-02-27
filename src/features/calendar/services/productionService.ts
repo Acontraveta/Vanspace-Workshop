@@ -380,19 +380,19 @@ export class ProductionService {
   /** Delete a production project and all related data (tasks, calendar events, work orders) */
   static async deleteProject(id: string): Promise<void> {
     // 1. Delete production tasks
-    try {
-      await supabase.from('production_tasks').delete().eq('project_id', id)
-    } catch { /* tasks may not exist */ }
+    const { error: tasksErr } = await supabase
+      .from('production_tasks').delete().eq('project_id', id)
+    if (tasksErr) console.warn('⚠️ deleteProject: tasks cleanup failed:', tasksErr.message)
 
-    // 2. Delete calendar events linked to this project
-    try {
-      await supabase.from('calendar_events').delete().eq('source_id', id)
-    } catch { /* calendar events may not exist */ }
+    // 2. Delete calendar events linked to this project (by source_id AND by metadata)
+    const { error: calErr } = await supabase
+      .from('calendar_events').delete().eq('source_id', id)
+    if (calErr) console.warn('⚠️ deleteProject: calendar_events cleanup failed:', calErr.message)
 
     // 3. Delete furniture work orders (CASCADE deletes furniture_designs, exterior_designs, interior_designs)
-    try {
-      await supabase.from('furniture_work_orders').delete().eq('project_id', id)
-    } catch { /* work orders may not exist */ }
+    const { error: woErr } = await supabase
+      .from('furniture_work_orders').delete().eq('project_id', id)
+    if (woErr) console.warn('⚠️ deleteProject: work_orders cleanup failed:', woErr.message)
 
     // 4. Delete the project itself
     const { error } = await supabase
