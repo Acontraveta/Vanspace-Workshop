@@ -9,6 +9,98 @@ import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
 import QRCode from 'qrcode'
 
+// ─────────────────────────────────────────────────────────────
+// QRVideoFeed — self-contained scanner that mounts = starts, unmounts = stops.
+// React guarantees the div is in the DOM when useEffect runs, so there are
+// no timing/visibility/layout races with html5-qrcode.
+// ─────────────────────────────────────────────────────────────
+function QRVideoFeed({ onScan, onError }: { onScan: (text: string) => void; onError: (msg: string) => void }) {
+  const idRef = useRef(`qr-feed-${Math.random().toString(36).slice(2)}`)
+
+  useEffect(() => {
+    let scanner: Html5Qrcode | null = null
+    let cancelled = false
+
+    const start = async () => {
+      // Poll until our container has non-zero layout dimensions (max ~3 s)
+      for (let i = 0; i < 60 && !cancelled; i++) {
+        const el = document.getElementById(idRef.current)
+        if (el && el.clientWidth > 0 && el.clientHeight > 0) break
+        await new Promise(r => setTimeout(r, 50))
+      }
+      if (cancelled) return
+
+      const el = document.getElementById(idRef.current)
+      if (!el || el.clientWidth === 0) {
+        onError('No se pudo inicializar el visor de cámara.')
+        return
+      }
+
+      try {
+        scanner = new Html5Qrcode(idRef.current, {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          verbose: false,
+        })
+
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: (vw, vh) => ({ width: Math.min(250, vw - 40), height: Math.min(250, vh - 40) }), disableFlip: true },
+          (decodedText) => {
+            if (cancelled) return
+            console.log('[QR] Decoded:', decodedText)
+            // Pause immediately — never call stop() inside the callback
+            try { scanner?.pause(true) } catch { /* noop */ }
+            onScan(decodedText)
+          },
+          () => { /* scan-in-progress, ignore */ }
+        )
+      } catch (err: any) {
+        if (cancelled) return
+        console.error('[QR] Camera start error:', err)
+        const msg = err?.name || err?.message || String(err)
+        if (/NotAllowed|Permission/i.test(msg)) {
+          onError('Permiso de cámara denegado. Permite el acceso en la configuración del navegador.')
+        } else if (/NotFound|NotReadable|Overconstrained/i.test(msg)) {
+          onError('No se encontró ninguna cámara disponible en el dispositivo.')
+        } else if (/could not start video source/i.test(msg)) {
+          onError('La cámara está en uso por otra aplicación.')
+        } else {
+          onError(`Error de cámara: ${msg}`)
+        }
+      }
+    }
+
+    start()
+
+    return () => {
+      cancelled = true
+      if (scanner) {
+        const s = scanner
+        scanner = null
+        ;(async () => {
+          try {
+            const st = s.getState()
+            if (st === 2 || st === 3) await s.stop()
+            s.clear()
+          } catch {
+            try { s.clear() } catch { /* noop */ }
+          }
+        })()
+      }
+    }
+  }, []) // mount-only
+
+  return (
+    <div
+      id={idRef.current}
+      style={{ width: '100%', height: 300, borderRadius: 8, overflow: 'hidden', background: '#000' }}
+    />
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+
 interface QRScannerProps {
   stock: StockItem[]
   onRefresh: () => Promise<void>
@@ -26,11 +118,6 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   const [qrPreview, setQrPreview] = useState<string | null>(null)
   const [qrPreviewItem, setQrPreviewItem] = useState<StockItem | null>(null)
   const [ConfirmDialog, confirm] = useConfirm()
-
-  const scannerRef = useRef<Html5Qrcode | null>(null)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const scannerContainerId = useRef(`qr-reader-${Date.now()}`).current  // unique per mount
-  const mountedRef = useRef(true)
 
   const processCode = useCallback((code: string) => {
     let referencia = ''
@@ -67,128 +154,6 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   // Ref always points to latest processCode (for scanner callback closure)
   const processCodeRef = useRef(processCode)
   useEffect(() => { processCodeRef.current = processCode }, [processCode])
-
-  // ── Wait until the container element has real layout dimensions ──
-  const waitForLayout = (): Promise<boolean> => {
-    return new Promise(resolve => {
-      let attempts = 0
-      const check = () => {
-        if (!mountedRef.current) { resolve(false); return }
-        const el = document.getElementById(scannerContainerId)
-        if (el && el.clientWidth > 0 && el.clientHeight > 0) {
-          resolve(true)
-          return
-        }
-        attempts++
-        if (attempts > 30) { resolve(false); return }   // 3 s max
-        requestAnimationFrame(check)
-      }
-      // First attempt after a microtask so React can flush
-      requestAnimationFrame(check)
-    })
-  }
-
-  // ── Safely tear down the current scanner instance ──
-  const destroyScanner = useCallback(async () => {
-    const scanner = scannerRef.current
-    if (!scanner) return
-    scannerRef.current = null
-    try {
-      const state = scanner.getState()
-      // 2 = SCANNING, 3 = PAUSED
-      if (state === 2 || state === 3) {
-        await scanner.stop()
-      }
-      scanner.clear()
-    } catch {
-      // best-effort cleanup
-      try { scanner.clear() } catch { /* noop */ }
-    }
-  }, [])
-
-  const startCamera = useCallback(async () => {
-    setCameraError(null)
-
-    // Check if camera API is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setCameraError('La API de cámara no está disponible. Asegúrate de usar HTTPS y un navegador compatible.')
-      return
-    }
-
-    // Tear down any previous instance first
-    await destroyScanner()
-
-    // Show the container so it gets real layout dimensions
-    setCameraActive(true)
-
-    // Poll until the DOM element has non-zero clientWidth/clientHeight
-    const ready = await waitForLayout()
-    if (!ready || !mountedRef.current) {
-      setCameraError('No se pudo inicializar el visor de cámara. Reintenta.')
-      setCameraActive(false)
-      return
-    }
-
-    try {
-      // Fresh instance every time — html5-qrcode doesn't reuse well after stop()
-      const scanner = new Html5Qrcode(scannerContainerId, {
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        experimentalFeatures: { useBarCodeDetectorIfSupported: false },
-        verbose: false,
-      })
-      scannerRef.current = scanner
-
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 }, disableFlip: true },
-        (decodedText) => {
-          console.log('[QR] Decoded:', decodedText)
-          // Pause immediately — do NOT call stop() inside the callback
-          // (stop() from inside foreverScan causes state-transition race)
-          try { scanner.pause(true) } catch { /* may already be paused */ }
-          processCodeRef.current(decodedText)
-          // Async cleanup after a tick
-          setTimeout(() => stopCamera(), 100)
-        },
-        () => { /* scan-in-progress, ignore */ }
-      )
-    } catch (err: any) {
-      console.error('[QR] Error starting camera:', err)
-      const msg = err?.name || err?.message || String(err)
-      if (/NotAllowed|Permission/i.test(msg)) {
-        setCameraError('Permiso de cámara denegado. Permite el acceso en la configuración del navegador.')
-      } else if (/NotFound|NotReadable|Overconstrained/i.test(msg)) {
-        setCameraError('No se encontró ninguna cámara disponible en el dispositivo.')
-      } else if (/could not start video source/i.test(msg)) {
-        setCameraError('La cámara está en uso por otra aplicación. Cierra otras apps e inténtalo de nuevo.')
-      } else {
-        setCameraError(`Error al iniciar la cámara: ${msg}`)
-      }
-      setCameraActive(false)
-    }
-  }, [destroyScanner])
-
-  const stopCamera = useCallback(async () => {
-    await destroyScanner()
-    setCameraActive(false)
-  }, [destroyScanner])
-
-  // Track mount state & cleanup on unmount
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-      const scanner = scannerRef.current
-      if (scanner) {
-        scannerRef.current = null
-        try {
-          const st = scanner.getState()
-          if (st === 2 || st === 3) scanner.stop().catch(() => {})
-          scanner.clear()
-        } catch { /* noop */ }
-      }
-    }
-  }, [])
 
   const assignLocation = async () => {
     if (!foundItem || !newLocation) return
@@ -353,11 +318,11 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
           <CardTitle className="text-base flex items-center justify-between">
             <span>📷 Escáner QR</span>
             {!cameraActive ? (
-              <Button size="sm" onClick={startCamera} className="bg-emerald-600 hover:bg-emerald-700">
+              <Button size="sm" onClick={() => { setCameraError(null); setCameraActive(true) }} className="bg-emerald-600 hover:bg-emerald-700">
                 📸 Abrir cámara
               </Button>
             ) : (
-              <Button size="sm" variant="outline" onClick={stopCamera}>
+              <Button size="sm" variant="outline" onClick={() => setCameraActive(false)}>
                 ✕ Cerrar cámara
               </Button>
             )}
@@ -370,21 +335,22 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
             </div>
           )}
 
-          {/* Camera video container — ALWAYS in DOM with real dimensions.
-              When inactive: hidden via visibility+position so clientWidth stays valid.
-              html5-qrcode reads clientWidth at start() and creates a 0px video if hidden. */}
-          <div
-            ref={containerRef}
-            id={scannerContainerId}
-            className={`rounded-lg ${cameraActive ? 'border-2 border-emerald-400' : ''}`}
-            style={{
-              width: '100%',
-              height: 300,
-              ...(cameraActive
-                ? { position: 'relative' as const, visibility: 'visible' as const }
-                : { position: 'absolute' as const, visibility: 'hidden' as const, pointerEvents: 'none' as const, left: -9999 }),
-            }}
-          />
+          {/* When active, mount the self-contained scanner component.
+              It starts the camera on mount and stops on unmount — no timing hacks. */}
+          {cameraActive && (
+            <div className="border-2 border-emerald-400 rounded-lg overflow-hidden">
+              <QRVideoFeed
+                onScan={(code) => {
+                  processCodeRef.current(code)
+                  setCameraActive(false)
+                }}
+                onError={(msg) => {
+                  setCameraError(msg)
+                  setCameraActive(false)
+                }}
+              />
+            </div>
+          )}
 
           {!cameraActive && !cameraError && (
             <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">

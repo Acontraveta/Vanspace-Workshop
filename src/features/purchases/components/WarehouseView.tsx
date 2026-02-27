@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
@@ -8,6 +9,62 @@ import { StockService } from '../services/stockService'
 import { supabase } from '@/lib/supabase'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import toast from 'react-hot-toast'
+
+// ─── Self-contained QR scanner for warehouse ────────────────
+function WarehouseQRFeed({ onScan, onError }: { onScan: (text: string) => void; onError: (msg: string) => void }) {
+  const idRef = useRef(`wh-qr-${Math.random().toString(36).slice(2)}`)
+
+  useEffect(() => {
+    let scanner: Html5Qrcode | null = null
+    let cancelled = false
+
+    const start = async () => {
+      for (let i = 0; i < 60 && !cancelled; i++) {
+        const el = document.getElementById(idRef.current)
+        if (el && el.clientWidth > 0 && el.clientHeight > 0) break
+        await new Promise(r => setTimeout(r, 50))
+      }
+      if (cancelled) return
+      const el = document.getElementById(idRef.current)
+      if (!el || el.clientWidth === 0) { onError('No se pudo inicializar la cámara.'); return }
+
+      try {
+        scanner = new Html5Qrcode(idRef.current, {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          verbose: false,
+        })
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: (vw: number, vh: number) => ({ width: Math.min(250, vw - 40), height: Math.min(250, vh - 40) }), disableFlip: true },
+          (decodedText: string) => {
+            if (cancelled) return
+            try { scanner?.pause(true) } catch { /* noop */ }
+            onScan(decodedText)
+          },
+          () => {}
+        )
+      } catch (err: any) {
+        if (!cancelled) onError(err?.message || 'No se pudo iniciar la cámara')
+      }
+    }
+
+    start()
+
+    return () => {
+      cancelled = true
+      if (scanner) {
+        const s = scanner; scanner = null
+        ;(async () => {
+          try { const st = s.getState(); if (st === 2 || st === 3) await s.stop(); s.clear() }
+          catch { try { s.clear() } catch {} }
+        })()
+      }
+    }
+  }, [])
+
+  return <div id={idRef.current} style={{ width: '100%', height: 260, background: '#000' }} />
+}
 
 interface WarehouseViewProps {
   stock: StockItem[]
@@ -44,9 +101,7 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
   const [qrCode, setQrCode] = useState('')
   const [locationFilter, setLocationFilter] = useState<string>('all')
   const [warehouseCameraActive, setWarehouseCameraActive] = useState(false)
-  const warehouseScannerRef = useRef<any>(null)
-  const warehouseScannerContainerId = useRef(`warehouse-qr-${Date.now()}`).current
-  const warehouseMountedRef = useRef(true)
+  const [warehouseCameraError, setWarehouseCameraError] = useState<string | null>(null)
 
   const [newShelf, setNewShelf] = useState({
     code: '',
@@ -247,89 +302,6 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
       }
     }
   }
-
-  const destroyWarehouseScanner = useCallback(async () => {
-    const scanner = warehouseScannerRef.current
-    if (!scanner) return
-    warehouseScannerRef.current = null
-    try {
-      const st = scanner.getState?.()
-      if (st === 2 || st === 3) await scanner.stop()
-      scanner.clear()
-    } catch {
-      try { scanner.clear() } catch { /* noop */ }
-    }
-  }, [])
-
-  const startWarehouseCamera = useCallback(async () => {
-    await destroyWarehouseScanner()
-    setWarehouseCameraActive(true)
-
-    // Poll until DOM element has real dimensions
-    const ready = await new Promise<boolean>(resolve => {
-      let n = 0
-      const check = () => {
-        if (!warehouseMountedRef.current) { resolve(false); return }
-        const el = document.getElementById(warehouseScannerContainerId)
-        if (el && el.clientWidth > 0 && el.clientHeight > 0) { resolve(true); return }
-        if (++n > 30) { resolve(false); return }
-        requestAnimationFrame(check)
-      }
-      requestAnimationFrame(check)
-    })
-    if (!ready) {
-      toast.error('No se pudo inicializar el visor de cámara')
-      setWarehouseCameraActive(false)
-      return
-    }
-
-    try {
-      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode')
-
-      const scanner = new Html5Qrcode(warehouseScannerContainerId, {
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        experimentalFeatures: { useBarCodeDetectorIfSupported: false },
-        verbose: false,
-      })
-      warehouseScannerRef.current = scanner
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 }, disableFlip: true },
-        (decodedText: string) => {
-          console.log('[QR-Warehouse] Decoded:', decodedText)
-          try { scanner.pause(true) } catch { /* may already be paused */ }
-          handleQRScan(decodedText)
-          setTimeout(() => stopWarehouseCamera(), 100)
-        },
-        () => {}
-      )
-    } catch (err: any) {
-      toast.error('No se pudo iniciar la cámara')
-      console.error(err)
-      setWarehouseCameraActive(false)
-    }
-  }, [destroyWarehouseScanner])
-
-  const stopWarehouseCamera = useCallback(async () => {
-    await destroyWarehouseScanner()
-    setWarehouseCameraActive(false)
-  }, [destroyWarehouseScanner])
-
-  useEffect(() => {
-    warehouseMountedRef.current = true
-    return () => {
-      warehouseMountedRef.current = false
-      const scanner = warehouseScannerRef.current
-      if (scanner) {
-        warehouseScannerRef.current = null
-        try {
-          const st = scanner.getState?.()
-          if (st === 2 || st === 3) scanner.stop().catch(() => {})
-          scanner.clear()
-        } catch { /* noop */ }
-      }
-    }
-  }, [])
 
   const getEmptyLocations = (): string[] => {
     const empty: string[] = []
@@ -955,27 +927,35 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
                 </div>
               </div>
 
-              {/* Camera scanner — always in DOM with real size, hidden via visibility */}
-              <div
-                id={warehouseScannerContainerId}
-                className={`rounded-lg mb-3 ${warehouseCameraActive ? 'border-2 border-emerald-400' : ''}`}
-                style={{
-                  width: '100%',
-                  height: 260,
-                  ...(warehouseCameraActive
-                    ? { position: 'relative' as const, visibility: 'visible' as const }
-                    : { position: 'absolute' as const, visibility: 'hidden' as const, pointerEvents: 'none' as const, left: -9999 }),
-                }}
-              />
+              {/* Camera scanner — mount-based lifecycle via sub-component */}
+              {warehouseCameraActive && (
+                <div className="border-2 border-emerald-400 rounded-lg overflow-hidden mb-3">
+                  <WarehouseQRFeed
+                    onScan={(code) => {
+                      handleQRScan(code)
+                      setWarehouseCameraActive(false)
+                    }}
+                    onError={(msg) => {
+                      setWarehouseCameraError(msg)
+                      setWarehouseCameraActive(false)
+                    }}
+                  />
+                </div>
+              )}
+              {warehouseCameraError && !warehouseCameraActive && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-700 mb-2">
+                  ⚠️ {warehouseCameraError}
+                </div>
+              )}
 
               {/* QR Scanner */}
               <div className="flex gap-2">
                 {!warehouseCameraActive ? (
-                  <Button size="sm" onClick={startWarehouseCamera} className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
+                  <Button size="sm" onClick={() => { setWarehouseCameraError(null); setWarehouseCameraActive(true) }} className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
                     📸
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" onClick={stopWarehouseCamera} className="shrink-0">
+                  <Button size="sm" variant="outline" onClick={() => setWarehouseCameraActive(false)} className="shrink-0">
                     ✕
                   </Button>
                 )}
