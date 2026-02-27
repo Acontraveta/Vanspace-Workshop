@@ -22,6 +22,8 @@ import { QuoteAutomation } from '../services/quoteAutomation'
 import { QuickDocService, QuickDocRecord } from '../services/quickDocService'
 import { PurchaseService } from '@/features/purchases/services/purchaseService'
 import { PurchaseItem } from '@/features/purchases/types/purchase.types'
+import { RentalService } from '@/features/rental/services/rentalService'
+import { RentalBooking } from '@/features/rental/types/rental.types'
 import { Quote } from '../types/quote.types'
 import { supabase } from '@/lib/supabase'
 import QuotePreview from './QuotePreview'
@@ -79,6 +81,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   const [proformas, setProformas]       = useState<QuickDocRecord[]>(() => QuickDocService.getByType('PROFORMA'))
   const [simplificadas, setSimplificadas] = useState<QuickDocRecord[]>(() => QuickDocService.getByType('FACTURA_SIMPLIFICADA'))
   const [purchaseItems, setPurchaseItems] = useState<PurchaseItem[]>([])
+  const [rentalBookings, setRentalBookings] = useState<RentalBooking[]>([])
 
   const allQuotes     = useMemo(() => QuoteService.getAllQuotes(), [refreshKey])
 
@@ -91,6 +94,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
       setSimplificadas(all.filter(d => d.type === 'FACTURA_SIMPLIFICADA'))
     })
     PurchaseService.getAllPurchases().then(setPurchaseItems)
+    RentalService.getBookings().then(setRentalBookings).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -731,6 +735,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           simplificadas={simplificadas}
           proformas={proformas}
           purchaseItems={purchaseItems}
+          rentalBookings={rentalBookings}
           onClose={() => setShowFiscalReport(false)}
         />
       )}

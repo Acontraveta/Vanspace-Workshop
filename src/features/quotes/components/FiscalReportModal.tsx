@@ -20,6 +20,7 @@ import { Card, CardContent } from '@/shared/components/ui/card'
 import { Quote } from '../types/quote.types'
 import { QuickDocRecord } from '../services/quickDocService'
 import { PurchaseItem } from '@/features/purchases/types/purchase.types'
+import { RentalBooking } from '@/features/rental/types/rental.types'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ interface FiscalReportModalProps {
   simplificadas: QuickDocRecord[]
   proformas: QuickDocRecord[]
   purchaseItems: PurchaseItem[]
+  rentalBookings?: RentalBooking[]
   onClose: () => void
 }
 
@@ -71,7 +73,7 @@ interface InvoiceRow {
   vatPct: number
   vatAmount: number
   total: number
-  type: 'factura' | 'simplificada' | 'proforma'
+  type: 'factura' | 'simplificada' | 'proforma' | 'alquiler'
   invoiceImageUrl?: string
 }
 
@@ -106,24 +108,54 @@ function docToRow(d: QuickDocRecord): InvoiceRow {
   }
 }
 
+function rentalToRow(b: RentalBooking): InvoiceRow {
+  const vatPct = 21
+  const base = b.precio_total / (1 + vatPct / 100)
+  const vatAmount = b.precio_total - base
+  // Include km extra cost if present
+  const extraKm = b.coste_km_extra ?? 0
+  const totalWithExtra = b.precio_total + extraKm
+  const baseWithExtra = totalWithExtra / (1 + vatPct / 100)
+  const vatWithExtra = totalWithExtra - baseWithExtra
+  return {
+    number: `ALQ-${b.id.slice(0, 8).toUpperCase()}`,
+    date: b.fecha_devolucion_real ? new Date(b.fecha_devolucion_real)
+         : b.fecha_fin ? new Date(b.fecha_fin)
+         : new Date(b.fecha_inicio),
+    client: b.cliente_nombre,
+    nif: b.cliente_dni ?? '',
+    base: Math.round(baseWithExtra * 100) / 100,
+    vatPct,
+    vatAmount: Math.round(vatWithExtra * 100) / 100,
+    total: Math.round(totalWithExtra * 100) / 100,
+    type: 'alquiler',
+  }
+}
+
 // ─── Component ───────────────────────────────────────────────
 
-export default function FiscalReportModal({ facturas, simplificadas, proformas, purchaseItems, onClose }: FiscalReportModalProps) {
+export default function FiscalReportModal({ facturas, simplificadas, proformas, purchaseItems, rentalBookings = [], onClose }: FiscalReportModalProps) {
   const [reportType, setReportType] = useState<ReportType>('libro-facturas')
   const [year, setYear] = useState<number>(new Date().getFullYear())
   const [quarter, setQuarter] = useState<number>(getQuarter(new Date()))
   const [includeSimp, setIncludeSimp] = useState(true)
+  const [includeRentals, setIncludeRentals] = useState(true)
   const [includeProformas, setIncludeProformas] = useState(false)
 
   // Build unified rows (emitidas)
   const allRows = useMemo(() => {
+    // Only include completed rentals that have been paid
+    const paidRentals = rentalBookings.filter(b =>
+      b.status === 'completed' && b.pagado
+    )
     const rows: InvoiceRow[] = [
       ...facturas.map(quoteToRow),
       ...(includeSimp ? simplificadas.map(docToRow) : []),
       ...(includeProformas ? proformas.map(docToRow) : []),
+      ...(includeRentals ? paidRentals.map(rentalToRow) : []),
     ]
     return rows.sort((a, b) => a.date.getTime() - b.date.getTime())
-  }, [facturas, simplificadas, proformas, includeSimp, includeProformas])
+  }, [facturas, simplificadas, proformas, rentalBookings, includeSimp, includeProformas, includeRentals])
 
   // ── Purchase invoice rows (recibidas) ─────────────────────
   // Group purchase items by orderGroupId. Items without a group
@@ -224,7 +256,7 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
         r.vatPct,
         fmt(r.vatAmount),
         fmt(r.total),
-        r.type === 'factura' ? 'Factura' : r.type === 'simplificada' ? 'Simplificada' : 'Proforma',
+        r.type === 'factura' ? 'Factura' : r.type === 'simplificada' ? 'Simplificada' : r.type === 'alquiler' ? 'Alquiler' : 'Proforma',
       ].join(';')
     )
     const csv = '\uFEFF' + [header, ...lines].join('\n') // BOM for Excel
@@ -301,9 +333,10 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
                     <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                       r.type === 'factura' ? 'bg-green-100 text-green-700' :
                       r.type === 'simplificada' ? 'bg-blue-100 text-blue-700' :
+                      r.type === 'alquiler' ? 'bg-amber-100 text-amber-700' :
                       'bg-purple-100 text-purple-700'
                     }`}>
-                      {r.type === 'factura' ? 'Factura' : r.type === 'simplificada' ? 'Simpl.' : 'Proforma'}
+                      {r.type === 'factura' ? 'Factura' : r.type === 'simplificada' ? 'Simpl.' : r.type === 'alquiler' ? 'Alquiler' : 'Proforma'}
                     </span>
                   </td>
                 </tr>
@@ -726,6 +759,10 @@ export default function FiscalReportModal({ facturas, simplificadas, proformas, 
           <label className="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" checked={includeProformas} onChange={e => setIncludeProformas(e.target.checked)} className="rounded" />
             <span className="text-xs text-gray-600">Incluir proformas</span>
+          </label>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={includeRentals} onChange={e => setIncludeRentals(e.target.checked)} className="rounded" />
+            <span className="text-xs text-gray-600">Incluir alquileres</span>
           </label>
         </div>
 
