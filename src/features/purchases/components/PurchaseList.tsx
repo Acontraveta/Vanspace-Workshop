@@ -430,9 +430,9 @@ export default function PurchaseList() {
   const handleDeleteProduct = (product: CatalogProduct) => {
     confirm(`¿Eliminar "${product.NOMBRE}" (${product.SKU}) del catálogo? Esta acción es irreversible.`, async () => {
       try {
-        await CatalogService.deleteProduct(product.SKU)
+        const updated = await CatalogService.deleteProduct(product.SKU)
+        setCatalogProducts(updated)
         toast.success('🗑️ Producto eliminado del catálogo')
-        loadCatalog()
       } catch {
         toast.error('Error al eliminar producto')
       }

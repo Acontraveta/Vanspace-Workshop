@@ -5,6 +5,8 @@ import { downloadExcel, uploadExcel, supabase } from '@/lib/supabase'
 export class CatalogService {
   private static products: CatalogProduct[] = []
   private static EXCEL_PATH = 'catalogoproductos.xlsx'
+  /** SKUs borrados en esta sesión — loadFromSupabase los filtra incluso si el Excel/CDN sigue stale */
+  private static deletedSKUs: Set<string> = new Set()
 
   // Cargar catálogo desde Supabase Storage + DB (fusiona ambos)
   static async loadFromSupabase(): Promise<CatalogProduct[]> {
@@ -47,10 +49,13 @@ export class CatalogService {
         ...dbProducts,
       ]
       
-      console.log('✅ Productos finales:', merged.length, `(${excelProducts.length} Excel + ${dbProducts.length} DB, ${merged.length} tras fusión)`)
+      // Filtrar SKUs borrados en esta sesión (protección contra Excel/CDN stale)
+      const afterDelete = merged.filter(p => !this.deletedSKUs.has(p.SKU))
+      
+      console.log('✅ Productos finales:', afterDelete.length, `(${excelProducts.length} Excel + ${dbProducts.length} DB, ${merged.length} tras fusión, ${this.deletedSKUs.size} borrados filtrados)`)
       
       // Guardar en memoria y caché
-      this.products = merged
+      this.products = afterDelete
       localStorage.setItem('catalog_products', JSON.stringify(merged))
       localStorage.setItem('catalog_loaded', 'true')
       localStorage.setItem('catalog_last_sync', new Date().toISOString())
@@ -261,12 +266,14 @@ export class CatalogService {
    * 2. Elimina de memoria local y localStorage
    * 3. Re-exporta el Excel sin ese producto (await para evitar race conditions)
    */
-  static async deleteProduct(sku: string): Promise<void> {
+  static async deleteProduct(sku: string): Promise<CatalogProduct[]> {
+    // Registrar SKU borrado para que loadFromSupabase no lo readmita
+    this.deletedSKUs.add(sku)
+
     // Borrar de Supabase
     const { error } = await supabase.from('catalog_products').delete().eq('sku', sku)
     if (error) {
       console.warn('⚠️ Error borrando de catalog_products:', error.message)
-      // Puede que el producto solo existiera en el Excel, continuar igualmente
     }
 
     // Eliminar de memoria local
@@ -274,12 +281,14 @@ export class CatalogService {
     localStorage.setItem('catalog_products', JSON.stringify(this.products))
     localStorage.setItem('catalog_last_sync', new Date().toISOString())
 
-    // Re-exportar el Excel sin ese producto — AWAIT para que loadCatalog() lea el Excel actualizado
+    // Re-exportar el Excel sin ese producto
     try {
       await this.reExportExcel()
     } catch (err) {
       console.warn('Re-export Excel failed:', err)
     }
+
+    return this.products
   }
 
   /**
