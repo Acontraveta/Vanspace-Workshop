@@ -8,6 +8,15 @@ export interface LinkedLeadData {
   clientPhone?: string
   clientEmail?: string
   vehicleModel?: string
+  billingData?: {
+    nif: string
+    fiscalName: string
+    address: string
+    postalCode: string
+    city: string
+    province: string
+    country: string
+  }
 }
 
 interface CRMLinkModalProps {
@@ -27,7 +36,7 @@ export default function CRMLinkModal({ onSelect, onClose }: CRMLinkModalProps) {
 
     supabase
       .from('crm_leads')
-      .select('id, cliente, telefono, email, vehiculo, talla, estado, importe')
+      .select('id, cliente, telefono, email, vehiculo, talla, estado, importe, billing_nif, billing_fiscal_name, billing_address, billing_postal_code, billing_city, billing_province, billing_country')
       .order('cliente')
       .limit(500)
       .then(({ data, error }) => {
@@ -49,6 +58,7 @@ export default function CRMLinkModal({ onSelect, onClose }: CRMLinkModalProps) {
   }, [search, allLeads])
 
   const handleSelect = (lead: Lead) => {
+    const hasBilling = !!lead.billing_nif
     onSelect({
       lead_id: lead.id,
       clientName: lead.cliente,
@@ -57,6 +67,17 @@ export default function CRMLinkModal({ onSelect, onClose }: CRMLinkModalProps) {
       vehicleModel: lead.vehiculo
         ? `${lead.vehiculo}${lead.talla ? ' ' + lead.talla : ''}`
         : undefined,
+      ...(hasBilling ? {
+        billingData: {
+          nif: lead.billing_nif || '',
+          fiscalName: lead.billing_fiscal_name || lead.cliente,
+          address: lead.billing_address || '',
+          postalCode: lead.billing_postal_code || '',
+          city: lead.billing_city || '',
+          province: lead.billing_province || '',
+          country: lead.billing_country || 'España',
+        }
+      } : {}),
     })
     onClose()
   }

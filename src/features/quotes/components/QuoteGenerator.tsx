@@ -629,6 +629,11 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
           if (data.clientPhone) setClientPhone(data.clientPhone)
           if (data.clientEmail) setClientEmail(data.clientEmail)
           if (data.vehicleModel) setVehicleModel(data.vehicleModel)
+          // Copy billing data from CRM lead if available
+          if (data.billingData) {
+            setBillingData(data.billingData)
+            setShowBillingForm(true)
+          }
         }}
         onUnlinkLead={() => setLeadId(undefined)}
       />
