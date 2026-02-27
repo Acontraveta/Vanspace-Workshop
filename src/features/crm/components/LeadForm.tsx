@@ -504,6 +504,37 @@ export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
               </Section>
             )}
 
+            {/* Section: Datos de facturación */}
+            <Section title="Datos de facturación">
+              <Row>
+                <Field label="NIF / CIF">
+                  <input value={form.billing_nif ?? ''} onChange={e => set('billing_nif', e.target.value)} className={inputCls} placeholder="B12345678" />
+                </Field>
+                <Field label="Nombre fiscal">
+                  <input value={form.billing_fiscal_name ?? ''} onChange={e => set('billing_fiscal_name', e.target.value)} className={inputCls} placeholder="Razón social" />
+                </Field>
+              </Row>
+              <Field label="Dirección fiscal">
+                <input value={form.billing_address ?? ''} onChange={e => set('billing_address', e.target.value)} className={inputCls} placeholder="Calle, número, piso..." />
+              </Field>
+              <Row>
+                <Field label="Código postal">
+                  <input value={form.billing_postal_code ?? ''} onChange={e => set('billing_postal_code', e.target.value)} className={inputCls} placeholder="28001" />
+                </Field>
+                <Field label="Ciudad">
+                  <input value={form.billing_city ?? ''} onChange={e => set('billing_city', e.target.value)} className={inputCls} placeholder="Madrid" />
+                </Field>
+              </Row>
+              <Row>
+                <Field label="Provincia">
+                  <input value={form.billing_province ?? ''} onChange={e => set('billing_province', e.target.value)} className={inputCls} placeholder="Madrid" />
+                </Field>
+                <Field label="País">
+                  <input value={form.billing_country ?? ''} onChange={e => set('billing_country', e.target.value)} className={inputCls} placeholder="España" />
+                </Field>
+              </Row>
+            </Section>
+
             {/* Section: Seguimiento */}
             <Section title="Seguimiento y post-venta">
               <Row>
@@ -672,6 +703,17 @@ export function LeadForm({ lead: leadProp, onClose }: LeadFormProps) {
                         clientPhone: lead.telefono,
                         clientEmail: lead.email,
                         vehicleModel: lead.vehiculo,
+                        ...(lead.billing_nif ? {
+                          billingData: {
+                            nif: lead.billing_nif || '',
+                            fiscalName: lead.billing_fiscal_name || lead.cliente,
+                            address: lead.billing_address || '',
+                            postalCode: lead.billing_postal_code || '',
+                            city: lead.billing_city || lead.localidad || '',
+                            province: lead.billing_province || lead.provincia || '',
+                            country: lead.billing_country || 'España',
+                          }
+                        } : {}),
                       },
                     },
                   })

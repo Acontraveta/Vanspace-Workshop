@@ -32,7 +32,7 @@ import { fmtHours } from '@/shared/utils/formatters'
 
 // ─── Types ───────────────────────────────────────────────────
 
-type MainTab = 'presupuestos' | 'facturas' | 'proformas' | 'simplificadas'
+type MainTab = 'presupuestos' | 'albaranes' | 'facturas' | 'proformas' | 'simplificadas'
 type QuoteSubFilter = 'all' | 'active' | 'cancelled' | 'expired'
 
 interface QuotesTabbedListProps {
@@ -49,7 +49,8 @@ function statusLabel(status: Quote['status']) {
   switch (status) {
     case 'DRAFT':    return { icon: '📝', text: 'Borrador',  variant: 'default'      as const }
     case 'SENT':     return { icon: '📤', text: 'Enviado',   variant: 'default'      as const }
-    case 'APPROVED': return { icon: '✅', text: 'Aprobado',  variant: 'success'      as const }
+    case 'APPROVED': return { icon: '✅', text: 'Facturado', variant: 'success'      as const }
+    case 'ALBARAN':  return { icon: '📦', text: 'Albarán',   variant: 'default'      as const }
     case 'REJECTED': return { icon: '❌', text: 'Cancelado', variant: 'destructive'  as const }
     case 'EXPIRED':  return { icon: '⏰', text: 'Caducado',  variant: 'secondary'    as const }
     default:         return { icon: '❓', text: status,      variant: 'outline'      as const }
@@ -145,6 +146,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
     return true
   }).filter(matchesSearch)
 
+  const albaranesList = allQuotes.filter(q => q.status === 'ALBARAN').filter(matchesSearch)
   const facturasList  = allQuotes.filter(q => q.status === 'APPROVED').filter(matchesSearch)
   const proformasList = proformas.filter(matchesSearchDoc)
   const simpList      = simplificadas.filter(matchesSearchDoc)
@@ -213,6 +215,30 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
     })
   }
 
+  const handleDuplicate = (quote: Quote) => {
+    try {
+      const dup = QuoteService.duplicateQuote(quote)
+      toast.success(`📋 Duplicado como ${dup.quoteNumber}`)
+      refresh()
+    } catch (error: any) {
+      toast.error(error.message)
+    }
+  }
+
+  const handleEmitInvoice = (quote: Quote) => {
+    setConfirmAction({
+      message: `¿Emitir factura para el albarán ${quote.quoteNumber}?`,
+      action: () => {
+        try {
+          QuoteService.emitInvoice(quote.id)
+          refresh()
+        } catch (error: any) {
+          toast.error(error.message)
+        }
+      },
+    })
+  }
+
   const handleDeleteDoc = (id: string) => {
     setConfirmAction({
       message: '¿Eliminar este documento?',
@@ -249,14 +275,14 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
 
   // ── Sub-components ────────────────────────────────────────
 
-  const QuoteCard = ({ quote, isFactura = false }: { quote: Quote; isFactura?: boolean }) => {
+  const QuoteCard = ({ quote, isFactura = false, isAlbaran = false }: { quote: Quote; isFactura?: boolean; isAlbaran?: boolean }) => {
     const st = statusLabel(quote.status)
     const daysLeft = QuoteService.getDaysUntilExpiration(quote)
-    const isExpiringSoon = daysLeft <= 3 && quote.status !== 'APPROVED' && quote.status !== 'REJECTED' && quote.status !== 'EXPIRED'
+    const isExpiringSoon = daysLeft <= 3 && quote.status !== 'APPROVED' && quote.status !== 'ALBARAN' && quote.status !== 'REJECTED' && quote.status !== 'EXPIRED'
     const [progress, setProgress] = useState<{ completed: number; total: number; percentage: number } | null>(null)
 
     useEffect(() => {
-      if (quote.status === 'APPROVED') {
+      if (quote.status === 'APPROVED' || quote.status === 'ALBARAN') {
         getProjectProgress(quote).then(setProgress)
       }
     }, [quote.id, quote.status])
@@ -265,10 +291,11 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
       <Card
         className={`hover:shadow-lg transition cursor-pointer ${
           isExpiringSoon         ? 'border-orange-300 bg-orange-50'  :
+          isAlbaran              ? 'border-amber-200 bg-amber-50/40' :
           isFactura              ? 'border-green-200 bg-green-50/40' : ''
         }`}
         onClick={() => {
-          if (isFactura) {
+          if (isFactura || isAlbaran) {
             setViewingQuote(quote)
           } else {
             onEditQuote(quote.id)
@@ -282,8 +309,11 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className="font-bold text-sm font-mono text-gray-600">{quote.quoteNumber}</span>
-                {!isFactura && (
+                {!isFactura && !isAlbaran && (
                   <Badge variant={st.variant}>{st.icon} {st.text}</Badge>
+                )}
+                {isAlbaran && (
+                  <Badge className="bg-amber-500 text-white">📦 Albarán</Badge>
                 )}
                 {isFactura && (
                   <Badge variant="success">🧾 Factura</Badge>
@@ -304,7 +334,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           </div>
 
           {/* Progress for approved */}
-          {isFactura && progress && (
+          {(isFactura || isAlbaran) && progress && (
             <div className="mb-3">
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-gray-600">Progreso del proyecto</span>
@@ -367,10 +397,23 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
             {quote.status === 'REJECTED' && (
               <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(quote.id)}>🗑️ Eliminar</Button>
             )}
+            {isAlbaran && (
+              <>
+                <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white flex-1" onClick={() => handleEmitInvoice(quote)}>
+                  🧾 Emitir factura
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setViewingQuote(quote)}>
+                  👁️
+                </Button>
+              </>
+            )}
             {isFactura && (
               <>
                 <Button size="sm" variant="outline" className="flex-1" onClick={() => setViewingQuote(quote)}>
                   👁️ Ver documento
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleDuplicate(quote)}>
+                  📋
                 </Button>
                 <Button size="sm" variant="destructive" onClick={() => handleDeleteFactura(quote.id)}>
                   🗑️
@@ -453,8 +496,9 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
 
   // ── Tab counts ────────────────────────────────────────────
 
-  const tabCounts = {
+  const tabCounts: Record<MainTab, number> = {
     presupuestos:  presupuestosAll.length,
+    albaranes:     allQuotes.filter(q => q.status === 'ALBARAN').length,
     facturas:      allQuotes.filter(q => q.status === 'APPROVED').length,
     proformas:     proformas.length,
     simplificadas: simplificadas.length,
@@ -464,6 +508,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
 
   const TABS: { key: MainTab; label: string; icon: string }[] = [
     { key: 'presupuestos',  label: 'Presupuestos',  icon: '📋' },
+    { key: 'albaranes',     label: 'Albaranes',      icon: '📦' },
     { key: 'facturas',      label: 'Facturas',       icon: '🧾' },
     { key: 'proformas',     label: 'Proformas',      icon: '📄' },
     { key: 'simplificadas', label: 'Simplificadas',  icon: '🗒️' },
@@ -471,13 +516,15 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
 
   const currentEmpty =
     mainTab === 'presupuestos'  ? presupuestosList.length === 0  :
+    mainTab === 'albaranes'     ? albaranesList.length === 0      :
     mainTab === 'facturas'      ? facturasList.length === 0       :
     mainTab === 'proformas'     ? proformasList.length === 0      :
     simpList.length === 0
 
   const emptyLabels: Record<MainTab, string> = {
     presupuestos:  'No hay presupuestos',
-    facturas:      'No hay facturas aprobadas',
+    albaranes:     'No hay albaranes pendientes',
+    facturas:      'No hay facturas emitidas',
     proformas:     'No hay proformas guardadas',
     simplificadas: 'No hay facturas simplificadas',
   }
@@ -488,7 +535,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
       {/* ── Main tabs ─────────────────────────────────────── */}
       <Card>
         <CardContent className="p-3">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {TABS.map(tab => (
               <button
                 key={tab.key}
@@ -603,6 +650,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
           <CardContent className="py-16 text-center text-gray-500">
             <p className="text-4xl mb-3">
               {mainTab === 'presupuestos'  ? '📋' :
+               mainTab === 'albaranes'     ? '📦' :
                mainTab === 'facturas'      ? '🧾' :
                mainTab === 'proformas'     ? '📄' : '🗒️'}
             </p>
@@ -624,6 +672,10 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
             <QuoteCard key={q.id} quote={q} />
           ))}
 
+          {mainTab === 'albaranes' && albaranesList.map(q => (
+            <QuoteCard key={q.id} quote={q} isAlbaran />
+          ))}
+
           {mainTab === 'facturas' && facturasList.map(q => (
             <QuoteCard key={q.id} quote={q} isFactura />
           ))}
@@ -643,7 +695,7 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
       {viewingQuote && createPortal(
         <QuotePreview
           quote={viewingQuote}
-          type={viewingQuote.status === 'APPROVED' ? 'FACTURA' : 'PRESUPUESTO'}
+          type={viewingQuote.status === 'APPROVED' ? 'FACTURA' : viewingQuote.status === 'ALBARAN' ? 'ALBARAN' : 'PRESUPUESTO'}
           onClose={() => setViewingQuote(null)}
         />,
         getPortalRoot()

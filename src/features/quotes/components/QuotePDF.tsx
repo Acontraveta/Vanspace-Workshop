@@ -26,7 +26,7 @@ export interface QuoteDocumentData {
     logoUrl?: string
   }
   /** Tipo de documento */
-  type: 'PRESUPUESTO' | 'FACTURA'
+  type: 'PRESUPUESTO' | 'FACTURA' | 'ALBARAN'
   /** Número de factura (solo tipo FACTURA) */
   invoiceNumber?: string
   /** Notas al pie editables */
@@ -99,8 +99,14 @@ export function QuotePDF({ data }: QuotePDFProps) {
   const vatAmount = total * 0.21
   const totalWithVat = total + vatAmount
 
-  const docNumber = type === 'FACTURA' ? (invoiceNumber ?? `FAC-${quote.quoteNumber}`) : quote.quoteNumber
-  const docDate = type === 'FACTURA'
+  const docColor = type === 'FACTURA' ? '#1d4ed8' : type === 'ALBARAN' ? '#d97706' : '#15803d'
+  const docLabel = type === 'ALBARAN' ? 'ALBARÁN' : type
+  const docNumber = type === 'FACTURA'
+    ? (invoiceNumber ?? `FAC-${quote.quoteNumber}`)
+    : type === 'ALBARAN'
+      ? `ALB-${quote.quoteNumber}`
+      : quote.quoteNumber
+  const docDate = type === 'FACTURA' || type === 'ALBARAN'
     ? (quote.approvedAt ? new Date(quote.approvedAt) : new Date())
     : new Date(quote.createdAt)
 
@@ -139,7 +145,7 @@ export function QuotePDF({ data }: QuotePDFProps) {
         {/* Título documento */}
         <div style={{ textAlign: 'right' }}>
           <div style={{
-            background: type === 'FACTURA' ? '#1d4ed8' : '#15803d',
+            background: docColor,
             color: '#fff',
             padding: '6px 18px',
             borderRadius: '6px',
@@ -148,7 +154,7 @@ export function QuotePDF({ data }: QuotePDFProps) {
             letterSpacing: '1px',
             marginBottom: '6px',
           }}>
-            {type}
+            {docLabel}
           </div>
           <div><strong>Nº:</strong> {docNumber}</div>
           <div><strong>Fecha:</strong> {fmtDate(docDate)}</div>
@@ -199,7 +205,7 @@ export function QuotePDF({ data }: QuotePDFProps) {
       {/* ── TABLA DE LÍNEAS ── */}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8mm' }}>
         <thead>
-          <tr style={{ background: type === 'FACTURA' ? '#1d4ed8' : '#15803d', color: '#fff' }}>
+          <tr style={{ background: docColor, color: '#fff' }}>
             {['#', 'Descripción', 'Cant.', 'Precio unit.', 'Total'].map((h, i) => (
               <th
                 key={h}
@@ -279,7 +285,7 @@ export function QuotePDF({ data }: QuotePDFProps) {
               <td style={{ padding: '4px 8px', color: '#6b7280' }}>IVA (21%)</td>
               <td style={{ padding: '4px 8px', textAlign: 'right' }}>+{fmt(vatAmount)} €</td>
             </tr>
-            <tr style={{ background: type === 'FACTURA' ? '#1d4ed8' : '#15803d', color: '#fff', borderRadius: '4px' }}>
+            <tr style={{ background: docColor, color: '#fff', borderRadius: '4px' }}>
               <td style={{ padding: '8px', fontWeight: 700, fontSize: '13px' }}>TOTAL</td>
               <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontSize: '13px' }}>
                 {fmt(totalWithVat)} €
@@ -295,7 +301,7 @@ export function QuotePDF({ data }: QuotePDFProps) {
           <div style={{ fontWeight: 600, fontSize: '11px', marginBottom: '6px', color: '#374151' }}>📅 Plan de Pagos</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
             <thead>
-              <tr style={{ background: type === 'FACTURA' ? '#1d4ed8' : '#15803d', color: '#fff' }}>
+              <tr style={{ background: docColor, color: '#fff' }}>
                 <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600 }}>Concepto</th>
                 <th style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600, width: '40px' }}>%</th>
                 <th style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600, width: '70px' }}>Importe</th>
@@ -331,6 +337,20 @@ export function QuotePDF({ data }: QuotePDFProps) {
         </div>
       )}
 
+      {/* ── RGPD ── */}
+      <div style={{
+        padding: '6px 10px',
+        background: '#f9fafb',
+        border: '1px solid #e5e7eb',
+        borderRadius: '4px',
+        marginBottom: '4mm',
+        fontSize: '7px',
+        color: '#6b7280',
+        lineHeight: 1.5,
+      }}>
+        <strong style={{ color: '#374151' }}>Protección de datos (RGPD):</strong> En cumplimiento del Reglamento (UE) 2016/679 y la Ley Orgánica 3/2018 (LOPDGDD), le informamos de que sus datos personales serán tratados por {company.name} con la finalidad de gestionar la relación comercial y la prestación de servicios. Los datos se conservarán mientras se mantenga la relación y durante el plazo legalmente exigido. Puede ejercer sus derechos de acceso, rectificación, supresión, limitación, portabilidad y oposición dirigiéndose a {company.email || company.address || company.name}.
+      </div>
+
       {/* ── PIE ── */}
       <div style={{
         borderTop: '1px solid #e5e7eb',
@@ -364,7 +384,7 @@ export function printQuoteDocument(data: QuoteDocumentData) {
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>${data.type} ${data.type === 'FACTURA' ? data.invoiceNumber ?? '' : data.quote.quoteNumber}</title>
+  <title>${data.type === 'ALBARAN' ? 'ALBARÁN' : data.type} ${data.type === 'FACTURA' ? data.invoiceNumber ?? '' : data.type === 'ALBARAN' ? 'ALB-' + data.quote.quoteNumber : data.quote.quoteNumber}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #fff; }

@@ -9,12 +9,15 @@ export class PriceCalculator {
   ): QuoteItem {
     const laborHours = (product.TIEMPO_TOTAL_MIN || 0) / 60
     
-    let precioCompra = 0
-    if (product.PRECIO_COMPRA !== null && product.PRECIO_COMPRA !== undefined) {
-      precioCompra = Number(product.PRECIO_COMPRA)
+    // Usar precio de venta si está definido; si no, precio de compra como fallback
+    let unitPrice = 0
+    if (product['PRECIO DE VENTA'] !== null && product['PRECIO DE VENTA'] !== undefined && Number(product['PRECIO DE VENTA']) > 0) {
+      unitPrice = Number(product['PRECIO DE VENTA'])
+    } else if (product.PRECIO_COMPRA !== null && product.PRECIO_COMPRA !== undefined) {
+      unitPrice = Number(product.PRECIO_COMPRA)
     }
     
-    const materialCost = precioCompra * quantity
+    const materialCost = unitPrice * quantity
     const laborCost = laborHours * tarifa.hourlyRate * quantity
     const subtotal = materialCost + laborCost
     const profitAmount = subtotal * (tarifa.profitMargin / 100)

@@ -401,8 +401,15 @@ export default function VehicleDepositReceipt({
             </div>
           )}
 
+          {/* Legal text */}
+          <div style={{ marginTop: '8mm', padding: '6px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '4px', fontSize: '7.5px', color: '#6b7280', lineHeight: 1.6 }}>
+            <strong style={{ color: '#374151' }}>Condiciones del depósito:</strong> El taller se compromete a custodiar el vehículo con la diligencia debida durante el periodo de los trabajos contratados. El taller no se responsabiliza de los objetos personales dejados en el interior del vehículo. El cliente autoriza la realización de los trabajos acordados y se compromete a recoger el vehículo en el plazo pactado. En caso de daños preexistentes no documentados en este resguardo, el taller queda exento de responsabilidad.
+            <br/><br/>
+            <strong style={{ color: '#374151' }}>Protección de datos (RGPD):</strong> En cumplimiento del Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD), le informamos de que los datos personales recogidos en este documento serán tratados por {company.name} con la finalidad de gestionar la prestación de servicios contratados. Los datos se conservarán durante el tiempo necesario para cumplir con la finalidad y las obligaciones legales. Puede ejercer sus derechos de acceso, rectificación, supresión, limitación, portabilidad y oposición dirigiéndose a {company.email || company.address || company.name}.
+          </div>
+
           {/* Signatures */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16mm' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10mm' }}>
             <div style={{ textAlign: 'center' }}>
               {clientSignature ? (
                 <img src={clientSignature} alt="Firma cliente" style={{ width: '200px', height: '80px', objectFit: 'contain' }} />

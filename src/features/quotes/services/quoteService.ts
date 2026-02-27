@@ -1,4 +1,5 @@
 import { Quote } from '../types/quote.types'
+import { PriceCalculator } from '../utils/priceCalculator'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 
@@ -285,8 +286,8 @@ export class QuoteService {
       throw new Error('Presupuesto no encontrado')
     }
     
-    if (quote.status === 'APPROVED') {
-      throw new Error('El presupuesto ya está aprobado')
+    if (quote.status === 'APPROVED' || quote.status === 'ALBARAN') {
+      throw new Error('El presupuesto ya está aprobado o tiene albarán emitido')
     }
     
     if (quote.status === 'EXPIRED') {
@@ -298,7 +299,7 @@ export class QuoteService {
       throw new Error('Faltan datos de facturación obligatorios (NIF, dirección completa, código postal, ciudad, provincia, país)')
     }
     
-    quote.status = 'APPROVED'
+    quote.status = 'ALBARAN'
     quote.approvedAt = new Date()
     
     this.saveQuote(quote)
@@ -312,8 +313,27 @@ export class QuoteService {
         .catch(e => console.warn('No se pudo actualizar el lead en CRM:', e))
     }
     
-    toast.success('¡Presupuesto aprobado! Iniciando automatización...')
+    toast.success('¡Albarán generado! Iniciando automatización...')
     
+    return quote
+  }
+
+  /** Emitir factura a partir de un albarán */
+  static emitInvoice(quoteId: string): Quote {
+    const quotes = this.getAllQuotes()
+    const quote = quotes.find(q => q.id === quoteId)
+
+    if (!quote) throw new Error('Documento no encontrado')
+    if (quote.status !== 'ALBARAN') {
+      throw new Error('Solo se puede facturar un albarán')
+    }
+
+    quote.status = 'APPROVED'
+    // Keep approvedAt from the albarán stage; update invoiceEmittedAt
+    ;(quote as any).invoiceEmittedAt = new Date()
+
+    this.saveQuote(quote)
+    toast.success('¡Factura emitida correctamente!')
     return quote
   }
 
@@ -328,6 +348,10 @@ export class QuoteService {
     
     if (quote.status === 'APPROVED') {
       throw new Error('No se puede cancelar un presupuesto aprobado')
+    }
+
+    if (quote.status === 'ALBARAN') {
+      throw new Error('No se puede cancelar un albarán emitido')
     }
     
     quote.status = 'REJECTED'
@@ -390,6 +414,30 @@ export class QuoteService {
     toast.success(wasFactura ? 'Factura eliminada del sistema' : 'Presupuesto eliminado')
   }
 
+  // Duplicar un presupuesto/factura como un nuevo borrador
+  static duplicateQuote(source: Quote): Quote {
+    const newId = crypto.randomUUID()
+    const newNumber = PriceCalculator.generateQuoteNumber()
+    const duplicate: Quote = {
+      ...structuredClone(source),
+      id: newId,
+      quoteNumber: newNumber,
+      status: 'DRAFT',
+      createdAt: new Date(),
+      validUntil: PriceCalculator.calculateValidUntil(),
+      approvedAt: undefined,
+      cancelledAt: undefined,
+      lead_id: undefined,
+      documentData: undefined,
+      items: source.items.map(item => ({
+        ...item,
+        id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      })),
+    }
+    this.saveQuote(duplicate)
+    return duplicate
+  }
+
   // Obtener presupuestos por estado
   static getQuotesByStatus(status: Quote['status']): Quote[] {
     return this.getAllQuotes().filter(q => q.status === status)
@@ -399,6 +447,7 @@ export class QuoteService {
   static getQuotesByCategory(): {
     active: Quote[]
     approved: Quote[]
+    albaranes: Quote[]
     cancelled: Quote[]
     expired: Quote[]
   } {
@@ -407,6 +456,7 @@ export class QuoteService {
     return {
       active: all.filter(q => q.status === 'DRAFT' || q.status === 'SENT'),
       approved: all.filter(q => q.status === 'APPROVED'),
+      albaranes: all.filter(q => q.status === 'ALBARAN'),
       cancelled: all.filter(q => q.status === 'REJECTED'),
       expired: all.filter(q => q.status === 'EXPIRED'),
     }
@@ -416,6 +466,7 @@ export class QuoteService {
   static async fetchQuotesByCategory(): Promise<{
     active: Quote[]
     approved: Quote[]
+    albaranes: Quote[]
     cancelled: Quote[]
     expired: Quote[]
   }> {
@@ -432,8 +483,8 @@ export class QuoteService {
 
   // Verificar si un presupuesto puede ser aprobado
   static canBeApproved(quote: Quote): { can: boolean, reason?: string } {
-    if (quote.status === 'APPROVED') {
-      return { can: false, reason: 'Ya está aprobado' }
+    if (quote.status === 'APPROVED' || quote.status === 'ALBARAN') {
+      return { can: false, reason: 'Ya está aprobado / albarán emitido' }
     }
     
     if (quote.status === 'EXPIRED') {

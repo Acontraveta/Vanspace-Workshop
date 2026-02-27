@@ -365,13 +365,33 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
     const item = items.find(i => i.id === itemId)
     if (!item) return
 
-    const product = products.find(p => p.SKU === item.catalogSKU)
+    const product = item.catalogData ?? products.find(p => p.SKU === item.catalogSKU)
     if (!product) return
 
     const updatedItem = PriceCalculator.calculateQuoteItem(product, newQuantity, selectedTarifa)
     updatedItem.id = itemId
+    updatedItem.isManual = item.isManual
 
     setItems(items.map(i => i.id === itemId ? updatedItem : i))
+  }
+
+  /** Update a manual item field inline (name, price, hours) */
+  const updateManualField = (itemId: string, field: 'productName' | 'materialsTotal' | 'laborHours', value: string) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId || !item.isManual) return item
+      const updated = { ...item }
+      if (field === 'productName') {
+        updated.productName = value
+      } else if (field === 'materialsTotal') {
+        updated.materialsTotal = parseFloat(value) || 0
+      } else if (field === 'laborHours') {
+        updated.laborHours = parseFloat(value) || 0
+        updated.laborCost = updated.laborHours * selectedTarifa.hourlyRate * updated.quantity
+      }
+      const sub = updated.materialsTotal + updated.laborCost
+      updated.totalCost = sub + sub * (selectedTarifa.profitMargin / 100)
+      return updated
+    }))
   }
 
   const totals = PriceCalculator.calculateQuoteTotals(items, selectedTarifa)
@@ -885,14 +905,42 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
                       {items.map((item) => (
                         <div
                           key={item.id}
-                          className="border rounded p-3 bg-white"
+                          className={`border rounded p-3 bg-white ${item.isManual ? 'border-amber-200' : ''}`}
                         >
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex-1">
-                              <p className="font-medium text-sm">{item.productName}</p>
-                              <p className="text-xs text-gray-500">
-                                {fmtHours(item.laborHours)}h
-                              </p>
+                              {item.isManual && currentQuote?.status !== 'APPROVED' ? (
+                                <>
+                                  <input
+                                    value={item.productName}
+                                    onChange={e => updateManualField(item.id, 'productName', e.target.value)}
+                                    className="font-medium text-sm w-full border-b border-amber-200 focus:border-amber-400 outline-none bg-transparent"
+                                  />
+                                  <div className="flex gap-2 mt-1">
+                                    <label className="text-xs text-gray-400">Mat.€</label>
+                                    <input
+                                      type="number" step="0.01" min="0"
+                                      value={item.materialsTotal || ''}
+                                      onChange={e => updateManualField(item.id, 'materialsTotal', e.target.value)}
+                                      className="w-16 text-xs border-b border-amber-200 outline-none bg-transparent"
+                                    />
+                                    <label className="text-xs text-gray-400">Horas</label>
+                                    <input
+                                      type="number" step="0.5" min="0"
+                                      value={item.laborHours || ''}
+                                      onChange={e => updateManualField(item.id, 'laborHours', e.target.value)}
+                                      className="w-14 text-xs border-b border-amber-200 outline-none bg-transparent"
+                                    />
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="font-medium text-sm">{item.productName}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {fmtHours(item.laborHours)}h
+                                  </p>
+                                </>
+                              )}
                             </div>
                             <Button
                               size="sm"
@@ -1099,7 +1147,10 @@ export default function QuoteGenerator({ quoteId, initialLeadData, onSaved }: Qu
       {showManualProductModal && createPortal(
         <ManualProductModal
           onAdd={(product) => {
-            addProduct(product)
+            const item = PriceCalculator.calculateQuoteItem(product, 1, selectedTarifa)
+            item.isManual = true
+            setItems([...items, item])
+            toast.success(`${product.NOMBRE} añadido (manual)`)
             setShowManualProductModal(false)
           }}
           onCancel={() => setShowManualProductModal(false)}

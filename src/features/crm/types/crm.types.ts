@@ -76,6 +76,15 @@ export interface Lead {
   hora_recepcion?: string | null     // TIME — scheduled reception
   recepcion_confirmada?: boolean     // true after the vehicle is actually received
 
+  // Datos de facturación (opcionales — se copian a Quote.billingData al crear presupuesto)
+  billing_nif?: string
+  billing_fiscal_name?: string
+  billing_address?: string
+  billing_postal_code?: string
+  billing_city?: string
+  billing_province?: string
+  billing_country?: string
+
   // Oportunidades (historical commercial states)
   oportunidades?: LeadOpportunity[]
 

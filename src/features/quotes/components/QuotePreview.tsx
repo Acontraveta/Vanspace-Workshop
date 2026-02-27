@@ -23,7 +23,7 @@ import toast from 'react-hot-toast'
 
 interface QuotePreviewProps {
   quote: Quote
-  type: 'PRESUPUESTO' | 'FACTURA'
+  type: 'PRESUPUESTO' | 'FACTURA' | 'ALBARAN'
   invoiceNumber?: string
   /** Llamada cuando el usuario confirma la aprobación desde el preview */
   onApprove?: () => void
@@ -76,7 +76,9 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
     quote.notes ??
     (type === 'PRESUPUESTO'
       ? 'Este presupuesto tiene una validez de 30 días. Los precios incluyen mano de obra y materiales. IVA no incluido en las líneas, se aplica al total.'
-      : 'Factura emitida conforme a lo acordado. Pago a 30 días desde la fecha de emisión.')
+      : type === 'ALBARAN'
+        ? 'Albarán de entrega conforme a lo acordado. Este documento acredita la entrega de los materiales y servicios descritos.'
+        : 'Factura emitida conforme a lo acordado. Pago a 30 días desde la fecha de emisión.')
   )
   const [company, setCompany] = useState(savedDoc?.company ?? DEFAULT_COMPANY)
   const [editingLine, setEditingLine] = useState<string | null>(null)
@@ -176,7 +178,9 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
     try {
       const filename = type === 'FACTURA'
         ? `${invoiceNum}.pdf`
-        : `${quote.quoteNumber}.pdf`
+        : type === 'ALBARAN'
+          ? `ALB-${quote.quoteNumber}.pdf`
+          : `${quote.quoteNumber}.pdf`
       await downloadPdf(filename)
       toast.success('PDF descargado')
     } catch (err: any) {
@@ -209,14 +213,16 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
       const blob = await generatePdfBlob()
       const filename = type === 'FACTURA'
         ? `${invoiceNum}.pdf`
-        : `${quote.quoteNumber}.pdf`
+        : type === 'ALBARAN'
+          ? `ALB-${quote.quoteNumber}.pdf`
+          : `${quote.quoteNumber}.pdf`
       const file = new File([blob], filename, { type: 'application/pdf' })
-      const category = type === 'FACTURA' ? 'factura' : 'presupuesto'
+      const category = type === 'FACTURA' ? 'factura' : type === 'ALBARAN' ? 'albaran' : 'presupuesto'
       await LeadDocumentsService.upload(
         quote.lead_id,
         file,
         category,
-        `${type === 'FACTURA' ? 'Factura' : 'Presupuesto'} generado desde el editor`,
+        `${type === 'FACTURA' ? 'Factura' : type === 'ALBARAN' ? 'Albarán' : 'Presupuesto'} generado desde el editor`,
         ''
       )
       toast.success(`PDF guardado en documentos del cliente`)
@@ -414,8 +420,7 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
             )}
           </div>
 
-          {/* Plan de pagos — solo en facturas */}
-          {type === 'FACTURA' && (
+          {/* Plan de pagos */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-semibold text-gray-500">PLAN DE PAGOS</label>
@@ -455,7 +460,6 @@ export default function QuotePreview({ quote, type, invoiceNumber, onApprove, on
               </div>
             )}
           </div>
-          )}
 
           {/* Totales resumen */}
           <div className="rounded border border-gray-200 p-3 text-xs space-y-1 bg-gray-50">

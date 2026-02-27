@@ -1959,7 +1959,7 @@ export default function PurchaseList() {
                         {hasTasks && <span title="Tiene tareas de producción">⚙️</span>}
                         {product.REQUIERE_DISEÑO === 'SÍ' && <span title={`Diseño: ${(product.TIPO_DISEÑO || '').split(',').filter(Boolean).map(d => d === 'furniture' ? '🪑 Muebles' : d === 'exterior' ? '🚐 Exterior' : d === 'interior' ? '🏠 Interior' : d).join(', ') || 'Sin asignar'}`}>📐</span>}
                         {product.TIEMPO_TOTAL_MIN > 0 && (
-                          <span className="text-xs text-gray-400">{product.TIEMPO_TOTAL_MIN}min</span>
+                          <span className="text-xs text-gray-400">{fmtHours(product.TIEMPO_TOTAL_MIN / 60)}h</span>
                         )}
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product) }}
@@ -2063,7 +2063,7 @@ export default function PurchaseList() {
                                                 {product.PRECIO_COMPRA ? `${fmtEur(product.PRECIO_COMPRA)}€` : '-'}
                                               </td>
                                               <td className="px-4 py-3 text-sm text-gray-500">
-                                                {product.TIEMPO_TOTAL_MIN > 0 ? `${product.TIEMPO_TOTAL_MIN}min` : '-'}
+                                                {product.TIEMPO_TOTAL_MIN > 0 ? `${fmtHours(product.TIEMPO_TOTAL_MIN / 60)}h` : '-'}
                                               </td>
                                               <td className="px-4 py-3 text-sm text-gray-500 max-w-0 overflow-hidden">
                                                 <span className="truncate block">{product.PROVEEDOR || '-'}</span>
@@ -2491,12 +2491,12 @@ export default function PurchaseList() {
                   <h4 className="text-sm font-semibold text-gray-800 mb-2">⏱️ Mano de obra</h4>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Tiempo total (minutos)</label>
-                      <Input type="number" min={0} value={newProductForm.tiempoTotalMin}
-                        onChange={e => setNewProductForm(f => ({ ...f, tiempoTotalMin: parseInt(e.target.value) || 0 }))} />
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Tiempo total (horas)</label>
+                      <Input type="number" min={0} step={0.5} value={newProductForm.tiempoTotalMin > 0 ? +(newProductForm.tiempoTotalMin / 60).toFixed(2) : ''}
+                        onChange={e => setNewProductForm(f => ({ ...f, tiempoTotalMin: Math.round((parseFloat(e.target.value) || 0) * 60) }))} />
                     </div>
                     <div className="flex items-end pb-1">
-                      <span className="text-sm text-gray-500">= {fmtHours(newProductForm.tiempoTotalMin / 60)} horas</span>
+                      <span className="text-sm text-gray-500">= {newProductForm.tiempoTotalMin} min</span>
                     </div>
                   </div>
                 </div>

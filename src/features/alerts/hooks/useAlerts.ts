@@ -90,6 +90,13 @@ export function useAlerts(): UseAlertsReturn {
     return () => clearInterval(timer)
   }, [refresh])
 
+  // Listen for immediate refresh requests (e.g. from production incident)
+  useEffect(() => {
+    const onRefreshEvent = () => { refresh() }
+    window.addEventListener('alerts:refresh', onRefreshEvent)
+    return () => window.removeEventListener('alerts:refresh', onRefreshEvent)
+  }, [refresh])
+
   // Build unified list, filtered by current role
   const canSee = (roles: string[]) =>
     !roles?.length || roles.includes(role) || role === 'admin'

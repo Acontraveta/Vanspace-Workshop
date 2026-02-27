@@ -131,6 +131,7 @@ export interface QuoteItem {
   laborCost: number
   totalCost: number
   catalogData?: CatalogProduct // Permite que los productos manuales lleven los datos necesarios para automatización
+  isManual?: boolean            // true when added via ManualProductModal — allows inline editing
 }
 
 export interface Quote {
@@ -171,7 +172,7 @@ export interface Quote {
   validUntil: Date
   approvedAt?: Date
   cancelledAt?: Date
-  status: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED' | 'EXPIRED'
+  status: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'ALBARAN'
   notes?: string
 
   /**

@@ -355,6 +355,8 @@ export default function TaskBoard({
       setIncidentReason('')
       loadData()
       onRefresh()
+      // Forzar refresco inmediato del motor de alertas para que aparezca la notificación
+      window.dispatchEvent(new Event('alerts:refresh'))
     } catch {
       toast.error('Error registrando incidencia')
     }
