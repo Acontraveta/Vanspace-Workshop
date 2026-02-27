@@ -45,7 +45,8 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
   const [locationFilter, setLocationFilter] = useState<string>('all')
   const [warehouseCameraActive, setWarehouseCameraActive] = useState(false)
   const warehouseScannerRef = useRef<any>(null)
-  const warehouseScannerContainerId = 'warehouse-qr-reader'
+  const warehouseScannerContainerId = useRef(`warehouse-qr-${Date.now()}`).current
+  const warehouseMountedRef = useRef(true)
 
   const [newShelf, setNewShelf] = useState({
     code: '',
@@ -247,9 +248,41 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
     }
   }
 
+  const destroyWarehouseScanner = useCallback(async () => {
+    const scanner = warehouseScannerRef.current
+    if (!scanner) return
+    warehouseScannerRef.current = null
+    try {
+      const st = scanner.getState?.()
+      if (st === 2 || st === 3) await scanner.stop()
+      scanner.clear()
+    } catch {
+      try { scanner.clear() } catch { /* noop */ }
+    }
+  }, [])
+
   const startWarehouseCamera = useCallback(async () => {
+    await destroyWarehouseScanner()
     setWarehouseCameraActive(true)
-    await new Promise(r => setTimeout(r, 100))
+
+    // Poll until DOM element has real dimensions
+    const ready = await new Promise<boolean>(resolve => {
+      let n = 0
+      const check = () => {
+        if (!warehouseMountedRef.current) { resolve(false); return }
+        const el = document.getElementById(warehouseScannerContainerId)
+        if (el && el.clientWidth > 0 && el.clientHeight > 0) { resolve(true); return }
+        if (++n > 30) { resolve(false); return }
+        requestAnimationFrame(check)
+      }
+      requestAnimationFrame(check)
+    })
+    if (!ready) {
+      toast.error('No se pudo inicializar el visor de cámara')
+      setWarehouseCameraActive(false)
+      return
+    }
+
     try {
       const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode')
 
@@ -261,14 +294,12 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
       warehouseScannerRef.current = scanner
       await scanner.start(
         { facingMode: 'environment' },
-        {
-          fps: 15,
-          disableFlip: true,
-        },
-        (decodedText) => {
+        { fps: 10, qrbox: { width: 250, height: 250 }, disableFlip: true },
+        (decodedText: string) => {
           console.log('[QR-Warehouse] Decoded:', decodedText)
+          try { scanner.pause(true) } catch { /* may already be paused */ }
           handleQRScan(decodedText)
-          stopWarehouseCamera()
+          setTimeout(() => stopWarehouseCamera(), 100)
         },
         () => {}
       )
@@ -277,22 +308,25 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
       console.error(err)
       setWarehouseCameraActive(false)
     }
-  }, [])
+  }, [destroyWarehouseScanner])
 
-  const stopWarehouseCamera = useCallback(() => {
-    if (warehouseScannerRef.current) {
-      warehouseScannerRef.current.stop().then(() => {
-        warehouseScannerRef.current.clear()
-      }).catch(() => {})
-      warehouseScannerRef.current = null
-    }
+  const stopWarehouseCamera = useCallback(async () => {
+    await destroyWarehouseScanner()
     setWarehouseCameraActive(false)
-  }, [])
+  }, [destroyWarehouseScanner])
 
   useEffect(() => {
+    warehouseMountedRef.current = true
     return () => {
-      if (warehouseScannerRef.current) {
-        warehouseScannerRef.current.stop().catch(() => {})
+      warehouseMountedRef.current = false
+      const scanner = warehouseScannerRef.current
+      if (scanner) {
+        warehouseScannerRef.current = null
+        try {
+          const st = scanner.getState?.()
+          if (st === 2 || st === 3) scanner.stop().catch(() => {})
+          scanner.clear()
+        } catch { /* noop */ }
       }
     }
   }, [])
@@ -921,15 +955,16 @@ export default function WarehouseView({ stock, onRefresh, initialSelectedShelf, 
                 </div>
               </div>
 
-              {/* Camera scanner */}
+              {/* Camera scanner — always in DOM with real size, hidden via visibility */}
               <div
                 id={warehouseScannerContainerId}
-                className={`rounded-lg overflow-hidden mb-3 ${warehouseCameraActive ? 'border-2 border-emerald-400' : ''}`}
+                className={`rounded-lg mb-3 ${warehouseCameraActive ? 'border-2 border-emerald-400' : ''}`}
                 style={{
-                  minHeight: warehouseCameraActive ? 260 : 0,
-                  height: warehouseCameraActive ? 'auto' : 0,
-                  overflow: 'hidden',
-                  opacity: warehouseCameraActive ? 1 : 0,
+                  width: '100%',
+                  height: 260,
+                  ...(warehouseCameraActive
+                    ? { position: 'relative' as const, visibility: 'visible' as const }
+                    : { position: 'absolute' as const, visibility: 'hidden' as const, pointerEvents: 'none' as const, left: -9999 }),
                 }}
               />
 

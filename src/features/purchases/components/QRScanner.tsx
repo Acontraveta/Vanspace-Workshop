@@ -28,7 +28,9 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   const [ConfirmDialog, confirm] = useConfirm()
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
-  const scannerContainerId = 'qr-reader-container'
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const scannerContainerId = useRef(`qr-reader-${Date.now()}`).current  // unique per mount
+  const mountedRef = useRef(true)
 
   const processCode = useCallback((code: string) => {
     let referencia = ''
@@ -66,6 +68,44 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
   const processCodeRef = useRef(processCode)
   useEffect(() => { processCodeRef.current = processCode }, [processCode])
 
+  // ── Wait until the container element has real layout dimensions ──
+  const waitForLayout = (): Promise<boolean> => {
+    return new Promise(resolve => {
+      let attempts = 0
+      const check = () => {
+        if (!mountedRef.current) { resolve(false); return }
+        const el = document.getElementById(scannerContainerId)
+        if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+          resolve(true)
+          return
+        }
+        attempts++
+        if (attempts > 30) { resolve(false); return }   // 3 s max
+        requestAnimationFrame(check)
+      }
+      // First attempt after a microtask so React can flush
+      requestAnimationFrame(check)
+    })
+  }
+
+  // ── Safely tear down the current scanner instance ──
+  const destroyScanner = useCallback(async () => {
+    const scanner = scannerRef.current
+    if (!scanner) return
+    scannerRef.current = null
+    try {
+      const state = scanner.getState()
+      // 2 = SCANNING, 3 = PAUSED
+      if (state === 2 || state === 3) {
+        await scanner.stop()
+      }
+      scanner.clear()
+    } catch {
+      // best-effort cleanup
+      try { scanner.clear() } catch { /* noop */ }
+    }
+  }, [])
+
   const startCamera = useCallback(async () => {
     setCameraError(null)
 
@@ -75,32 +115,22 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
       return
     }
 
-    // Request permission early to get a clear error
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      // Release the test stream immediately
-      stream.getTracks().forEach(t => t.stop())
-    } catch (permErr: any) {
-      const msg = permErr?.name || permErr?.message || String(permErr)
-      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
-        setCameraError('Permiso de cámara denegado. Permite el acceso en la configuración del navegador.')
-      } else if (msg.includes('NotFoundError') || msg.includes('NotReadableError')) {
-        setCameraError('No se encontró ninguna cámara disponible en el dispositivo.')
-      } else {
-        setCameraError(`Error de cámara: ${msg}`)
-      }
+    // Tear down any previous instance first
+    await destroyScanner()
+
+    // Show the container so it gets real layout dimensions
+    setCameraActive(true)
+
+    // Poll until the DOM element has non-zero clientWidth/clientHeight
+    const ready = await waitForLayout()
+    if (!ready || !mountedRef.current) {
+      setCameraError('No se pudo inicializar el visor de cámara. Reintenta.')
+      setCameraActive(false)
       return
     }
 
-    // IMPORTANT: set active FIRST so the container is visible in the DOM
-    // html5-qrcode cannot render into a hidden/zero-size element
-    setCameraActive(true)
-
-    // Wait for React to render the visible container
-    await new Promise(r => setTimeout(r, 300))
-
     try {
-
+      // Fresh instance every time — html5-qrcode doesn't reuse well after stop()
       const scanner = new Html5Qrcode(scannerContainerId, {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         experimentalFeatures: { useBarCodeDetectorIfSupported: false },
@@ -110,49 +140,52 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
 
       await scanner.start(
         { facingMode: 'environment' },
-        {
-          fps: 15,
-          disableFlip: true,
-        },
+        { fps: 10, qrbox: { width: 250, height: 250 }, disableFlip: true },
         (decodedText) => {
           console.log('[QR] Decoded:', decodedText)
+          // Pause immediately — do NOT call stop() inside the callback
+          // (stop() from inside foreverScan causes state-transition race)
+          try { scanner.pause(true) } catch { /* may already be paused */ }
           processCodeRef.current(decodedText)
-          stopCamera()
+          // Async cleanup after a tick
+          setTimeout(() => stopCamera(), 100)
         },
-        () => {
-          // Ignore scan failure (scanning in progress)
-        }
+        () => { /* scan-in-progress, ignore */ }
       )
     } catch (err: any) {
-      console.error('Error starting camera:', err)
-      const msg = err?.message || String(err)
-      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+      console.error('[QR] Error starting camera:', err)
+      const msg = err?.name || err?.message || String(err)
+      if (/NotAllowed|Permission/i.test(msg)) {
         setCameraError('Permiso de cámara denegado. Permite el acceso en la configuración del navegador.')
-      } else if (msg.includes('NotFoundError') || msg.includes('NotReadableError')) {
+      } else if (/NotFound|NotReadable|Overconstrained/i.test(msg)) {
         setCameraError('No se encontró ninguna cámara disponible en el dispositivo.')
+      } else if (/could not start video source/i.test(msg)) {
+        setCameraError('La cámara está en uso por otra aplicación. Cierra otras apps e inténtalo de nuevo.')
       } else {
         setCameraError(`Error al iniciar la cámara: ${msg}`)
       }
       setCameraActive(false)
     }
-  }, [processCode])
+  }, [destroyScanner])
 
-  const stopCamera = useCallback(() => {
-    const scanner = scannerRef.current
-    if (scanner) {
-      scanner.stop().then(() => {
-        scanner.clear()
-      }).catch(() => {})
-      scannerRef.current = null
-    }
+  const stopCamera = useCallback(async () => {
+    await destroyScanner()
     setCameraActive(false)
-  }, [])
+  }, [destroyScanner])
 
+  // Track mount state & cleanup on unmount
   useEffect(() => {
+    mountedRef.current = true
     return () => {
-      // Cleanup on unmount
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {})
+      mountedRef.current = false
+      const scanner = scannerRef.current
+      if (scanner) {
+        scannerRef.current = null
+        try {
+          const st = scanner.getState()
+          if (st === 2 || st === 3) scanner.stop().catch(() => {})
+          scanner.clear()
+        } catch { /* noop */ }
       }
     }
   }, [])
@@ -337,17 +370,19 @@ export default function QRScanner({ stock, onRefresh }: QRScannerProps) {
             </div>
           )}
 
-          {/* Camera video container — ALWAYS rendered with fixed height when active
-              html5-qrcode needs a visible DOM element with real dimensions */}
+          {/* Camera video container — ALWAYS in DOM with real dimensions.
+              When inactive: hidden via visibility+position so clientWidth stays valid.
+              html5-qrcode reads clientWidth at start() and creates a 0px video if hidden. */}
           <div
+            ref={containerRef}
             id={scannerContainerId}
-            className={`rounded-lg overflow-hidden transition-all ${cameraActive ? 'border-2 border-emerald-400' : ''}`}
+            className={`rounded-lg ${cameraActive ? 'border-2 border-emerald-400' : ''}`}
             style={{
               width: '100%',
-              minHeight: cameraActive ? 300 : 0,
-              height: cameraActive ? 300 : 0,
-              overflow: 'hidden',
-              opacity: cameraActive ? 1 : 0,
+              height: 300,
+              ...(cameraActive
+                ? { position: 'relative' as const, visibility: 'visible' as const }
+                : { position: 'absolute' as const, visibility: 'hidden' as const, pointerEvents: 'none' as const, left: -9999 }),
             }}
           />
 
