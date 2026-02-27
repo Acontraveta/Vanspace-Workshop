@@ -246,8 +246,8 @@ export default function QuotesTabbedList({ onEditQuote }: QuotesTabbedListProps)
   const handleDeleteDoc = (id: string) => {
     setConfirmAction({
       message: '¿Eliminar este documento?',
-      action: () => {
-        QuickDocService.delete(id)
+      action: async () => {
+        await QuickDocService.delete(id)
         refresh()
       }
     })

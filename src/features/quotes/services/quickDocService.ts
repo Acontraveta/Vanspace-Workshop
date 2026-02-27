@@ -203,15 +203,13 @@ export class QuickDocService {
 
   // ── Delete ────────────────────────────────────────────────
 
-  static delete(id: string): void {
+  static async delete(id: string): Promise<void> {
     const all = cacheGetAll().filter(d => d.id !== id)
     cacheSet(all)
 
-    // Also delete from Supabase
-    supabase.from('quick_docs').delete().eq('id', id)
-      .then(({ error: delErr }) => {
-        if (delErr) console.warn('⚠️ QuickDocService: failed to delete from Supabase:', delErr.message)
-      })
+    // Also delete from Supabase (awaited so callers can refresh safely)
+    const { error: delErr } = await supabase.from('quick_docs').delete().eq('id', id)
+    if (delErr) console.warn('⚠️ QuickDocService: failed to delete from Supabase:', delErr.message)
   }
 
   // ── Search (uses cache) ───────────────────────────────────
