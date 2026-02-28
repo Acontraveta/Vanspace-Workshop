@@ -83,15 +83,16 @@ export default function QuoteForm({ quote: initialQuote, onApproved, onUpdated }
     setShowPreview(true)
   }
 
-  const statusLabel: Record<Quote['status'], { label: string; color: string }> = {
+  const statusLabel: Record<string, { label: string; color: string }> = {
     DRAFT:    { label: 'Borrador',  color: 'bg-gray-200 text-gray-700' },
     SENT:     { label: 'Enviado',   color: 'bg-blue-100 text-blue-700' },
     APPROVED: { label: 'Aprobado',  color: 'bg-green-100 text-green-700' },
     REJECTED: { label: 'Cancelado', color: 'bg-red-100 text-red-700' },
     EXPIRED:  { label: 'Caducado',  color: 'bg-orange-100 text-orange-700' },
+    ALBARAN:  { label: 'Albarán',   color: 'bg-purple-100 text-purple-700' },
   }
 
-  const { label: statusTxt, color: statusColor } = statusLabel[quote.status]
+  const { label: statusTxt, color: statusColor } = statusLabel[quote.status] ?? { label: quote.status, color: 'bg-gray-200 text-gray-700' }
 
   return (
     <>

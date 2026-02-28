@@ -10,13 +10,14 @@ import type { PurchaseItem } from '@/features/purchases/types/purchase.types'
 
 const today = () => new Date()
 
-function safeParse(dateStr?: string | null): Date | null {
+function safeParse(dateStr?: string | Date | null): Date | null {
   if (!dateStr) return null
+  if (dateStr instanceof Date) return isValid(dateStr) ? dateStr : null
   const d = parseISO(dateStr)
   return isValid(d) ? d : null
 }
 
-function daysSince(dateStr?: string | null): number {
+function daysSince(dateStr?: string | Date | null): number {
   const d = safeParse(dateStr)
   if (!d) return 0
   return Math.max(0, differenceInDays(today(), d))

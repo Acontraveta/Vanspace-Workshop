@@ -113,7 +113,9 @@ export const router = createBrowserRouter([
         path: 'dashboard/encargado',
         element: (
           <Suspense fallback={<PageLoading />}>
-            <EncargadoDashboard />
+            <PermissionGuard permissions={['admin.full', 'quotes.view', 'production.manage']}>
+              <EncargadoDashboard />
+            </PermissionGuard>
           </Suspense>
         )
       },
@@ -212,7 +214,7 @@ export const router = createBrowserRouter([
         path: 'timeclock',
         element: (
           <Suspense fallback={<PageLoading />}>
-            <PermissionGuard permission="admin.full">
+            <PermissionGuard permissions={['admin.full', 'production.manage']}>
               <TimeclockPage />
             </PermissionGuard>
           </Suspense>

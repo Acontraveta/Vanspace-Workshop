@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { useNavigate } from 'react-router-dom'
-import { ProductionService } from '@/features/production/services/productionService'
+import { ProductionService } from '@/features/calendar/services/productionService'
 import { PurchaseService } from '@/features/purchases/services/purchaseService'
 import { supabase } from '@/lib/supabase'
 

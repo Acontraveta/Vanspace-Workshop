@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, useEffect, createElement } from 'react'
+import { createPortal, flushSync } from 'react-dom'
+import { createRoot } from 'react-dom/client'
 import { getPortalRoot } from '@/shared/utils/portalRoot'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'

@@ -301,8 +301,8 @@ export default function PurchaseList() {
 
   const handleOrderGroup = async () => {
     if (selectedPendingIds.size === 0) return
-    const amount = orderGroupInvoice.invoiceAmount ? parseFloat(orderGroupInvoice.invoiceAmount.replace(',', '.')) : undefined
-    const vatPct = orderGroupInvoice.invoiceVatPct ? parseFloat(orderGroupInvoice.invoiceVatPct.replace(',', '.')) : 21
+    const amount = orderGroupInvoice.invoiceAmount ? parseFloat(orderGroupInvoice.invoiceAmount.replace(/\./g, '').replace(',', '.')) : undefined
+    const vatPct = orderGroupInvoice.invoiceVatPct ? parseFloat(orderGroupInvoice.invoiceVatPct.replace(/\./g, '').replace(',', '.')) : 21
     const vatAmount = amount != null ? amount - (amount / (1 + vatPct / 100)) : undefined
     try {
       await PurchaseService.markOrderGroup(
